@@ -1,6 +1,6 @@
 ---
 name: "@grpc/proto-loader"
-version: 0.7.14
+version: 0.7.15
 type: npm
 summary: gRPC utility library for loading .proto files
 homepage: https://grpc.io/
