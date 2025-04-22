@@ -13,6 +13,9 @@ describe("settings", () => {
 
   it("should parse settings with default values", () => {
     const settings = parseSettings();
+    vi.stubEnv("GITHUB_REPOSITORY", undefined);
+    vi.stubEnv("GITHUB_REF", undefined);
+    vi.stubEnv("GITHUB_SHA", undefined);
 
     expect(settings.stack).toBe("unknown");
     expect(settings.version).toBe("unknown");
@@ -73,6 +76,7 @@ describe("settings", () => {
   });
 
   it("should handle missing GITHUB_REPOSITORY gracefully", () => {
+    vi.stubEnv("GITHUB_REPOSITORY", undefined);
     const settings = parseSettings();
 
     expect(settings.stack).toBe("unknown");
