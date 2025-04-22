@@ -78,7 +78,7 @@ if [[ ! ($YN == "y" || $YN == "Y") ]]; then
 fi
 
 # 6. Tag a new release
-git tag "$new_tag" --annotate --message "$new_tag Release"
+git tag -s "$new_tag" --annotate --message "$new_tag Release"
 echo -e "Tagged: ${BOLD_GREEN}$new_tag${OFF}"
 
 # 7. Set 'is_major_release' variable
@@ -101,11 +101,11 @@ fi
 # 8. Point separate major release tag (e.g. v1, v2) to the new release
 if [ $is_major_release = 'yes' ]; then
 	# Create a new major version tag and point it to this release
-	git tag "$new_major_release_tag" --annotate --message "$new_major_release_tag Release"
+	git tag -s "$new_major_release_tag" --annotate --message "$new_major_release_tag Release"
 	echo -e "New major version tag: ${BOLD_GREEN}$new_major_release_tag${OFF}"
 else
 	# Update the major version tag to point it to this release
-	git tag "$latest_major_release_tag" --force --annotate --message "Sync $latest_major_release_tag tag with $new_tag"
+	git tag -s "$latest_major_release_tag" --force --annotate --message "Sync $latest_major_release_tag tag with $new_tag"
 	echo -e "Synced ${BOLD_GREEN}$latest_major_release_tag${OFF} with ${BOLD_GREEN}$new_tag${OFF}"
 fi
 
