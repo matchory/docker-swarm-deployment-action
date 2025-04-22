@@ -72,6 +72,8 @@ jobs:
 
 ## ⚙️ Configuration
 
+### Inputs
+
 To configure the action, you can use the following inputs:
 
 | Input              | Default                               | Description                                                                                                                       |
@@ -232,13 +234,13 @@ populate the `file` property with that. This is done by the following rules:
    will be used as the environment source:n
    - Exact variable key (e.g. `app_url`)
    - Uppercase variable key (e.g. `APP_URL`)
-   - Variable key prefixed with the [`envVarPrefix`](#configuration) (e.g.
+   - Variable key prefixed with the [`envVarPrefix`](#inputs) (e.g.
      `DEPLOYMENT_app_url`)
-   - Uppercase variable key prefixed with the
-     [env var prefix setting](#configuration) (e.g. `DEPLOYMENT_APP_URL`)
-   - Variable key prefixed with the [stack name](#configuration) (e.g.
+   - Uppercase variable key prefixed with the [env var prefix setting](#inputs)
+     (e.g. `DEPLOYMENT_APP_URL`)
+   - Variable key prefixed with the [stack name](#inputs) (e.g.
      `my_repo_app_url`)
-   - Uppercase variable key prefixed with the [stack name](#configuration) (e.g.
+   - Uppercase variable key prefixed with the [stack name](#inputs) (e.g.
      `MY_REPO_APP_URL`)
 3. If neither of the above is found, an error will be thrown and the action will
    fail.
