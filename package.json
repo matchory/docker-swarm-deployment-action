@@ -48,7 +48,7 @@
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "dockerode": "^4.0.5",
+    "dockerode": "^4.0.6",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
