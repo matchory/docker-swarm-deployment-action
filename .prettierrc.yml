@@ -3,14 +3,12 @@
 printWidth: 80
 tabWidth: 2
 useTabs: false
-semi: false
-singleQuote: true
+semi: true
+singleQuote: false
 quoteProps: as-needed
-jsxSingleQuote: false
-trailingComma: none
+trailingComma: all
 bracketSpacing: true
 bracketSameLine: true
 arrowParens: always
 proseWrap: always
-htmlWhitespaceSensitivity: css
 endOfLine: lf

@@ -4,8 +4,9 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "allowJs": false
   },
-  "exclude": ["__fixtures__", "__tests__", "coverage", "dist", "node_modules"],
-  "include": ["src"]
+  "exclude": ["tests", "coverage", "dist", "node_modules"],
+  "include": ["src/**/*.ts"]
 }

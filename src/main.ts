@@ -1,27 +1,24 @@
-import * as core from '@actions/core'
-import { wait } from './wait.js'
+import * as core from "@actions/core";
+import { deploy } from "./deployment.js";
+import { parseSettings } from "./settings.js";
 
-/**
- * The main function for the action.
- *
- * @returns Resolves when the action is complete.
- */
-export async function run(): Promise<void> {
+export async function run() {
+  const settings = parseSettings();
+
   try {
-    const ms: string = core.getInput('milliseconds')
+    const composeSpec = await deploy(settings);
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
-
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
-
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    core.setOutput("compose-spec", composeSpec);
+    core.setOutput("stack-name", settings.stack);
+    core.setOutput("version", settings.version);
+    core.setOutput("status", "success");
   } catch (error) {
-    // Fail the workflow run if an error occurs
-    if (error instanceof Error) core.setFailed(error.message)
+    if (error instanceof Error) {
+      core.setFailed(error);
+    } else {
+      core.setFailed("An unknown error occurred");
+    }
+
+    core.setOutput("status", "failure");
   }
 }

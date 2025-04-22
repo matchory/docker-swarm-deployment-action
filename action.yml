@@ -1,24 +1,62 @@
-name: The name of your action here
-description: Provide a description here
-author: Your name or organization here
+name: Docker Swarm Deployment Action
+description: Deploy your Docker Swarm apps in seconds. 🚀
+author: Matchory GmbH
 
-# Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: heart
-  color: red
+  icon: zap
+  color: blue
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
-    required: true
-    default: '1000'
+  stack-name:
+    description: >-
+      Name of the stack to deploy. Defaults to the repository name.
+  version:
+    description: >-
+      Version for the deployment. Defaults to the tag name being built, or the
+      commit hash.
+  compose-file:
+    description: |-
+      Path to the Docker Compose file(s) to use for deployment relative to the repository root. Separate multiple files
+      with colons (`:`). If omitted, the action will look for any of the following file variants, in order:
+       - `docker-compose.production.yaml`
+       - `docker-compose.production.yaml`
+       - `docker-compose.prod.yml`
+       - `docker-compose.prod.yml`
+       - `.docker/docker-compose.yaml`
+       - `.docker/docker-compose.yml`
+       - `docker/docker-compose.yaml`
+       - `docker/docker-compose.yml`
+       - `docker-compose.yaml`
+       - `docker-compose.yml`
 
-# Define your outputs here.
+  env-var-prefix:
+    description: >-
+      Prefix filter for environment variables to automatically load as secrets.
+    default: "DEPLOYMENT"
+  monitor:
+    description: >-
+      Whether to monitor the stack after the deployment is complete. If an error
+      occurs, the action will fail.
+    default: "false"
+  monitor-timeout:
+    description: >-
+      Timeout for post-deployment monitoring in seconds.
+    default: "300"
+  monitor-interval:
+    description: >-
+      Interval for post-deployment monitoring checks in seconds.
+    default: "5"
+
 outputs:
-  time:
-    description: Your output description here
+  status:
+    description: "Deployment status"
+  compose-spec:
+    description: "Docker Compose spec used for deployment"
+  stack-name:
+    description: "Name of the stack deployed"
+  version:
+    description: "Version of the stack deployed"
 
 runs:
   using: node20
-  main: dist/index.js
+  main: dist/index.mjs

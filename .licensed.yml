@@ -11,8 +11,9 @@ allowed:
   - mit
   - cc0-1.0
   - other
+  - unlicense
 
 ignored:
   npm:
     # Used by Rollup.js when building in GitHub Actions
-    - '@rollup/rollup-linux-x64-gnu'
+    - "@rollup/rollup-linux-x64-gnu"

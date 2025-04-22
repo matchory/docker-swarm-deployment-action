@@ -1,306 +1,414 @@
-# Create a GitHub Action Using TypeScript
+# Docker Swarm Deployments
 
-[![GitHub Super-Linter](https://github.com/actions/typescript-action/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml)
+[![GitHub Super-Linter](https://github.com/matchory/deployment/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
+![CI](https://github.com/matchory/deployment/actions/workflows/ci.yml/badge.svg)
+[![Check dist/](https://github.com/matchory/deployment/actions/workflows/check-dist.yml/badge.svg)](https://github.com/matchory/deployment/actions/workflows/check-dist.yml)
+[![CodeQL](https://github.com/matchory/deployment/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/matchory/deployment/actions/workflows/codeql-analysis.yml)
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
-Use this template to bootstrap the creation of a TypeScript action. :rocket:
+> A powerful GitHub Action to deploy your applications to a Docker Swarm
+> cluster. It automatically handles features from the Compose Specification,
+> rotates configs and secrets for you, and can optionally monitor stacks for any
+> post-deployment issues (e.g. restart cycles or rollbacks) and fail the
+> deployment accordingly.  
+> Designed to "do the right thing" out of the box, with flexible options for
+> customization.
 
-This template includes compilation support, tests, a validation workflow,
-publishing, and versioning guidance.
+![Docker Swarm Deployments](./.github/assets/deployment-action-overview.png)
 
-If you are new, there's also a simpler introduction in the
-[Hello world JavaScript action repository](https://github.com/actions/hello-world-javascript-action).
+## ✨ Features
 
-## Create Your Own Action
+- **Easy Setup:** The action uses
+  [the same environment variables](https://docs.docker.com/reference/cli/docker/#environment-variables)
+  as the Docker CLI, so you can connect to your Docker Swarm cluster via all
+  transports supported by Docker (e.g. HTTP, TCP, SSH, etc.).
+- **Smart Compose Handling:** It automatically discovers your compose file and
+  supports both the Compose Specification and Compose File v3, so you don't have
+  to worry about incompatibilities.
+- **Automatic Config & Secret Management:** It rotates secrets and configs
+  automatically, and can even transform their data on-the-fly (e.g., base64
+  encode/decode).
+- **Reliable Deployments:** Validates your configuration before deploying using
+  `docker stack config`.
+- **Optional Post-Deployment Monitoring:** Ensures your services are stable
+  after deployment.
+- **Fully Tested:** An extensive test suite ensures the action works as
+  expected.
 
-To create your own action, you can use this repository as a template! Just
-follow the below instructions:
+## 🚀 Getting Started
 
-1. Click the **Use this template** button at the top of the repository
-1. Select **Create a new repository**
-1. Select an owner and name for your new repository
-1. Click **Create repository**
-1. Clone your new repository
+### Prerequisites
 
-> [!IMPORTANT]
->
-> Make sure to remove or update the [`CODEOWNERS`](./CODEOWNERS) file! For
-> details on how to use this file, see
-> [About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+- A Docker Swarm cluster accessible in the GitHub Actions environment
+- A Docker Compose file
 
-## Initial Setup
+### Simple Usage
 
-After you've cloned the repository to your local machine or codespace, you'll
-need to perform some initial setup steps before you can develop your action.
+In most cases, you don't need to explicitly tell the action where your compose
+file is. If your file is named commonly ( like `docker-compose.yaml` or
+`docker-compose.production.yml`) and is in your repository's root or a standard
+location, the action will find it automatically.
 
-> [!NOTE]
->
-> You'll need to have a reasonably modern version of
-> [Node.js](https://nodejs.org) handy (20.x or later should work!). If you are
-> using a version manager like [`nodenv`](https://github.com/nodenv/nodenv) or
-> [`fnm`](https://github.com/Schniz/fnm), this template has a `.node-version`
-> file at the root of the repository that can be used to automatically switch to
-> the correct version when you `cd` into the repository. Additionally, this
-> `.node-version` file is used by GitHub Actions in any `actions/setup-node`
-> actions.
-
-1. :hammer_and_wrench: Install the dependencies
-
-   ```bash
-   npm install
-   ```
-
-1. :building_construction: Package the TypeScript for distribution
-
-   ```bash
-   npm run bundle
-   ```
-
-1. :white_check_mark: Run the tests
-
-   ```bash
-   $ npm test
-
-   PASS  ./index.test.js
-     ✓ throws invalid number (3ms)
-     ✓ wait 500 ms (504ms)
-     ✓ test runs (95ms)
-
-   ...
-   ```
-
-## Update the Action Metadata
-
-The [`action.yml`](action.yml) file defines metadata about your action, such as
-input(s) and output(s). For details about this file, see
-[Metadata syntax for GitHub Actions](https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions).
-
-When you copy this repository, update `action.yml` with the name, description,
-inputs, and outputs for your action.
-
-## Update the Action Code
-
-The [`src/`](./src/) directory is the heart of your action! This contains the
-source code that will be run when your action is invoked. You can replace the
-contents of this directory with your own code.
-
-There are a few things to keep in mind when writing your action code:
-
-- Most GitHub Actions toolkit and CI/CD operations are processed asynchronously.
-  In `main.ts`, you will see that the action is run in an `async` function.
-
-  ```javascript
-  import * as core from '@actions/core'
-  //...
-
-  async function run() {
-    try {
-      //...
-    } catch (error) {
-      core.setFailed(error.message)
-    }
-  }
-  ```
-
-  For more information about the GitHub Actions toolkit, see the
-  [documentation](https://github.com/actions/toolkit/blob/master/README.md).
-
-So, what are you waiting for? Go ahead and start customizing your action!
-
-1. Create a new branch
-
-   ```bash
-   git checkout -b releases/v1
-   ```
-
-1. Replace the contents of `src/` with your action code
-1. Add tests to `__tests__/` for your source code
-1. Format, test, and build the action
-
-   ```bash
-   npm run all
-   ```
-
-   > This step is important! It will run [`rollup`](https://rollupjs.org/) to
-   > build the final JavaScript action code with all dependencies included. If
-   > you do not run this step, your action will not work correctly when it is
-   > used in a workflow.
-
-1. (Optional) Test your action locally
-
-   The [`@github/local-action`](https://github.com/github/local-action) utility
-   can be used to test your action locally. It is a simple command-line tool
-   that "stubs" (or simulates) the GitHub Actions Toolkit. This way, you can run
-   your TypeScript action locally without having to commit and push your changes
-   to a repository.
-
-   The `local-action` utility can be run in the following ways:
-
-   - Visual Studio Code Debugger
-
-     Make sure to review and, if needed, update
-     [`.vscode/launch.json`](./.vscode/launch.json)
-
-   - Terminal/Command Prompt
-
-     ```bash
-     # npx @github/local action <action-yaml-path> <entrypoint> <dotenv-file>
-     npx @github/local-action . src/main.ts .env
-     ```
-
-   You can provide a `.env` file to the `local-action` CLI to set environment
-   variables used by the GitHub Actions Toolkit. For example, setting inputs and
-   event payload data used by your action. For more information, see the example
-   file, [`.env.example`](./.env.example), and the
-   [GitHub Actions Documentation](https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables).
-
-1. Commit your changes
-
-   ```bash
-   git add .
-   git commit -m "My first action is ready!"
-   ```
-
-1. Push them to your repository
-
-   ```bash
-   git push -u origin releases/v1
-   ```
-
-1. Create a pull request and get feedback on your action
-1. Merge the pull request into the `main` branch
-
-Your action is now published! :rocket:
-
-For information about versioning your action, see
-[Versioning](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
-in the GitHub Actions toolkit.
-
-## Validate the Action
-
-You can now validate the action by referencing it in a workflow file. For
-example, [`ci.yml`](./.github/workflows/ci.yml) demonstrates how to reference an
-action in the same repository.
+Here's a basic workflow example:
 
 ```yaml
-steps:
-  - name: Checkout
-    id: checkout
-    uses: actions/checkout@v4
+name: Deploy to Docker Swarm
+on:
+  push:
+    branches:
+      - main
 
-  - name: Test Local Action
-    id: test-action
-    uses: ./
-    with:
-      milliseconds: 1000
+jobs:
+  deploy:
+    steps:
+      - name: Checkout code
+          uses: actions/checkout@v4
 
-  - name: Print Output
-    id: output
-    run: echo "${{ steps.test-action.outputs.time }}"
+      - name: Deploy to Docker Swarm
+          uses: matchory/deployment@v1
+          environment:
+            DOCKER_HOST: tcp://my-swarm-host:2375
 ```
 
-For example workflow runs, check out the
-[Actions tab](https://github.com/actions/typescript-action/actions)! :rocket:
+## ⚙️ Configuration
 
-## Usage
+To configure the action, you can use the following inputs:
 
-After testing, you can create version tag(s) that developers can use to
-reference different stable versions of your action. For more information, see
-[Versioning](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
-in the GitHub Actions toolkit.
+| Input              | Default                               | Description                                                                                                                       |
+| :----------------- | :------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
+| `stack-name`       | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
+| `version`          | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
+| `compose-file`     | —                                     | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
+| `env-var-prefix`   | `DEPLOYMENT_`                         | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution).                           |
+| `manage-variables` | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
+| `monitor`          | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
+| `monitor-timeout`  | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
+| `monitor-interval` | `10`                                  | The interval in seconds to check the stack status.                                                                                |
 
-To include the action in a workflow in another repository, you can use the
-`uses` syntax with the `@` symbol to reference a specific branch, tag, or commit
-hash.
+### Outputs
+
+| Output         | Description                                                          |
+| :------------- | :------------------------------------------------------------------- |
+| `status`       | The status of the deployment. Possible values: `success`, `failure`. |
+| `stack-name`   | The name of the stack that was deployed.                             |
+| `version`      | The version of the stack that was deployed.                          |
+| `compose-spec` | The final compose specification used for the deployment.             |
+
+## 📖 Reference
+
+### How Compose File Detection Works
+
+If the `compose-file` input is not specified, the action automatically searches
+for your compose file(s) in the following common locations and names, in
+descending order:
+
+1. `docker-compose.production.yaml`
+2. `docker-compose.production.yml`
+3. `docker-compose.prod.yaml`
+4. `docker-compose.prod.yml`
+5. `docker-compose.yaml`
+6. `docker-compose.yml`
+7. `.docker/docker-compose.yaml`
+8. `.docker/docker-compose.yml`
+9. `docker/docker-compose.yaml`
+10. `docker/docker-compose.yml`
+
+The first file found will be used. This covers most standard project structures.
+
+#### Using environment variables
+
+The action also respects the `COMPOSE_FILE` environment variable if set, and
+multiple files specified there or via the `compose-file` input can be separated
+by the `COMPOSE_FILE_SEPARATOR` environment variable (defaults to `:`).
+
+#### Specifying a Custom Compose File, or Multiple Files
+
+If your compose file doesn't follow the automatic detection pattern, or you need
+to use multiple compose files (which will be merged), use the compose-file
+input:
 
 ```yaml
-steps:
-  - name: Checkout
-    id: checkout
-    uses: actions/checkout@v4
-
-  - name: Test Local Action
-    id: test-action
-    uses: actions/typescript-action@v1 # Commit with the `v1` tag
-    with:
-      milliseconds: 1000
-
-  - name: Print Output
-    id: output
-    run: echo "${{ steps.test-action.outputs.time }}"
+- name: Deploy with Custom Compose File
+  uses: your-github-username/your-repo-name@v1
+  with:
+    stack-name: my-application
+    compose-file: path/to/your/custom-compose.yaml
 ```
 
-## Publishing a New Release
+To use multiple files:
 
-This project includes a helper script, [`script/release`](./script/release)
-designed to streamline the process of tagging and pushing new releases for
-GitHub Actions.
-
-GitHub Actions allows users to select a specific version of the action to use,
-based on release tags. This script simplifies this process by performing the
-following steps:
-
-1. **Retrieving the latest release tag:** The script starts by fetching the most
-   recent SemVer release tag of the current branch, by looking at the local data
-   available in your repository.
-1. **Prompting for a new release tag:** The user is then prompted to enter a new
-   release tag. To assist with this, the script displays the tag retrieved in
-   the previous step, and validates the format of the inputted tag (vX.X.X). The
-   user is also reminded to update the version field in package.json.
-1. **Tagging the new release:** The script then tags a new release and syncs the
-   separate major tag (e.g. v1, v2) with the new release tag (e.g. v1.0.0,
-   v2.1.2). When the user is creating a new major release, the script
-   auto-detects this and creates a `releases/v#` branch for the previous major
-   version.
-1. **Pushing changes to remote:** Finally, the script pushes the necessary
-   commits, tags and branches to the remote repository. From here, you will need
-   to create a new release in GitHub so users can easily reference the new tags
-   in their workflows.
-
-## Dependency License Management
-
-This template includes a GitHub Actions workflow,
-[`licensed.yml`](./.github/workflows/licensed.yml), that uses
-[Licensed](https://github.com/licensee/licensed) to check for dependencies with
-missing or non-compliant licenses. This workflow is initially disabled. To
-enable the workflow, follow the below steps.
-
-1. Open [`licensed.yml`](./.github/workflows/licensed.yml)
-1. Uncomment the following lines:
-
-   ```yaml
-   # pull_request:
-   #   branches:
-   #     - main
-   # push:
-   #   branches:
-   #     - main
-   ```
-
-1. Save and commit the changes
-
-Once complete, this workflow will run any time a pull request is created or
-changes pushed directly to `main`. If the workflow detects any dependencies with
-missing or non-compliant licenses, it will fail the workflow and provide details
-on the issue(s) found.
-
-### Updating Licenses
-
-Whenever you install or update dependencies, you can use the Licensed CLI to
-update the licenses database. To install Licensed, see the project's
-[Readme](https://github.com/licensee/licensed?tab=readme-ov-file#installation).
-
-To update the cached licenses, run the following command:
-
-```bash
-licensed cache
+```yaml
+- name: Deploy with Multiple Compose Files
+  uses: your-github-username/your-repo-name@v1
+  with:
+    stack-name: my-application
+    compose-file: compose.yaml:compose.override.yaml # Using default separator ':'
+    # Or with a different separator:
+    # compose-file: compose.yaml,compose.override.yaml
+    # env:
+    #   COMPOSE_FILE_SEPARATOR: ','
 ```
 
-To check the status of cached licenses, run the following command:
+### How Compose Files Are Processed
 
-```bash
-licensed status
+The action is designed to be flexible and robust when it comes to your compose
+files. It doesn't strictly require either the old v3 format or the new Compose
+Specification. Instead, it:
+
+- Reads your specified (or detected) compose file(s).
+- Applies internal transformations to handle known differences between formats
+  for Swarm compatibility.
+- Uses `docker stack config` to validate the resulting configuration and merge
+  multiple files into a single, canonical Compose Specification.
+
+This ensures that regardless of the exact format you use (even mixing them), the
+final configuration passed to docker stack deploy is valid and correctly
+interpreted by Docker Swarm.
+
+### Configuring Secrets and Configs
+
+#### Loading Environment Variables or inline Content
+
+Docker Swarm only supports reading configs and secrets from files, but the
+Compose Specification allows you to use the
+[`environment`](https://docs.docker.com/reference/compose-file/secrets/#example-2)
+and
+[`content`](https://docs.docker.com/reference/compose-file/configs/#example-2)
+properties to load them from environment variables or inline content,
+respectively. This action automatically converts these properties to files, so
+you can use them in your compose file without worrying about the deployment.
+
+For example, if you have a compose file with the following configs:
+
+```yaml
+configs:
+  app_url:
+    environment: APP_URL
+  database_username:
+    content: root
 ```
+
+The action will automatically create files for these configs, and the resulting
+specification file passed to the actual `docker stack deploy` call will look
+like this:
+
+```yaml
+configs:
+  app_url:
+    file: ./app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
+    # omitting rest for brevity
+  database_username:
+    file: ./database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
+    # omitting rest for brevity
+```
+
+The action will create the files in the same directory as the compose file, and
+append a unique identifier to the file name to avoid conflicts. The files will
+be removed after the deployment is complete, so you don't have to worry about
+leaving temporary files behind to the next action.
+
+#### Smart Variable Resolution
+
+You don't have to specify the data source (`file`, `environment`, or `content`)
+manually: In fact, you don't have to add any properties at all! The following
+example will work just as well:
+
+```yaml
+configs:
+  # Pass an empty object, …
+  app_url: {}
+
+  # …or even a YAML-null value for brevity!
+  database_username: ~
+```
+
+The action will attempt to resolve the variable content automatically, and
+populate the `file` property with that. This is done by the following rules:
+
+1. If a file with the name of the variable exists in working directory named
+   like the variable key with the suffix " .secret" (e.g. `./app_url.secret`),
+   it will be used as the file source.
+2. If an environment variable with one of the following name patterns exists, it
+   will be used as the environment source:
+   - Exact variable key (e.g. `app_url`)
+   - Uppercase variable key (e.g. `APP_URL`)
+   - Variable key prefixed with the [`envVarPrefix`](#env-var-prefix) (e.g.
+     `DEPLOYMENT_app_url`)
+   - Uppercase variable key prefixed with the
+     [env var prefix setting](#env-var-prefix) (e.g. `DEPLOYMENT_APP_URL`)
+   - Variable key prefixed with the [stack name](#stack-name) (e.g.
+     `my_repo_app_url`)
+   - Uppercase variable key prefixed with the [stack name](#stack-name) (e.g.
+     `MY_REPO_APP_URL`)
+3. If neither of the above is found, an error will be thrown and the action will
+   fail.
+
+#### Automatic Rotation
+
+A major pain point deploying applications to Docker Swarm is managing secrets
+and configs (henceforth called _"variables"_), which are designed to be
+immutable, and cannot be updated in place. This action automates the process of
+creating new variables when deploying, and updating the stack to use them.  
+To make this work, the action detects changes to the _content_ of variables
+referenced in the compose file by storing their SHA256 hash in a label on the
+variable, and appending it to the full name. For example, given the following
+config in the compose file:
+
+```yaml
+configs:
+  database_username:
+    content: root
+```
+
+The action will transform it to:
+
+```yaml
+configs:
+  database_username:
+    name: YOUR_STACK-database_username-53175bc
+    file: ./database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
+    labels:
+      com.matchory.deployment.name: database_username
+      com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a
+      com.matchory.deployment.stack: YOUR_STACK
+      com.matchory.deployment.version: VERSION
+```
+
+_(`YOUR_STACK` and `VERSION` are placeholders for the actual stack name and
+version as defined in the settings)_
+
+This has two notable implications:
+
+1. As the short SHA256 hash is appended to the variable name, it will stay
+   stable if the content doesn't change across deployments, which avoids
+   unnecessary updates to the stack. If the database username stays root, the
+   stack will continue to use the variable created in the initial deployment,
+   even if other variables or settings are updated.
+2. After the deployment is complete, the action will prune any unused variables
+   by checking the labels. If a variable is not referenced in the compose file
+   anymore, it will be safely removed from the cluster. This is important to
+   keep the cluster clean and avoid cluttering it with old variables.
+
+#### Configuring the Variable Name
+
+The deployment action will automatically construct the variable name from the
+following template:
+
+```typescript
+`${stackName}-${variableName}-${hash.slice(0, 7)}`;
+```
+
+As the name must be globally unique, this includes the stack name, the name of
+the variable (the key in the compose file), and the first 7 characters of the
+hash. This ensures that even if two stacks use the same variable name, they will
+not conflict.  
+If you provide a custom name for the variable, it will be used verbatim, but
+**the hash will still be appended**. This is necessary to enable automatic
+change detection and pruning.
+
+#### Disabling Automatic Variable Management
+
+If you want to manage your variables manually, you can either disable the
+automatic variable management altogether by setting the `manage-variables` input
+to `false`, or you can add the `com.matchory.deployment.ignore` label to the
+variable:
+
+```yaml
+configs:
+  dotenv:
+    file: .env
+    labels:
+      com.matchory.deployment.ignore: "true"
+```
+
+This will prevent the action from touching the variable, and it will not be
+pruned after the deployment. Note that this will also disable the automatic
+conversion of compose-spec-style inputs from `content` or `environment`.
+
+#### Data Transformation
+
+You can optionally transform the data of your configs and secrets during the
+deployment process using labels in your compose file. This is useful for
+handling sensitive data that might be stored in an encoded format.  
+Add either the `com.matchory.deployment.encode` or
+`com.matchory.deployment.decode` label to your config or secret definition,
+specifying one of the supported formats:
+
+- `base64`
+- `base64url`
+- `hex`
+- `url`
+
+For example, to load a base64-encoded environment variable:
+
+```yaml
+configs:
+  my_config:
+    environment: BASE64_ENCODED_PEM_KEY
+    labels:
+      com.matchory.deployment.decode: "base64"
+```
+
+This will decode the variable before passing it to the container, resulting in a
+properly formatted, multi-line PEM key in the container file system.
+
+Do you have a different encoding in mind? Feel free to open an issue or PR, and
+we can add it to the action.
+
+### How the stack is deployed
+
+To deploy the final specification, the action uses the `docker stack deploy`
+command effectively like this:
+
+```shell
+echo $final_schema | docker stack deploy \
+     --resolve-image=always \
+     --with-registry-auth \
+     --compose-file "-" \
+     --detach \
+     --prune \
+  $stack_name
+```
+
+### Post-Deployment Monitoring
+
+The action can optionally monitor your stacks for any post-deployment issues
+(e.g. restart cycles or rollbacks) and fail the deployment accordingly. This is
+done by checking the status of the services in the stack after the deployment,
+waiting until all services are running and stable.  
+Especially for bigger deployments, this can take a while, so the monitoring
+feature is disabled by default. You can enable it by setting the `monitor` input
+to `true`.
+
+**Note that a monitoring failure will _not_ automatically roll back the stack.**
+Swarm takes care of that itself. Stack Monitoring solves a different problem: It
+makes sure an update to a stack is not only successful, but also stable, that
+is, it doesn't roll back or restart any services after the deployment. If that
+happens, and the stack does not stabilize, monitoring will fail the action and
+notify you of the issue.
+
+#### Monitoring Timeout & Interval
+
+The action will wait for a configurable maximum of `monitor-timeout` seconds for
+the services to stabilize, checking their status every `monitor-interval`
+seconds. The default values are 5 minutes and 10 seconds, respectively.
+
+You can adjust these values to suit your needs. For example, if you want to wait
+for 10 minutes and check every 30 seconds, you can set the following inputs:
+
+```yaml
+jobs:
+  deploy:
+    steps:
+      - name: Deploy to Docker Swarm
+        uses: matchory/deployment@v1
+        with:
+          monitor: true
+          monitor-timeout: 600 # 10 minutes
+          monitor-interval: 30 # 30 seconds
+```
+
+## 🔨 Contributing
+
+Contributions are welcome! If you have any ideas, suggestions, or bug reports,
+please open an issue or a pull request.

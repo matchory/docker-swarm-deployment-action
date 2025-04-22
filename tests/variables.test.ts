@@ -1,0 +1,1489 @@
+import * as core from "@actions/core";
+import { Config, type ConfigInfo, Secret } from "dockerode";
+import * as crypto from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComposeSpec } from "../src/compose.js";
+import { createClient } from "../src/deployment.js";
+import { defineSettings } from "../src/settings.js";
+import type { SecretInfo } from "../src/types.js";
+import * as utils from "../src/utils.js";
+import {
+  decodeLabel,
+  defineVariable,
+  encodeLabel,
+  hashLabel,
+  hashVariable,
+  ignoreLabel,
+  nameLabel,
+  processVariable,
+  pruneConfigs,
+  pruneSecrets,
+  pruneVariables,
+  stackLabel,
+  versionLabel,
+} from "../src/variables.js";
+
+const readFile = vi.hoisted(() => vi.fn());
+const writeFile = vi.hoisted(() => vi.fn());
+vi.mock("node:fs/promises", () => ({
+  readFile,
+  writeFile,
+}));
+vi.mock("node:crypto", {
+  spy: true,
+});
+vi.mock("@actions/core");
+
+describe("Variables", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  const settings = defineSettings({
+    stack: "test",
+    version: "1.0.0",
+    envVarPrefix: "APP",
+    monitor: false,
+    monitorTimeout: 300,
+    monitorInterval: 5,
+  });
+
+  describe("Processing", () => {
+    it("should process variables with default values", async () => {
+      const variable = defineVariable({
+        content: "secret",
+      });
+      const expectedHash = hashVariable("secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      await expect(processVariable("foo", variable, settings)).resolves.toEqual(
+        {
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      );
+    });
+
+    it("should process variables with a custom name", async () => {
+      const variable = defineVariable({
+        name: "bar",
+        content: "secret",
+      });
+      const expectedHash = hashVariable("secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      await expect(processVariable("foo", variable, settings)).resolves.toEqual(
+        {
+          name: `bar-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      );
+    });
+
+    it("should process variables with custom labels", async () => {
+      const variable = defineVariable({
+        content: "secret",
+        labels: {
+          "custom-label": "custom-value",
+          [hashLabel]: "what are you gonna do about it?",
+        },
+      });
+      const expectedHash = hashVariable("secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+
+      await expect(processVariable("foo", variable, settings)).resolves.toEqual(
+        {
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            "custom-label": "custom-value",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      );
+    });
+
+    it("should not process variables with the ignore label", async () => {
+      const variable = defineVariable({
+        name: "some-secret",
+        file: "./some-file.txt",
+        labels: {
+          [ignoreLabel]: "true",
+        },
+      });
+
+      await expect(processVariable("foo", variable, settings)).resolves.toEqual(
+        {
+          name: "some-secret",
+          file: "./some-file.txt",
+          labels: { [ignoreLabel]: "true" },
+        },
+      );
+    });
+
+    it("should treat null variables as empty objects", async () => {
+      vi.stubEnv("foo", "secret");
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      await expect(processVariable("foo", null, settings)).resolves.toEqual({
+        name: "test-foo-2bb80d5",
+        file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        labels: {
+          [nameLabel]: "foo",
+          [hashLabel]:
+            "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b",
+          [stackLabel]: "test",
+          [versionLabel]: "1.0.0",
+        },
+      });
+    });
+
+    describe("Environment Source", () => {
+      it("should process variables with an environment variable source", async () => {
+        const variable = defineVariable({
+          environment: "FOO_BAR",
+        });
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("FOO_BAR", "secret");
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should bail on missing environment variables", async () => {
+        const variable = defineVariable({
+          environment: "FOO_BAR",
+        });
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError();
+      });
+    });
+
+    describe("File Source", () => {
+      it("should process variables with a file source", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+        });
+        const expectedHash = hashVariable("secret");
+
+        readFile.mockResolvedValue("secret");
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "path/to/file",
+          labels: {
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should bail on missing files", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+        });
+
+        vi.mock("../src/utils.js", () => ({
+          exists: vi.fn(() => false),
+        }));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError();
+      });
+
+      it("should not throw an error if a variable is explicitly defined empty", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+        });
+
+        vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
+        readFile.mockResolvedValueOnce("");
+
+        await processVariable("foo", variable, settings);
+        expect(core.warning).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe("Content Source", () => {
+      it("should process variables with a content source", async () => {
+        const variable = defineVariable({
+          content: "secret",
+        });
+        const expectedHash = hashVariable("secret");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should not throw an error if a variable is explicitly defined empty", async () => {
+        const variable = defineVariable({
+          content: "",
+        });
+        await processVariable("foo", variable, settings);
+        expect(core.warning).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe("Missing Source", () => {
+      it("should automatically infer exact-match environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("foo_bAr", "secret");
+        vi.stubEnv("FOO_BAR", "uppercase");
+        vi.stubEnv("APP_foo_bAr", "prefixed");
+        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
+        vi.stubEnv("test_foo_bAr", "stack");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should replace dashes in variable names with underscores in environment variables for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("foo_bar_baz", "secret");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo-bar-baz", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-bar-baz-${expectedHash.slice(0, 7)}`,
+          file: "./foo-bar-baz.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo-bar-baz",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically infer uppercase environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("FOO_BAR", "secret");
+        vi.stubEnv("APP_foo_bAr", "prefixed");
+        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
+        vi.stubEnv("test_foo_bAr", "stack");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo-bar", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-bar-${expectedHash.slice(0, 7)}`,
+          file: "./foo-bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo-bar",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically infer prefixed environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("APP_foo_bAr", "secret");
+        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
+        vi.stubEnv("test_foo_bAr", "stack");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically infer prefixed uppercase environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("APP_FOO_BAR", "secret");
+        vi.stubEnv("test_foo_bAr", "stack");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically infer stack-prefixed environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("test_foo_bAr", "secret");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically infer stack-prefixed environment variable for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("TEST_FOO_BAR", "secret");
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+      });
+
+      it("should automatically use a secret file for missing sources", async () => {
+        const variable = defineVariable({});
+        const expectedHash = hashVariable("secret");
+
+        vi.stubEnv("foo_bAr", "environment");
+        vi.stubEnv("FOO_BAR", "uppercase");
+        vi.stubEnv("APP_foo_bAr", "prefixed");
+        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
+        vi.stubEnv("test_foo_bAr", "stack");
+        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue("secret");
+
+        await expect(
+          processVariable("foo_bAr", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
+          file: "./foo_bAr.secret",
+          labels: {
+            [nameLabel]: "foo_bAr",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(utils.exists).toHaveBeenCalledWith("./foo_bAr.secret");
+      });
+
+      it("should throw an error if no source is provided and none can be inferred", async () => {
+        const variable = defineVariable({});
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError();
+      });
+    });
+
+    describe("Encoding", () => {
+      it("should encode variables as base64", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [encodeLabel]: "base64",
+          },
+        });
+        const expectedHash = hashVariable(
+          Buffer.from("secret").toString("base64"),
+        );
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: "test-foo-1c1185e",
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [encodeLabel]: "base64",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          Buffer.from("secret").toString("base64"),
+          "utf8",
+        );
+      });
+
+      it("should encode variables as base64url", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [encodeLabel]: "base64url",
+          },
+        });
+        const expectedHash = hashVariable(
+          Buffer.from("secret").toString("base64url"),
+        );
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: "test-foo-1c1185e",
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [encodeLabel]: "base64url",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          Buffer.from("secret").toString("base64url"),
+          "utf8",
+        );
+      });
+
+      it("should encode variables as hex", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [encodeLabel]: "hex",
+          },
+        });
+        const expectedHash = hashVariable(
+          Buffer.from("secret").toString("hex"),
+        );
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [encodeLabel]: "hex",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          Buffer.from("secret").toString("hex"),
+          "utf8",
+        );
+      });
+
+      it("should encode variables as a URI component", async () => {
+        const variable = defineVariable({
+          content: "some[secret]=value",
+          labels: {
+            [encodeLabel]: "url",
+          },
+        });
+        const expectedHash = hashVariable(
+          encodeURIComponent("some[secret]=value"),
+        );
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [encodeLabel]: "url",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          encodeURIComponent("some[secret]=value"),
+          "utf8",
+        );
+      });
+
+      it("should bail on unknown encoding", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [encodeLabel]: "unknown",
+          },
+        });
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError();
+      });
+    });
+
+    describe("Decoding", () => {
+      it("should decode variables from base64", async () => {
+        const variable = defineVariable({
+          content: Buffer.from("secret").toString("base64"),
+          labels: {
+            [decodeLabel]: "base64",
+          },
+        });
+        const expectedHash = hashVariable("secret");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [decodeLabel]: "base64",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          "secret",
+          "utf8",
+        );
+      });
+
+      it("should decode variables from base64url", async () => {
+        const variable = defineVariable({
+          content: Buffer.from("secret").toString("base64url"),
+          labels: {
+            [decodeLabel]: "base64url",
+          },
+        });
+        const expectedHash = hashVariable("secret");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [decodeLabel]: "base64url",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          "secret",
+          "utf8",
+        );
+      });
+
+      it("should decode variables from hex", async () => {
+        const variable = defineVariable({
+          content: Buffer.from("secret").toString("hex"),
+          labels: {
+            [decodeLabel]: "hex",
+          },
+        });
+        const expectedHash = hashVariable("secret");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [decodeLabel]: "hex",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          "secret",
+          "utf8",
+        );
+      });
+
+      it("should decode variables from a URI component", async () => {
+        const variable = defineVariable({
+          content: encodeURIComponent("some[secret]=value"),
+          labels: {
+            [decodeLabel]: "url",
+          },
+        });
+        const expectedHash = hashVariable("some[secret]=value");
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [decodeLabel]: "url",
+            [nameLabel]: "foo",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          "some[secret]=value",
+          "utf8",
+        );
+      });
+
+      it("should bail on unknown encoding", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [decodeLabel]: "unknown",
+          },
+        });
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError();
+      });
+    });
+  });
+
+  describe("Pruning", () => {
+    it("should prune configs", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        configs: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-7d865e9",
+            Data: "bar",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "3",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-b5bb9d8",
+            Data: "baz",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      ] satisfies ConfigInfo[]);
+      vi.spyOn(client, "getConfig").mockReturnValue({
+        remove: vi.fn(),
+      } as unknown as Config);
+
+      await pruneConfigs(spec, client, settings);
+
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(client.getConfig).toHaveBeenCalledTimes(2);
+      expect(client.getConfig).toHaveBeenCalledWith("1");
+      expect(client.getConfig).toHaveBeenCalledWith("2");
+    });
+
+    it("should prune secrets", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-7d865e9",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "3",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-b5bb9d8",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "getSecret").mockReturnValue({
+        remove: vi.fn(),
+      } as unknown as Secret);
+
+      await pruneSecrets(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(2);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getSecret).toHaveBeenCalledWith("2");
+    });
+
+    it("should issue a warning for secrets that have not been rotated for a long time", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "2",
+          CreatedAt: "2023-10-01T00:00:00Z",
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-7d865e9",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "getSecret").mockReturnValue({
+        remove: vi.fn(),
+      } as unknown as Secret);
+      vi.spyOn(core, "warning").mockImplementationOnce(() => {});
+
+      await pruneSecrets(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(2);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getSecret).toHaveBeenCalledWith("2");
+      expect(core.warning).toHaveBeenCalledOnce();
+    });
+
+    it("should not prune outdated versions on an unrelated variable", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          bar: {
+            name: "test-bar-b5bb9d8",
+            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "bar",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+          other_bar: {
+            name: "test-other_bar-bf07a7f",
+            file: "./other_bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "other_bar",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        configs: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+          other_foo: {
+            name: "test-other_foo-bf07a7f",
+            file: "./other_foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "other_foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      const client = createClient(settings);
+
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-bar-bf07a7f",
+            Labels: {
+              [nameLabel]: "bar",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-other_bar-bf07a7f",
+            Labels: {
+              [nameLabel]: "other_bar",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "3",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-bar-b5bb9d8",
+            Labels: {
+              [nameLabel]: "bar",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-other_foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "other_foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "3",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-b5bb9d8",
+            Data: "baz",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      ] satisfies ConfigInfo[]);
+      vi.spyOn(client, "getSecret").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Secret);
+      vi.spyOn(client, "getConfig").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Config);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(1);
+      expect(client.getConfig).toHaveBeenCalledTimes(1);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getConfig).toHaveBeenCalledWith("1");
+    });
+
+    it("should still prune if no secrets or configs are present in the spec", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies ConfigInfo,
+      ]);
+      vi.spyOn(client, "getSecret").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Secret);
+      vi.spyOn(client, "getConfig").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Config);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(1);
+      expect(client.getConfig).toHaveBeenCalledTimes(1);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getConfig).toHaveBeenCalledWith("1");
+    });
+
+    it("should do nothing if there are no secrets or configs defined in the cluster", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([]);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+    });
+
+    it("should do nothing if there are secrets or configs present in the spec, but none defined in the cluster", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          bar: {
+            name: "test-bar-b5bb9d8",
+            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "bar",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        configs: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([]);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+    });
+
+    it("should ignore secrets and configs without spec metadata", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          },
+        },
+        configs: {
+          bar: {
+            name: "test-bar-b5bb9d8",
+            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-bar-bf07a7f",
+            Labels: {
+              [nameLabel]: "bar",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+        },
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+        },
+      ]);
+      vi.spyOn(client, "getSecret").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Secret);
+      vi.spyOn(client, "getConfig").mockReturnValueOnce({
+        remove: vi.fn(),
+      } as unknown as Config);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(1);
+      expect(client.getConfig).toHaveBeenCalledTimes(1);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getConfig).toHaveBeenCalledWith("1");
+    });
+
+    it("should prune secrets and configs with some missing control labels", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          },
+        },
+        configs: {
+          bar: {
+            name: "test-bar-b5bb9d8",
+            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          },
+        },
+      });
+      const client = createClient(settings);
+      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-bar-bf07a7f",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-bar-b5bb9d8",
+            Labels: {
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        } satisfies SecretInfo,
+      ] as unknown as Secret[]);
+      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-bf07a7f",
+            Data: "foo",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          Version: { Index: 0 },
+          Spec: {
+            Name: "test-foo-b5bb9d8",
+            Data: "baz",
+            Labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      ]);
+      vi.spyOn(client, "getSecret").mockReturnValue({
+        remove: vi.fn(),
+      } as unknown as Secret);
+      vi.spyOn(client, "getConfig").mockReturnValue({
+        remove: vi.fn(),
+      } as unknown as Config);
+
+      await pruneVariables(spec, client, settings);
+
+      expect(client.listSecrets).toHaveBeenCalledOnce();
+      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(client.getSecret).toHaveBeenCalledTimes(2);
+      expect(client.getConfig).toHaveBeenCalledTimes(2);
+      expect(client.getSecret).toHaveBeenCalledWith("1");
+      expect(client.getSecret).toHaveBeenCalledWith("2");
+      expect(client.getConfig).toHaveBeenCalledWith("1");
+      expect(client.getConfig).toHaveBeenCalledWith("2");
+    });
+  });
+});
