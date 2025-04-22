@@ -203,8 +203,8 @@ configs:
 ```
 
 The action will create the files in the same directory as the compose file, and
-append a unique identifier to the file name to avoid conflicts. The files will
-be removed after the deployment is complete, so you don't have to worry about
+append a unique identifier to the filename to avoid conflicts. The files will be
+removed after the deployment is complete, so you don't have to worry about
 leaving temporary files behind to the next action.
 
 #### Smart Variable Resolution
@@ -229,17 +229,17 @@ populate the `file` property with that. This is done by the following rules:
    like the variable key with the suffix " .secret" (e.g. `./app_url.secret`),
    it will be used as the file source.
 2. If an environment variable with one of the following name patterns exists, it
-   will be used as the environment source:
+   will be used as the environment source:n
    - Exact variable key (e.g. `app_url`)
    - Uppercase variable key (e.g. `APP_URL`)
-   - Variable key prefixed with the [`envVarPrefix`](#env-var-prefix) (e.g.
+   - Variable key prefixed with the [`envVarPrefix`](#-configuration) (e.g.
      `DEPLOYMENT_app_url`)
    - Uppercase variable key prefixed with the
-     [env var prefix setting](#env-var-prefix) (e.g. `DEPLOYMENT_APP_URL`)
-   - Variable key prefixed with the [stack name](#stack-name) (e.g.
+     [env var prefix setting](#-configuration) (e.g. `DEPLOYMENT_APP_URL`)
+   - Variable key prefixed with the [stack name](#-configuration) (e.g.
      `my_repo_app_url`)
-   - Uppercase variable key prefixed with the [stack name](#stack-name) (e.g.
-     `MY_REPO_APP_URL`)
+   - Uppercase variable key prefixed with the [stack name](#-configuration)
+     (e.g. `MY_REPO_APP_URL`)
 3. If neither of the above is found, an error will be thrown and the action will
    fail.
 
@@ -401,6 +401,7 @@ jobs:
   deploy:
     steps:
       - name: Deploy to Docker Swarm
+        uses: matchory/deployment@v1
         uses: matchory/deployment@v1
         with:
           monitor: true
