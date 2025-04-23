@@ -75,6 +75,12 @@ fi
 # 5. Update the npm package version
 npm version "${new_tag}" --no-git-tag-version
 
+if [ -n "$(git status --porcelain)" ]; then
+  echo -e "Committing release preparation changes"
+  git add .
+  git commit -s -m "${new_tag} Release Preparation"
+fi
+
 # 6. Tag a new release
 git tag ${new_tag} -s --annotate --message "${new_tag} Release"
 echo -e "Tagged: ${BOLD_GREEN}${new_tag}${OFF}"
