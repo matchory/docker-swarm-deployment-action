@@ -33,7 +33,7 @@
   },
   "packageManager": "npm@10.9.2",
   "scripts": {
-    "preversion": "npm run licensed && npm run all",
+    "postversion": "npm run licensed && npm run all",
     "bundle": "npm run format:write && npm run package",
     "ci-test": "npx vitest",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",

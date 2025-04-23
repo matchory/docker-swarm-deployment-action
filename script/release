@@ -72,9 +72,11 @@ else
 	exit 1
 fi
 
-npm version "${new_tag}" -s -m "${new_tag} Release"
+# 5. Update the npm package version
+npm version "${new_tag}" --no-git-tag-version
 
 # 6. Tag a new release
+git tag ${new_tag} -s --annotate --message "${new_tag} Release"
 echo -e "Tagged: ${BOLD_GREEN}${new_tag}${OFF}"
 
 # 7. Set 'is_major_release' variable
