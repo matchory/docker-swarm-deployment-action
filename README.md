@@ -1,9 +1,9 @@
 # Docker Swarm Deployments
 
-[![GitHub Super-Linter](https://github.com/matchory/deployment/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/matchory/deployment/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/matchory/deployment/actions/workflows/check-dist.yml/badge.svg)](https://github.com/matchory/deployment/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/matchory/deployment/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/matchory/deployment/actions/workflows/codeql-analysis.yml)
+[![Lint Codebase](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/linter.yml/badge.svg)](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/linter.yml)
+[![Continuous Integration](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/ci.yml/badge.svg)](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/ci.yml)
+[![Check Dist](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/check-dist.yml/badge.svg)](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/check-dist.yml)
+[![CodeQL Advanced](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/matchory/docker-swarm-deployment-action/actions/workflows/codeql-analysis.yml)
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
 > A powerful GitHub Action to deploy your applications to a Docker Swarm
