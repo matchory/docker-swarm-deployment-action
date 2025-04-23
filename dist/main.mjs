@@ -11,7 +11,7 @@ import { join } from 'path';
 import { createHash } from 'crypto';
 import { env } from 'node:process';
 
-const version = "0.0.1";
+const version = "0.1.3";
 const packageJson = {
 	version: version};
 
