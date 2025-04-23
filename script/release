@@ -45,8 +45,8 @@ BOLD_UNDERLINED='\033[1;4m'
 BOLD='\033[1m'
 
 if [ -n "$(git status --porcelain)" ]; then
-  echo -e "${BOLD_RED}Please commit your changes before proceeding.${OFF}"
-  exit 1
+	echo -e "${BOLD_RED}Please commit your changes before proceeding.${OFF}"
+	exit 1
 fi
 
 # 1. Retrieve the latest release tag
@@ -76,9 +76,9 @@ fi
 npm version "${new_tag}" --no-git-tag-version
 
 if [ -n "$(git status --porcelain)" ]; then
-  echo -e "Committing release preparation changes"
-  git add .
-  git commit -s -m "${new_tag} Release Preparation"
+	echo -e "Committing release preparation changes"
+	git add .
+	git commit -s -m "${new_tag} Release Preparation"
 fi
 
 # 6. Tag a new release
