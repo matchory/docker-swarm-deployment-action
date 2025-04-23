@@ -40,8 +40,6 @@ OFF='\033[0m'
 BOLD_RED='\033[1;31m'
 BOLD_GREEN='\033[1;32m'
 BOLD_BLUE='\033[1;34m'
-BOLD_PURPLE='\033[1;35m'
-BOLD_UNDERLINED='\033[1;4m'
 BOLD='\033[1m'
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -82,7 +80,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # 6. Tag a new release
-git tag ${new_tag} -s --annotate --message "${new_tag} Release"
+git tag "${new_tag}" -s --annotate --message "${new_tag} Release"
 echo -e "Tagged: ${BOLD_GREEN}${new_tag}${OFF}"
 
 # 7. Set 'is_major_release' variable
