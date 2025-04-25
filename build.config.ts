@@ -4,18 +4,27 @@ import packageJson from "./package.json" with { type: "json" };
 const { name } = packageJson;
 
 export default defineBuildConfig({
-  entries: [
-    {
-      input: "./src/main.ts",
-      format: "esm",
-      ext: "js",
-    },
-    {
-      input: "./src/index.ts",
-      ext: "js",
-    },
-  ],
   name,
+  parallel: true,
+  outDir: "out",
+  failOnWarn: false,
+  externals: [],
+  rollup: {
+    preserveDynamicImports: false,
+    emitCJS: true,
+    cjsBridge: true,
+    inlineDependencies: true,
+    esbuild: {
+      minify: false,
+      target: "node22",
+    },
+    output: {
+      sourcemap: "inline",
+    },
+    resolve: {
+      preferBuiltins: true,
+    },
+  },
   sourcemap: true,
-  externals: ["@actions/exec", "@actions/core", "@actions/io"],
+  declaration: false,
 });

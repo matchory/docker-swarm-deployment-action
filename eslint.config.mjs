@@ -1,5 +1,3 @@
-// See: https://eslint.org/docs/latest/use/configure/configuration-files
-
 import { fixupPluginRules } from "@eslint/compat";
 import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
@@ -21,7 +19,13 @@ const compat = new FlatCompat({
 
 export default [
   {
-    ignores: ["**/coverage", "**/dist", "**/linter", "**/node_modules"],
+    ignores: [
+      "**/coverage",
+      "**/out",
+      "**/dist",
+      "**/linter",
+      "**/node_modules",
+    ],
   },
   ...compat.extends(
     "eslint:recommended",

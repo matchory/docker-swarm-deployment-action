@@ -25,8 +25,12 @@
     "cluster",
     "devops"
   ],
+  "main": "src/main.ts",
   "exports": {
-    ".": "./dist/index.mjs"
+    ".": {
+      "import": "./out/index.mjs",
+      "require": "./out/index.cjs"
+    }
   },
   "engines": {
     "node": ">=20"
@@ -34,7 +38,7 @@
   "packageManager": "npm@10.9.2",
   "scripts": {
     "postversion": "npm run licensed && npm run all",
-    "bundle": "npm run format:write && npm run package",
+    "bundle": "npx @vercel/ncc build out/index.cjs --source-map --license licenses.txt --minify --out dist --target es2022 --no-cache",
     "ci-test": "npx vitest",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "npx prettier --write .",
@@ -42,7 +46,8 @@
     "lint": "npx eslint .",
     "licensed": "licensed cache",
     "local-action": "npx @github/local-action . src/main.ts .env",
-    "package": "npx unbuild --config build.config.ts --parallel",
+    "build": "npx unbuild --config build.config.ts",
+    "package": "npm run build && npm run bundle",
     "package:watch": "npm run package -- --watch",
     "test": "npx vitest --run",
     "all": "npm run format:write && npm run lint && npm run test && npm run coverage && npm run package"
