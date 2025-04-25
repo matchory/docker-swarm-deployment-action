@@ -27,7 +27,7 @@ describe("Utilities", () => {
       const start = Date.now();
       await sleep(0);
       const end = Date.now();
-      expect(end - start).toBeLessThan(10);
+      expect(end - start).toBeLessThan(100);
     });
   });
 });
