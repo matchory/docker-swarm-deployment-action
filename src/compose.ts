@@ -1,10 +1,10 @@
 import * as core from "@actions/core";
-import { exec } from "@actions/exec";
 import { dump, load } from "js-yaml";
 import { randomUUID } from "node:crypto";
 import { readFile, unlink, writeFile } from "node:fs/promises";
 import { debug } from "node:util";
 import { join } from "path";
+import { normalizeStackSpecification } from "./engine";
 import type { Settings } from "./settings.js";
 import { exists } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
@@ -25,25 +25,25 @@ export const defaultVariants = [
 ] as const;
 
 /**
- * Resolves the Docker Compose file path
+ * Resolves the Docker Compose File path
  *
- * This function checks if the user has specified any compose files explicitly
+ * This function checks if the user has specified any Compose Files explicitly
  * in the settings. If so, it checks if those files exist and are readable.
  * If any of the specified files are missing, it throws an error and aborts
  * the deployment.
- * If no compose files are specified, it checks common default locations
- * for the compose file to deploy, using the first one it finds.
- * If neither the specified nor the default compose files are found, it throws
+ * If no Compose Files are specified, it checks common default locations
+ * for the Compose File to deploy, using the first one it finds.
+ * If neither the specified nor the default Compose Files are found, it throws
  * an error and aborts the deployment.
  */
 export async function resolveComposeFiles(
   settings: Readonly<Settings>,
 ): Promise<readonly [string, ...string[]]> {
-  debug(`Resolving compose file from ${settings.composeFiles}`);
+  debug(`Resolving Compose File from ${settings.composeFiles}`);
 
-  // If the user has specified any compose files explicitly, we check those and
+  // If the user has specified any Compose Files explicitly, we check those and
   // bail if any is missing. This avoids accidentally deploying a stack with
-  // the wrong compose file; e.g. if the config file specifies
+  // the wrong Compose File; e.g., if the config file specifies
   // "docker-compose.staging.yml", but the file is actually named
   // "docker-compose.staging.yaml" (with an "a"), and there is also a production
   // config at "docker-compose.production.yaml", we would end up deploying the
@@ -73,30 +73,30 @@ export async function resolveComposeFiles(
     return settings.composeFiles as [string, ...string[]];
   }
 
-  // If no compose files are specified, we check several default locations for
-  // the compose file to deploy, using the first one we find. This allows users to
-  // use the action without having to specify a compose file, as long as they
+  // If no Compose Files are specified, we check several default locations for
+  // the Compose File to deploy, using the first one we find. This allows users
+  // to use the action without having to specify a Compose File, as long as they
   // follow the naming conventions outlined in the documentation.
   for (const location of defaultVariants) {
     if (await exists(location)) {
-      core.info(`Found compose file at "${location}"`);
+      core.info(`Found Compose File at "${location}"`);
 
       return [location] as const;
     }
   }
 
-  // We couldn't find any compose files, so we throw an error and abort the
+  // We couldn't find any Compose Files, so we throw an error and abort the
   // deployment early.
-  throw new Error("Could not find suitable compose file");
+  throw new Error("Could not find suitable Compose File");
 }
 
 /**
- * Loads and normalizes the compose specification
+ * Loads and normalizes the Compose specification
  *
- * This function loads the compose specification(s) from all specified or
- * discovered compose files, reconciles the specification to the legacy Compose
+ * This function loads the Compose specification(s) from all specified or
+ * discovered Compose Files, reconciles the specification to the legacy Compose
  * file version 3 format, and resolves all referenced variables.
- * It returns a set of normalized compose specification objects that will be
+ * It returns a set of normalized Compose specification objects that will be
  * usable to docker stack commands.
  */
 export async function loadComposeSpecs(
@@ -116,15 +116,15 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 }
 
 /**
- * Adapt a compose specification to Compose file version 3
+ * Adapt a Compose specification to Compose File version 3
  *
- * The docker stack deploy command uses the legacy [Compose file version
+ * The docker stack deploy command uses the legacy [Compose File version
  * 3](https://docs.docker.com/reference/compose-file/legacy-versions/) format,
  * used by Compose V1. The latest format, defined by the
  * [Compose specification](https://docs.docker.com/reference/compose-file/)
  * isn't compatible with the docker stack deploy command.
  *
- * @param composeSpec The compose specification to adapt
+ * @param composeSpec The Compose specification to adapt
  * @param settings The settings to use for the deployment
  * @see https://docs.docker.com/engine/swarm/stack-deploy/
  * @see https://docs.docker.com/compose/intro/history/
@@ -161,27 +161,27 @@ export async function reconcileSpec(
 }
 
 /**
- * Normalize the compose specification
+ * Normalize the Compose specification
  *
- * This function takes multiple compose specifications and merges them into a
+ * This function takes multiple Compose specifications and merges them into a
  * single configuration. This works by delegating the merging to the `docker
  * stack config` command, which will:
- *  - validate the compose files according to the docker stack specification,
+ *  - validate the Compose Files according to the docker stack specification,
  *  - merge them into a single, canonical configuration object, and
  *  - resolve all shorthand options to their full form.
  *
- * This process allows users to write compose-spec files—which would normally
+ * This process allows users to write Compose Spec files—which would normally
  * not be compatible with the stack specification—while still being able
  * to deploy them to Swarm.
  *
- * @param composeSpecs The compose specifications to normalize
+ * @param composeSpecs The Compose specifications to normalize
  * @param _settings The settings to use for the deployment
  */
-export async function normalizeComposeSpec(
+export async function normalizeSpec(
   composeSpecs: ComposeSpec[],
   _settings: Readonly<Settings>,
 ) {
-  // As we possibly have modified the compose specs read from the input files,
+  // As we possibly have modified the Compose specs read from the input files,
   // we need to write them out to temporary files, so we can rely on the docker
   // stack config command to merge them correctly.
   const composeFiles = await Promise.all(
@@ -193,52 +193,13 @@ export async function normalizeComposeSpec(
     }),
   );
 
-  let content = "";
-  const exitCode = await exec(
-    "docker",
-    [
-      "stack",
-      "config",
-      ...composeFiles.map((path) => `--compose-file=${path}`),
-    ],
-    {
-      listeners: {
-        stdout: (data) => (content += data.toString()),
-      },
-    },
-  );
+  let spec;
 
-  // Remove the temporary files again, regardless of the exit code.
-  await Promise.all(composeFiles.map((path) => unlink(path)));
-
-  if (exitCode > 0) {
-    throw new Error(
-      `Failed to load compose file(s): Docker command failed with ` +
-        `exit code [${exitCode}]. Check the logs for more details.`,
-    );
-  }
-
-  if (!content) {
-    throw new Error(
-      "Failed to load compose file(s): No content produced. This is " +
-        "most likely a bug in the deployment action. Please report it to " +
-        "the action issues.",
-    );
-  }
-
-  // Parse the YAML output of the `docker stack config` command, which at this
-  // point is a valid docker stack specification.
-  const spec = load(`${content}\n`, {
-    filename: "docker-compose.yaml",
-    onWarning: (error) => core.warning(error),
-  }) as ComposeSpec | undefined;
-
-  if (!spec) {
-    throw new Error(
-      "Failed to load compose file(s): Failed to parse YAML output. " +
-        "This is most likely a bug in the deployment action. Please report " +
-        "it to the action issues.",
-    );
+  try {
+    spec = await normalizeStackSpecification(composeFiles);
+  } finally {
+    // Remove the temporary files again, regardless of the exit code.
+    await Promise.all(composeFiles.map((path) => unlink(path)));
   }
 
   if (!spec?.services || Object.keys(spec.services).length === 0) {
@@ -246,41 +207,6 @@ export async function normalizeComposeSpec(
   }
 
   return spec;
-}
-
-/**
- * Deploy the stack
- */
-export async function deployStack(
-  spec: ComposeSpec,
-  settings: Readonly<Settings>,
-) {
-  core.startGroup("Deploying stack");
-
-  try {
-    await exec(
-      "docker",
-      [
-        "stack",
-        "deploy",
-        "--prune",
-        "--quiet",
-        "--with-registry-auth",
-        "--resolve-image",
-        "always",
-        "--compose-file",
-        "-",
-        settings.stack,
-      ],
-      { input: Buffer.from(dump(spec)) },
-    );
-
-    core.info(`Deployed stack ${settings.stack}`);
-    core.endGroup();
-  } catch (error) {
-    core.endGroup();
-    throw error;
-  }
 }
 
 export function defineComposeSpec<T extends ComposeSpec>(spec: T) {

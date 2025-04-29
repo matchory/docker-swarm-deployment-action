@@ -1,10 +1,10 @@
 import * as core from "@actions/core";
 import { createHash } from "crypto";
-import Docker from "dockerode";
 import * as crypto from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { env } from "node:process";
 import type { ComposeSpec } from "./compose.js";
+import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
 import { exists } from "./utils.js";
 
@@ -135,10 +135,10 @@ function readFromEnvironment(
 }
 
 /**
- * Note that the `content` prop is currently part of the compose specification,
- * but not supported by Swarm. At this point, though, the compose file(s) have
+ * Note that the `content` prop is currently part of the Compose Specification
+ * but not supported by Swarm. At this point, though, the Compose File(s) have
  * already been validated by the docker stack parser, so we can be reasonably
- * sure this has changed, and assume if we've got a content value, it's valid
+ * sure this has changed and assume if we've got a content value, it's valid
  * by now.
  */
 function readFromContent(_name: string, { content }: ContentVariable) {
@@ -164,7 +164,7 @@ async function inferVariable(
   }
 
   // Attempt to read the variable from the environment using several variants.
-  // This allows to translate configs names like "log-driver" to "LOG_DRIVER"
+  // This allows translating Config names like "log-driver" to "LOG_DRIVER"
   // or "APP_LOG_DRIVER" automatically.
   const safeName = name.replace(/-/g, "_");
   const variantUpper = safeName.toUpperCase();
@@ -296,13 +296,12 @@ async function transformVariable(
  */
 export async function pruneVariables(
   composeSpec: ComposeSpec,
-  client: Readonly<Docker>,
   settings: Readonly<Settings>,
 ) {
   core.startGroup("Pruning outdated variables");
 
-  await pruneSecrets(composeSpec, client, settings);
-  await pruneConfigs(composeSpec, client, settings);
+  await pruneSecrets(composeSpec, settings);
+  await pruneConfigs(composeSpec, settings);
 
   core.endGroup();
 }
@@ -312,7 +311,6 @@ export async function pruneVariables(
  */
 export async function pruneSecrets(
   { secrets }: ComposeSpec,
-  client: Docker,
   { stack }: Settings,
 ) {
   core.debug(`Pruning secrets for stack "${stack}"`);
@@ -333,8 +331,10 @@ export async function pruneSecrets(
         .map((labels) => variableIdentifier(labels))
     : [];
 
-  const items = await client.listSecrets({
-    filters: { label: [`${stackLabel}=${stack}`] },
+  const items = await listSecrets({
+    labels: {
+      stackLabel: stack,
+    },
   });
 
   if (items.length == 0) {
@@ -347,23 +347,17 @@ export async function pruneSecrets(
   );
 
   for (let i = 0; i < items.length; i++) {
-    const { CreatedAt, ID, Spec } = items[i];
+    const { CreatedAt, ID, Name, Labels } = items[i];
 
-    if (!Spec) {
-      core.warning(`Found invalid secret "${ID}": No spec found. Ignoring.`);
-
-      continue;
-    }
-
-    const name = Spec.Name ?? ID;
-    const labels = marshalLabels(Spec.Labels);
+    const name = Name ?? ID;
+    const labels = marshalLabels(Labels);
 
     core.debug(`Checking secret ${i + 1}/${items.length}: ${name}`);
 
     if (!labels) {
       core.warning(`Found invalid secret "${name}": Missing labels. Pruning.`);
 
-      await client.getSecret(ID).remove();
+      await removeSecret(ID);
       continue;
     }
 
@@ -375,7 +369,7 @@ export async function pruneSecrets(
           `"${labels.name}": ${name}`,
       );
 
-      await client.getSecret(ID).remove();
+      await removeSecret(ID);
     }
 
     // Check for old secrets
@@ -393,7 +387,6 @@ export async function pruneSecrets(
  */
 export async function pruneConfigs(
   { configs }: ComposeSpec,
-  client: Docker,
   { stack }: Settings,
 ) {
   core.debug(`Pruning configs for stack "${stack}"`);
@@ -414,8 +407,10 @@ export async function pruneConfigs(
         .map((labels) => variableIdentifier(labels))
     : [];
 
-  const items = await client.listConfigs({
-    filters: { label: [`${stackLabel}=${stack}`] },
+  const items = await listConfigs({
+    labels: {
+      stackLabel: stack,
+    },
   });
 
   if (items.length == 0) {
@@ -428,16 +423,10 @@ export async function pruneConfigs(
   );
 
   for (let i = 0; i < items.length; i++) {
-    const { ID, Spec } = items[i];
+    const { ID, Name, Labels } = items[i];
 
-    if (!Spec) {
-      core.warning(`Found invalid config "${ID}": No spec found. Ignoring.`);
-
-      continue;
-    }
-
-    const name = Spec.Name ?? ID;
-    const labels = marshalLabels(Spec.Labels);
+    const name = Name ?? ID;
+    const labels = marshalLabels(Labels);
 
     core.debug(`Checking config ${i + 1}/${items.length}: ${name}`);
 
@@ -446,7 +435,7 @@ export async function pruneConfigs(
         `Found invalid config "${name}": Missing variable labels. Pruning.`,
       );
 
-      await client.getConfig(ID).remove();
+      await removeConfig(ID);
       continue;
     }
 
@@ -458,7 +447,7 @@ export async function pruneConfigs(
           `"${labels.name}": ${name}`,
       );
 
-      await client.getConfig(ID).remove();
+      await removeConfig(ID);
     }
   }
 }

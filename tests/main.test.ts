@@ -1,18 +1,7 @@
 import * as core from "@actions/core";
 import { exec } from "@actions/exec";
 import { dump } from "js-yaml";
-import { http, HttpResponse } from "msw";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { setupServer } from "msw/node";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
 import { run } from "../src/main.js";
 import * as utils from "../src/utils.js";
@@ -27,12 +16,6 @@ vi.mock("node:fs/promises", () => ({
 }));
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
-
-const server = setupServer();
-
-beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
 
 describe("main", () => {
   beforeEach(() => {
@@ -56,17 +39,35 @@ describe("main", () => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValue(0);
-    vi.mocked(exec).mockImplementation(async (_0, _1, options) => {
-      options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+    vi.mocked(exec)
+      // docker stack config
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
 
-      return 0;
-    });
+        return 0;
+      })
+
+      // docker stack deploy
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
+
+        return 0;
+      })
+
+      // docker config ls
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+
+        return 0;
+      })
+
+      // docker secret ls
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+
+        return 0;
+      });
     readFile.mockResolvedValueOnce(dump(composeSpec));
-
-    server.use(
-      http.get("http://localhost:2375/configs", () => HttpResponse.json([])),
-      http.get("http://localhost:2375/secrets", () => HttpResponse.json([])),
-    );
 
     await expect(run()).resolves.not.toThrow();
     expect(core.setFailed).not.toHaveBeenCalled();

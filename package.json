@@ -55,30 +55,26 @@
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "dockerode": "^4.0.5",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
     "@eslint/compat": "^1.2.8",
-    "@github/local-action": "^3.1.4",
-    "@types/dockerode": "^3.3.38",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.17.30",
-    "@typescript-eslint/eslint-plugin": "^8.29.1",
-    "@typescript-eslint/parser": "^8.29.1",
-    "@vitest/coverage-v8": "^3.1.1",
-    "eslint": "^9.24.0",
+    "@types/node": "^20.17.32",
+    "@typescript-eslint/eslint-plugin": "^8.31.0",
+    "@typescript-eslint/parser": "^8.31.0",
+    "@vitest/coverage-v8": "^3.1.2",
+    "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.2",
-    "eslint-import-resolver-typescript": "^4.3.2",
+    "eslint-import-resolver-typescript": "^4.3.4",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.6",
     "make-coverage-badge": "^1.2.0",
-    "msw": "^2.7.5",
     "prettier": "^3.5.3",
-    "prettier-eslint": "^16.3.0",
-    "rollup": "^4.40.0",
+    "prettier-eslint": "^16.4.1",
+    "rollup": "^4.40.1",
     "typescript": "^5.8.3",
     "unbuild": "^3.5.0",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.2"
   }
 }

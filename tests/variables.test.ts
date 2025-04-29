@@ -1,11 +1,9 @@
 import * as core from "@actions/core";
-import { Config, type ConfigInfo, Secret } from "dockerode";
 import * as crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
-import { createClient } from "../src/deployment.js";
+import * as engine from "../src/engine.js";
 import { defineSettings } from "../src/settings.js";
-import type { SecretInfo } from "../src/types.js";
 import * as utils from "../src/utils.js";
 import {
   decodeLabel,
@@ -33,6 +31,7 @@ vi.mock("node:crypto", {
   spy: true,
 });
 vi.mock("@actions/core");
+vi.mock("../src/engine.js");
 
 describe("Variables", () => {
   beforeEach(() => {
@@ -824,67 +823,54 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
         {
           ID: "2",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-7d865e9",
-            Data: "bar",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-7d865e9",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
         {
           ID: "3",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-b5bb9d8",
-            Data: "baz",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-b5bb9d8",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
-      ] satisfies ConfigInfo[]);
-      vi.spyOn(client, "getConfig").mockReturnValue({
-        remove: vi.fn(),
-      } as unknown as Config);
+      ]);
 
-      await pruneConfigs(spec, client, settings);
+      await pruneConfigs(spec, settings);
 
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-      expect(client.getConfig).toHaveBeenCalledTimes(2);
-      expect(client.getConfig).toHaveBeenCalledWith("1");
-      expect(client.getConfig).toHaveBeenCalledWith("2");
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
+      expect(engine.removeConfig).toHaveBeenCalledTimes(2);
+      expect(engine.removeConfig).toHaveBeenCalledWith("1");
+      expect(engine.removeConfig).toHaveBeenCalledWith("2");
     });
 
     it("should prune secrets", async () => {
@@ -904,64 +890,54 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
+        },
         {
           ID: "2",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-7d865e9",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-7d865e9",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
+        },
         {
           ID: "3",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-b5bb9d8",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-b5bb9d8",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "getSecret").mockReturnValue({
-        remove: vi.fn(),
-      } as unknown as Secret);
+        },
+      ]);
 
-      await pruneSecrets(spec, client, settings);
+      await pruneSecrets(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(2);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getSecret).toHaveBeenCalledWith("2");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.removeSecret).toHaveBeenCalledTimes(2);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("2");
     });
 
     it("should issue a warning for secrets that have not been rotated for a long time", async () => {
@@ -981,50 +957,42 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
+        },
         {
           ID: "2",
           CreatedAt: "2023-10-01T00:00:00Z",
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-7d865e9",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: "2023-10-01T00:00:00Z",
+          Name: "test-foo-7d865e9",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "getSecret").mockReturnValue({
-        remove: vi.fn(),
-      } as unknown as Secret);
+        },
+      ]);
       vi.spyOn(core, "warning").mockImplementationOnce(() => {});
 
-      await pruneSecrets(spec, client, settings);
+      await pruneSecrets(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(2);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getSecret).toHaveBeenCalledWith("2");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.removeSecret).toHaveBeenCalledTimes(2);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("2");
       expect(core.warning).toHaveBeenCalledOnce();
     });
 
@@ -1080,191 +1048,156 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
 
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-bar-bf07a7f",
-            Labels: {
-              [nameLabel]: "bar",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-        {
-          ID: "2",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-other_bar-bf07a7f",
-            Labels: {
-              [nameLabel]: "other_bar",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-        {
-          ID: "3",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-bar-b5bb9d8",
-            Labels: {
-              [nameLabel]: "bar",
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
-        {
-          ID: "1",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-bar-bf07a7f",
+          Labels: {
+            [nameLabel]: "bar",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
         {
           ID: "2",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-other_foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "other_foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-other_bar-bf07a7f",
+          Labels: {
+            [nameLabel]: "other_bar",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
         {
           ID: "3",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-b5bb9d8",
-            Data: "baz",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-bar-b5bb9d8",
+          Labels: {
+            [nameLabel]: "bar",
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
-      ] satisfies ConfigInfo[]);
-      vi.spyOn(client, "getSecret").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Secret);
-      vi.spyOn(client, "getConfig").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Config);
+      ]);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+        {
+          ID: "2",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-other_foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "other_foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+        {
+          ID: "3",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-b5bb9d8",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      ]);
 
-      await pruneVariables(spec, client, settings);
+      await pruneVariables(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(1);
-      expect(client.getConfig).toHaveBeenCalledTimes(1);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getConfig).toHaveBeenCalledWith("1");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
+      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
+      expect(engine.removeConfig).toHaveBeenCalledTimes(1);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeConfig).toHaveBeenCalledWith("1");
     });
 
     it("should still prune if no secrets or configs are present in the spec", async () => {
       const spec = defineComposeSpec({
         services: {},
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
-        } satisfies SecretInfo,
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
-        {
-          ID: "1",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies ConfigInfo,
+        },
       ]);
-      vi.spyOn(client, "getSecret").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Secret);
-      vi.spyOn(client, "getConfig").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Config);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      ]);
 
-      await pruneVariables(spec, client, settings);
+      await pruneVariables(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(1);
-      expect(client.getConfig).toHaveBeenCalledTimes(1);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getConfig).toHaveBeenCalledWith("1");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
+      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
+      expect(engine.removeConfig).toHaveBeenCalledTimes(1);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeConfig).toHaveBeenCalledWith("1");
     });
 
     it("should do nothing if there are no secrets or configs defined in the cluster", async () => {
       const spec = defineComposeSpec({
         services: {},
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([]);
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([]);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([]);
 
-      await pruneVariables(spec, client, settings);
+      await pruneVariables(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
     });
 
     it("should do nothing if there are secrets or configs present in the spec, but none defined in the cluster", async () => {
@@ -1297,93 +1230,13 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([]);
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([]);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([]);
 
-      await pruneVariables(spec, client, settings);
+      await pruneVariables(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-    });
-
-    it("should ignore secrets and configs without spec metadata", async () => {
-      const spec = defineComposeSpec({
-        services: {},
-        secrets: {
-          foo: {
-            name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
-          },
-        },
-        configs: {
-          bar: {
-            name: "test-bar-b5bb9d8",
-            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
-          },
-        },
-      });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
-        {
-          ID: "1",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-bar-bf07a7f",
-            Labels: {
-              [nameLabel]: "bar",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-        {
-          ID: "2",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-        },
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
-        {
-          ID: "1",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        },
-        {
-          ID: "2",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-        },
-      ]);
-      vi.spyOn(client, "getSecret").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Secret);
-      vi.spyOn(client, "getConfig").mockReturnValueOnce({
-        remove: vi.fn(),
-      } as unknown as Config);
-
-      await pruneVariables(spec, client, settings);
-
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(1);
-      expect(client.getConfig).toHaveBeenCalledTimes(1);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getConfig).toHaveBeenCalledWith("1");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
     });
 
     it("should prune secrets and configs with some missing control labels", async () => {
@@ -1402,88 +1255,71 @@ describe("Variables", () => {
           },
         },
       });
-      const client = createClient(settings);
-      vi.spyOn(client, "listSecrets").mockResolvedValueOnce([
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-bar-bf07a7f",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-        {
-          ID: "2",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-bar-b5bb9d8",
-            Labels: {
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
-          },
-        } satisfies SecretInfo,
-      ] as unknown as Secret[]);
-      vi.spyOn(client, "listConfigs").mockResolvedValueOnce([
-        {
-          ID: "1",
-          CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-bf07a7f",
-            Data: "foo",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
-              [stackLabel]: "test",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-bar-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
         {
           ID: "2",
           CreatedAt: new Date().toISOString(),
-          Version: { Index: 0 },
-          Spec: {
-            Name: "test-foo-b5bb9d8",
-            Data: "baz",
-            Labels: {
-              [nameLabel]: "foo",
-              [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              [versionLabel]: "1.0.0",
-            },
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-bar-b5bb9d8",
+          Labels: {
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
           },
         },
       ]);
-      vi.spyOn(client, "getSecret").mockReturnValue({
-        remove: vi.fn(),
-      } as unknown as Secret);
-      vi.spyOn(client, "getConfig").mockReturnValue({
-        remove: vi.fn(),
-      } as unknown as Config);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-bf07a7f",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+        {
+          ID: "2",
+          Name: "test-foo-b5bb9d8",
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      ]);
 
-      await pruneVariables(spec, client, settings);
+      await pruneVariables(spec, settings);
 
-      expect(client.listSecrets).toHaveBeenCalledOnce();
-      expect(client.listConfigs).toHaveBeenCalledOnce();
-      expect(client.getSecret).toHaveBeenCalledTimes(2);
-      expect(client.getConfig).toHaveBeenCalledTimes(2);
-      expect(client.getSecret).toHaveBeenCalledWith("1");
-      expect(client.getSecret).toHaveBeenCalledWith("2");
-      expect(client.getConfig).toHaveBeenCalledWith("1");
-      expect(client.getConfig).toHaveBeenCalledWith("2");
+      expect(engine.listSecrets).toHaveBeenCalledOnce();
+      expect(engine.listConfigs).toHaveBeenCalledOnce();
+      expect(engine.removeSecret).toHaveBeenCalledTimes(2);
+      expect(engine.removeConfig).toHaveBeenCalledTimes(2);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("2");
+      expect(engine.removeConfig).toHaveBeenCalledWith("1");
+      expect(engine.removeConfig).toHaveBeenCalledWith("2");
     });
   });
 });

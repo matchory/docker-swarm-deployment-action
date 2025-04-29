@@ -1,10 +1,8 @@
-import * as core from "@actions/core";
-import { type Service } from "dockerode";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createClient } from "../src/deployment.js";
+import type { ServiceWithMetadata } from "../src/engine.js";
+import * as engine from "../src/engine.js";
 import { monitorDeployment } from "../src/monitoring.js";
 import { defineSettings } from "../src/settings.js";
-import type { ServiceInfo } from "../src/types.js";
 
 vi.mock("@actions/core");
 
@@ -27,7 +25,6 @@ describe("Monitoring", () => {
   it("should monitor deployment until all services are updated", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
@@ -40,7 +37,7 @@ describe("Monitoring", () => {
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
         },
-      ] satisfies ServiceInfo[],
+      ] as ServiceWithMetadata[],
       [
         {
           ID: "web_service",
@@ -52,7 +49,7 @@ describe("Monitoring", () => {
           Spec: { Name: "test" },
           UpdateStatus: { State: "completed" },
         },
-      ] satisfies ServiceInfo[],
+      ] as ServiceWithMetadata[],
       [
         {
           ID: "web_service",
@@ -64,54 +61,53 @@ describe("Monitoring", () => {
           Spec: { Name: "test" },
           UpdateStatus: { State: "completed" },
         },
-      ] satisfies ServiceInfo[],
-    ] as unknown as Service[][];
-    vi.spyOn(client, "listServices")
+      ] as ServiceWithMetadata[],
+    ] as ServiceWithMetadata[][];
+    vi.spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
 
-    const monitorPromise = monitorDeployment(client, settings);
+    const monitorPromise = monitorDeployment(settings);
     await vi.runAllTimersAsync();
     await monitorPromise;
 
-    expect(client.listServices).toHaveBeenCalledTimes(serviceHistory.length);
+    expect(engine.listServices).toHaveBeenCalledTimes(serviceHistory.length);
   });
 
   it("should wait until all services progress to completed", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "completed" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
-    ] as unknown as Service[][];
+    ];
     const listServices = vi
-      .spyOn(client, "listServices")
+      .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
 
-    const promise = monitorDeployment(client, settings);
+    const promise = monitorDeployment(settings);
     await vi.runAllTimersAsync();
     await promise;
 
@@ -121,44 +117,142 @@ describe("Monitoring", () => {
   it("should wait until all tasks are spawned", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
-          ID: "web_service",
-          Spec: { Name: "test" },
-        } satisfies ServiceInfo,
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "0/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "updating" },
+        },
       ],
       [
         {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          ServiceStatus: {
-            RunningTasks: 1,
-            DesiredTasks: 3,
-            CompletedTasks: 0,
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "1/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
           },
-        } satisfies ServiceInfo,
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "updating" },
+        },
       ],
       [
         {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          ServiceStatus: {
-            RunningTasks: 3,
-            DesiredTasks: 3,
-            CompletedTasks: 0,
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "2/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
           },
-        } satisfies ServiceInfo,
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "updating" },
+        },
       ],
-    ] as unknown as Service[][];
+      [
+        {
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "2/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "updating" },
+        },
+      ],
+      [
+        {
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "3/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "updating" },
+        },
+      ],
+    ] satisfies ServiceWithMetadata[][];
     const listServices = vi
-      .spyOn(client, "listServices")
+      .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
-      .mockResolvedValueOnce(serviceHistory[2]);
+      .mockResolvedValueOnce(serviceHistory[2])
+      .mockResolvedValueOnce(serviceHistory[3])
+      .mockResolvedValueOnce(serviceHistory[4]);
 
-    const promise = monitorDeployment(client, settings);
+    const promise = monitorDeployment(settings);
     await vi.runAllTimersAsync();
     await promise;
 
@@ -168,40 +262,37 @@ describe("Monitoring", () => {
   it("should fail if a service is rolled back", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "rollback_started" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
-    ] as unknown as Service[][];
+    ];
     const listServices = vi
-      .spyOn(client, "listServices")
+      .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
 
     // noinspection JSVoidFunctionReturnValueUsed
-    const promise = expect(
-      monitorDeployment(client, settings),
-    ).rejects.toThrowError();
+    const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
     await vi.runAllTimersAsync();
     await promise;
 
@@ -211,25 +302,24 @@ describe("Monitoring", () => {
   it("should fail if the update takes too long", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "completed" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
-    ] as unknown as Service[][];
+    ];
     const listServices = vi
-      .spyOn(client, "listServices")
+      .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[0])
@@ -238,7 +328,7 @@ describe("Monitoring", () => {
 
     // noinspection JSVoidFunctionReturnValueUsed
     const promise = expect(
-      monitorDeployment(client, {
+      monitorDeployment({
         ...settings,
         monitorTimeout: 3,
         monitorInterval: 1,
@@ -253,59 +343,52 @@ describe("Monitoring", () => {
   it("should print the service logs on failure", async () => {
     vi.useFakeTimers();
 
-    const client = createClient(settings);
     const serviceHistory = [
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "updating" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
       [
         {
           ID: "web_service",
           Spec: { Name: "test" },
           UpdateStatus: { State: "rollback_started" },
-        } satisfies ServiceInfo,
+        } as ServiceWithMetadata,
       ],
-    ] as unknown as Service[][];
+    ];
     const listServices = vi
-      .spyOn(client, "listServices")
+      .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
-    vi.spyOn(client, "getService").mockImplementationOnce(
-      () =>
-        ({
-          logs: vi.fn().mockResolvedValueOnce(Buffer.from("__marker__")),
-        }) as unknown as Service,
-    );
+    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
     // noinspection JSVoidFunctionReturnValueUsed
-    const promise = expect(
-      monitorDeployment(client, settings),
-    ).rejects.toThrowError();
+    const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
     await vi.runAllTimersAsync();
     await promise;
 
     expect(listServices).toHaveBeenCalledTimes(serviceHistory.length);
-    expect(core.error).toHaveBeenCalledWith(
-      expect.stringContaining("__marker__"),
+    expect(engine.getServiceLogs).toHaveBeenCalledWith(
+      serviceHistory[2][0].ID,
+      expect.objectContaining({
+        since: expect.any(Date),
+      }),
     );
   });
 
   it("should not monitor deployment if `monitor` is false", async () => {
-    const client = createClient(settings);
-
-    vi.spyOn(client, "listServices");
+    vi.spyOn(engine, "listServices");
 
     const noMonitorSettings = defineSettings({
       stack: "test",
@@ -316,8 +399,8 @@ describe("Monitoring", () => {
       monitorInterval: 5,
     });
 
-    await monitorDeployment(client, noMonitorSettings);
+    await monitorDeployment(noMonitorSettings);
 
-    expect(client.listServices).not.toHaveBeenCalled();
+    expect(engine.listServices).not.toHaveBeenCalled();
   });
 });

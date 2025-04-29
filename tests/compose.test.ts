@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ComposeSpec,
   defineComposeSpec,
-  deployStack,
   loadComposeSpecs,
-  normalizeComposeSpec,
+  normalizeSpec,
   reconcileSpec,
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
+import { deployStack } from "../src/engine";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
 import { processVariable } from "../src/variables.js";
@@ -318,12 +318,12 @@ describe("Compose", () => {
         .mockReturnValueOnce("20000000-0000-4000-0000-000000000000");
       vi.spyOn(yaml, "load").mockReturnValue(outputSpec);
       vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
+        options!.listeners!.stdout!(Buffer.from("output that can be parsed"));
 
         return 0;
       });
 
-      await expect(normalizeComposeSpec(inputSpecs, settings)).resolves.toEqual(
+      await expect(normalizeSpec(inputSpecs, settings)).resolves.toEqual(
         outputSpec,
       );
 
@@ -337,22 +337,23 @@ describe("Compose", () => {
         ],
         expect.anything(),
       );
-      expect(yaml.load).toHaveBeenCalledWith(expect.any(String), {
+      expect(yaml.load).toHaveBeenCalledWith("output that can be parsed", {
         filename: "docker-compose.yaml",
-        onWarning: expect.any(Function),
+        json: true,
+        onWarning: expect.toSatisfy((warning) => typeof warning === "function"),
       });
     });
 
     it("should throw an error if the docker stack config command fails", async () => {
       vi.mocked(exec).mockResolvedValue(1);
 
-      await expect(normalizeComposeSpec([], settings)).rejects.toThrowError();
+      await expect(normalizeSpec([], settings)).rejects.toThrowError();
     });
 
     it("should throw an error if the docker stack config command returns empty output", async () => {
       vi.mocked(exec).mockResolvedValue(0);
 
-      await expect(normalizeComposeSpec([], settings)).rejects.toThrowError();
+      await expect(normalizeSpec([], settings)).rejects.toThrowError();
     });
 
     it("should throw an error if the docker stack config command returns output that can't be parsed", async () => {
@@ -363,7 +364,7 @@ describe("Compose", () => {
         return 0;
       });
 
-      await expect(normalizeComposeSpec([], settings)).rejects.toThrowError();
+      await expect(normalizeSpec([], settings)).rejects.toThrowError();
     });
 
     it("should throw an error if the docker stack config command returns output that doesn't contain services", async () => {
@@ -377,7 +378,7 @@ describe("Compose", () => {
         version: "3.8",
       });
 
-      await expect(normalizeComposeSpec([], settings)).rejects.toThrowError();
+      await expect(normalizeSpec([], settings)).rejects.toThrowError();
     });
   });
 
@@ -419,17 +420,22 @@ describe("Compose", () => {
           "deploy",
           "--prune",
           "--quiet",
+          "--detach=true",
           "--with-registry-auth",
-          "--resolve-image",
-          "always",
+          "--resolve-image=always",
           "--compose-file",
           "-",
           "test-stack",
         ],
         {
+          env: undefined,
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
+          listeners: {
+            stdout: expect.any(Function),
+          },
+          silent: false,
         },
       );
     });
@@ -449,17 +455,22 @@ describe("Compose", () => {
           "deploy",
           "--prune",
           "--quiet",
+          "--detach=true",
           "--with-registry-auth",
-          "--resolve-image",
-          "always",
+          "--resolve-image=always",
           "--compose-file",
           "-",
           "test-stack",
         ],
         {
+          env: undefined,
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
+          listeners: {
+            stdout: expect.any(Function),
+          },
+          silent: false,
         },
       );
     });

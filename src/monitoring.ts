@@ -1,5 +1,10 @@
 import * as core from "@actions/core";
-import Dockerode, { type Service, type UpdateState } from "dockerode";
+import {
+  getServiceLogs,
+  listServices,
+  type Service,
+  type ServiceWithMetadata,
+} from "./engine.js";
 import type { Settings } from "./settings.js";
 import { sleep } from "./utils.js";
 
@@ -11,13 +16,9 @@ import { sleep } from "./utils.js";
  * It provides feedback on the deployment status and attempts to report any
  * errors encountered after the containers are started.
  *
- * @param client Docker client instance
  * @param settings Deployment settings
  */
-export async function monitorDeployment(
-  client: Readonly<Dockerode>,
-  settings: Readonly<Settings>,
-) {
+export async function monitorDeployment(settings: Readonly<Settings>) {
   if (!settings.monitor) {
     core.info("Post-Deployment monitoring is disabled");
 
@@ -32,14 +33,17 @@ export async function monitorDeployment(
     settings.monitorTimeout / settings.monitorInterval,
   );
   const completedServices = new Set<string>();
-  let services: Service[];
+  let services: ServiceWithMetadata[];
 
   do {
     if (--attemptsLeft <= 0) {
       throw new Error("Deployment timed out");
     }
 
-    services = await loadServices(client, settings);
+    services = await listServices(
+      { labels: { "com.docker.stack.namespace": settings.stack } },
+      true,
+    );
 
     core.debug(
       `Waiting for services to complete: ` +
@@ -66,26 +70,44 @@ export async function monitorDeployment(
           throw error;
         }
 
-        const logs = (await client.getService(service.ID).logs({
-          stdout: true,
-          stderr: true,
-          timestamps: true,
-          details: true,
-          since: startTime.getTime() / 1_000,
-        })) as unknown as Buffer;
+        const logs = await getServiceLogs(service.ID, { since: startTime });
 
         core.error(
-          `Service "${service.Spec?.Name ?? service.ID}" failed to ` +
-            `update: ${error.message}`,
+          `Service "${service.Spec.Name ?? service.ID}" failed to update: ` +
+            error.message,
         );
-        core.error(`Service logs since deployment:\n${logs.toString()}`);
+        core.setOutput("service-logs", logs.toString());
+        core.summary.addHeading("Service Logs", 2);
+        core.summary.addRaw(
+          "Before the service update failed, the following logs were generated:",
+          true,
+        );
+        core.summary.addTable([
+          [
+            { data: "timestamp", header: true },
+            { data: "message", header: true },
+            ...(logs[0]
+              ? Object.keys(logs[0].metadata).map((key) => ({
+                  data: key,
+                  header: true,
+                }))
+              : []),
+          ],
+          ...logs.map((entry) => [
+            { data: entry.timestamp.toISOString() },
+            { data: entry.message },
+            ...(entry.metadata
+              ? Object.values(entry.metadata).map((value) => ({ data: value }))
+              : []),
+          ]),
+        ]);
 
         throw error;
       }
 
       if (complete) {
         core.info(
-          `Service "${service.Spec?.Name}" has been deployed successfully`,
+          `Service "${service.Spec?.Name ?? service.Name}" has been deployed successfully`,
         );
         completedServices.add(service.ID);
       }
@@ -101,39 +123,24 @@ export async function monitorDeployment(
   core.info("All services have been deployed successfully");
 }
 
-function loadServices(client: Dockerode, settings: Settings) {
-  return client.listServices({
-    filters: {
-      label: [`com.docker.stack.namespace=${settings.stack}`],
-    },
-    status: true,
-  });
-}
-
 /**
  * Check if a Docker service is complete.
  *
  * This function checks whether a Docker service is complete by examining its
- * update status, and compares the number of running and desired tasks.
+ * update status and compares the number of running and desired tasks.
  *
  * @param service Service to check
  * @returns True if the service is complete, false otherwise
  */
-function isServiceUpdateComplete(service: Service) {
-  const name = service.Spec?.Name ?? service.ID;
+function isServiceUpdateComplete(service: ServiceWithMetadata) {
+  const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
-  if (!service.UpdateStatus) {
-    if (isServiceRunning(service)) {
-      return true;
-    }
-
-    core.debug(`Update of service ${name} is still in progress`);
-
-    return false;
+  if (isServiceRunning(service)) {
+    return true;
   }
 
-  const updateStatus = service.UpdateStatus.State ?? "unknown";
+  const updateStatus = service.UpdateStatus?.State ?? "unknown";
 
   if (updateStatus === "completed") {
     core.debug(`Update of service "${name}" is complete`);
@@ -163,13 +170,12 @@ function isServiceUpdateComplete(service: Service) {
  * @param service Service to check
  * @returns True if the service is running, false otherwise
  */
-function isServiceRunning(service: Service) {
+function isServiceRunning(service: ServiceWithMetadata) {
   const name = service.Spec?.Name ?? service.ID;
   core.debug(`Checking if service "${name}" is currently running`);
 
-  if (service.ServiceStatus) {
-    const running = service.ServiceStatus.RunningTasks ?? 0;
-    const desired = service.ServiceStatus.DesiredTasks ?? 0;
+  if (service.Replicas) {
+    const [running = 0, desired = 0] = service.Replicas.split("/", 2);
 
     if (running === desired) {
       core.debug(`Service "${name}" is running`);
@@ -207,7 +213,9 @@ function isServiceRunning(service: Service) {
  * @returns A human-readable string describing the failure reason
  */
 function resolveFailureReason(
-  state: Exclude<UpdateState, "completed" | "updating"> | "unknown",
+  state:
+    | Exclude<Service["UpdateStatus"]["State"], "completed" | "updating">
+    | "unknown",
 ) {
   return (
     {

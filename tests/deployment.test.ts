@@ -1,19 +1,8 @@
-import Dockerode from "dockerode";
 import { dump } from "js-yaml";
-import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as compose from "../src/compose.js";
-import { createClient, deploy } from "../src/deployment.js";
+import { deploy } from "../src/deployment.js";
+import * as engine from "../src/engine.js";
 import * as monitoring from "../src/monitoring.js";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
@@ -25,73 +14,12 @@ vi.mock("node:fs/promises", () => ({
   readFile,
   writeFile,
 }));
-
-const server = setupServer();
-
-// Start server before all tests
-beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
-
-// Close server after all tests
-afterAll(() => server.close());
-
-// Reset handlers after each test for test isolation
-afterEach(() => server.resetHandlers());
+vi.mock("../src/engine.js");
 
 describe("Deployment", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllEnvs();
-  });
-
-  describe("Docker Engine Connection", () => {
-    const settings = defineSettings({
-      stack: "test-stack",
-      version: "1.2.3",
-      envVarPrefix: "",
-      monitor: false,
-      monitorTimeout: 0,
-      monitorInterval: 0,
-    });
-
-    it("should connect to Docker Engine via DOCKER_HOST environment variable using tcp://", async () => {
-      vi.stubEnv("DOCKER_HOST", "tcp://localhost:2375");
-      server.use(
-        http.get("http://localhost:2375/_ping", () => HttpResponse.text("OK")),
-      );
-      const client = createClient(settings);
-
-      await expect(client.ping()).resolves.toEqual(Buffer.from("OK"));
-    });
-
-    it("should connect to Docker Engine via DOCKER_HOST environment variable using http://", async () => {
-      vi.stubEnv("DOCKER_HOST", "http://localhost:3000");
-      server.use(
-        http.get("http://localhost:3000/_ping", () => HttpResponse.text("OK")),
-      );
-      const client = createClient(settings);
-
-      await expect(client.ping()).resolves.toEqual(Buffer.from("OK"));
-    });
-
-    it("should connect to Docker Engine via DOCKER_HOST environment variable using https://", async () => {
-      vi.stubEnv("DOCKER_HOST", "https://localhost:3000");
-      server.use(
-        http.get("http://localhost:3000/_ping", () => HttpResponse.text("OK")),
-      );
-      const client = createClient(settings);
-
-      await expect(client.ping()).resolves.toEqual(Buffer.from("OK"));
-    });
-
-    it("should connect to Docker Engine via DOCKER_HOST environment variable using ssh://", async () => {
-      vi.stubEnv("DOCKER_HOST", "ssh://user:pass@localhost:2222");
-      server.use(
-        http.get("http://localhost/_ping", () => HttpResponse.text("OK")),
-      );
-      const client = createClient(settings);
-
-      await expect(client.ping()).resolves.toEqual(Buffer.from("OK"));
-    });
   });
 
   describe("Deployment Process", () => {
@@ -129,7 +57,7 @@ describe("Deployment", () => {
           },
         },
       ]);
-      vi.spyOn(compose, "normalizeComposeSpec").mockResolvedValue({
+      vi.spyOn(compose, "normalizeSpec").mockResolvedValue({
         version: "3.8",
         services: {
           web: {
@@ -137,7 +65,7 @@ describe("Deployment", () => {
           },
         },
       });
-      vi.spyOn(compose, "deployStack").mockResolvedValue(undefined);
+      vi.spyOn(engine, "deployStack").mockResolvedValue(undefined);
       vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
 
       await deploy(settings);
@@ -147,7 +75,7 @@ describe("Deployment", () => {
         ["docker-compose.yaml"],
         settings,
       );
-      expect(compose.normalizeComposeSpec).toHaveBeenCalledWith(
+      expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [
           {
             name: "foo",
@@ -160,7 +88,7 @@ describe("Deployment", () => {
         ],
         settings,
       );
-      expect(compose.deployStack).toHaveBeenCalledWith(
+      expect(engine.deployStack).toHaveBeenCalledWith(
         {
           version: "3.8",
           services: {
@@ -180,7 +108,6 @@ describe("Deployment", () => {
             },
           },
         },
-        expect.anything(),
         settings,
       );
     });
@@ -219,7 +146,7 @@ describe("Deployment", () => {
           },
         },
       ]);
-      vi.spyOn(compose, "normalizeComposeSpec").mockResolvedValue({
+      vi.spyOn(compose, "normalizeSpec").mockResolvedValue({
         version: "3.8",
         services: {
           web: {
@@ -227,7 +154,7 @@ describe("Deployment", () => {
           },
         },
       });
-      vi.spyOn(compose, "deployStack").mockResolvedValue(undefined);
+      vi.spyOn(engine, "deployStack").mockResolvedValue(undefined);
       vi.spyOn(monitoring, "monitorDeployment").mockResolvedValue(undefined);
       vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
 
@@ -238,7 +165,7 @@ describe("Deployment", () => {
         ["docker-compose.yaml"],
         settings,
       );
-      expect(compose.normalizeComposeSpec).toHaveBeenCalledWith(
+      expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [
           {
             name: "foo",
@@ -251,7 +178,7 @@ describe("Deployment", () => {
         ],
         settings,
       );
-      expect(compose.deployStack).toHaveBeenCalledWith(
+      expect(engine.deployStack).toHaveBeenCalledWith(
         {
           version: "3.8",
           services: {
@@ -262,10 +189,7 @@ describe("Deployment", () => {
         },
         settings,
       );
-      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(
-        expect.toSatisfy((client: unknown) => client instanceof Dockerode),
-        settings,
-      );
+      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(settings);
       expect(variables.pruneVariables).toHaveBeenCalledWith(
         {
           version: "3.8",
@@ -275,7 +199,6 @@ describe("Deployment", () => {
             },
           },
         },
-        expect.anything(),
         settings,
       );
     });

@@ -3,11 +3,14 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "allowJs": true,
-    "noEmit": true
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ESNext", "DOM.Iterable"]
   },
   "exclude": ["dist", "node_modules"],
   "include": [
-    "tests",
+    "tests/**/*.test.ts",
     "src/**/*.ts",
     "*.config.mjs",
     "*.config.js",

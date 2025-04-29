@@ -9,8 +9,8 @@
 > A powerful GitHub Action to deploy your applications to a Docker Swarm
 > cluster. It automatically handles features from the Compose Specification,
 > rotates configs and secrets for you, and can optionally monitor stacks for any
-> post-deployment issues (e.g. restart cycles or rollbacks) and fail the
-> deployment accordingly.  
+> post-deployment issues (e.g., restart cycles or rollbacks) and let the
+> deployment fail accordingly.  
 > Designed to "do the right thing" out of the box, with flexible options for
 > customization.
 
@@ -20,13 +20,14 @@
 
 - **Easy Setup:** The action uses
   [the same environment variables](https://docs.docker.com/reference/cli/docker/#environment-variables)
-  as the Docker CLI, so you can connect to your Docker Swarm cluster via all
-  transports supported by Docker (e.g. HTTP, TCP, SSH, etc.).
-- **Smart Compose Handling:** It automatically discovers your compose file and
+  as the Docker CLI, so you can connect to your Docker Swarm cluster using a
+  context, and via all transports supported by Docker (e.g., HTTP, TCP, SSH,
+  etc.).
+- **Smart Compose Handling:** It automatically discovers your Compose file and
   supports both the Compose Specification and Compose File v3, so you don't have
   to worry about incompatibilities.
 - **Automatic Config & Secret Management:** It rotates secrets and configs
-  automatically, and can even transform their data on-the-fly (e.g., base64
+  automatically and can even transform their data on-the-fly (e.g., base64
   encode/decode).
 - **Reliable Deployments:** Validates your configuration before deploying using
   `docker stack config`.
@@ -44,7 +45,7 @@
 
 ### Simple Usage
 
-In most cases, you don't need to explicitly tell the action where your compose
+In most cases, you don't need to explicitly tell the action where your Compose
 file is. If your file is named commonly ( like `docker-compose.yaml` or
 `docker-compose.production.yml`) and is in your repository's root or a standard
 location, the action will find it automatically.
@@ -68,6 +69,36 @@ jobs:
           uses: matchory/deployment@v1
           environment:
             DOCKER_HOST: tcp://my-swarm-host:2375
+```
+
+You could also leverage a Docker context to connect to your Swarm cluster. This
+is the recommended way to connect to a remote Docker host, as it allows you to
+use SSH or TLS for secure connections:
+
+```yaml
+name: Deploy to Docker Swarm
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: arwynfr/actions-docker-context@v2
+        with:
+          context_name: "swarm"
+          docker_host: "ssh://someone@example.domain.tld"
+          ssh_cert: ${{ secrets.SSH_CERT }}
+          ssh_key: ${{ secrets.SSH_KEY }}
+
+      - name: Deploy to Docker Swarm
+        uses: matchory/deployment@v1
+        env:
+          DOCKER_CONTEXT: swarm
 ```
 
 ## ⚙️ Configuration
@@ -95,13 +126,14 @@ To configure the action, you can use the following inputs:
 | `stack-name`   | The name of the stack that was deployed.                             |
 | `version`      | The version of the stack that was deployed.                          |
 | `compose-spec` | The final compose specification used for the deployment.             |
+| `service-logs` | Logs of a failed service after deployment.                           |
 
 ## 📖 Reference
 
 ### How Compose File Detection Works
 
 If the `compose-file` input is not specified, the action automatically searches
-for your compose file(s) in the following common locations and names, in
+for your Compose File(s) in the following common locations and names, in
 descending order:
 
 1. `docker-compose.production.yaml`
@@ -125,8 +157,8 @@ by the `COMPOSE_FILE_SEPARATOR` environment variable (defaults to `:`).
 
 #### Specifying a Custom Compose File, or Multiple Files
 
-If your compose file doesn't follow the automatic detection pattern, or you need
-to use multiple compose files (which will be merged), use the compose-file
+If your Compose File doesn't follow the automatic detection pattern, or you need
+to use multiple Compose Files (which will be merged), use the compose-file
 input:
 
 ```yaml
@@ -153,11 +185,11 @@ To use multiple files:
 
 ### How Compose Files Are Processed
 
-The action is designed to be flexible and robust when it comes to your compose
+The action is designed to be flexible and robust when it comes to your Compose
 files. It doesn't strictly require either the old v3 format or the new Compose
 Specification. Instead, it:
 
-- Reads your specified (or detected) compose file(s).
+- Reads your specified (or detected) Compose File(s).
 - Applies internal transformations to handle known differences between formats
   for Swarm compatibility.
 - Uses `docker stack config` to validate the resulting configuration and merge
@@ -178,9 +210,9 @@ and
 [`content`](https://docs.docker.com/reference/compose-file/configs/#example-2)
 properties to load them from environment variables or inline content,
 respectively. This action automatically converts these properties to files, so
-you can use them in your compose file without worrying about the deployment.
+you can use them in your Compose File without worrying about the deployment.
 
-For example, if you have a compose file with the following configs:
+For example, if you have a Compose File with the following configs:
 
 ```yaml
 configs:
@@ -204,7 +236,7 @@ configs:
     # omitting rest for brevity
 ```
 
-The action will create the files in the same directory as the compose file, and
+The action will create the files in the same directory as the Compose File and
 append a unique identifier to the filename to avoid conflicts. The files will be
 removed after the deployment is complete, so you don't have to worry about
 leaving temporary files behind to the next action.
@@ -228,8 +260,8 @@ The action will attempt to resolve the variable content automatically, and
 populate the `file` property with that. This is done by the following rules:
 
 1. If a file with the name of the variable exists in working directory named
-   like the variable key with the suffix " .secret" (e.g. `./app_url.secret`),
-   it will be used as the file source.
+   like the variable key with the suffix ".secret" (e.g. `./app_url.secret`), it
+   will be used as the file source.
 2. If an environment variable with one of the following name patterns exists, it
    will be used as the environment source:n
    - Exact variable key (e.g. `app_url`)
@@ -249,12 +281,12 @@ populate the `file` property with that. This is done by the following rules:
 
 A major pain point deploying applications to Docker Swarm is managing secrets
 and configs (henceforth called _"variables"_), which are designed to be
-immutable, and cannot be updated in place. This action automates the process of
-creating new variables when deploying, and updating the stack to use them.  
+immutable and cannot be updated in place. This action automates the process of
+creating new variables when deploying and updating the stack to use them.  
 To make this work, the action detects changes to the _content_ of variables
-referenced in the compose file by storing their SHA256 hash in a label on the
-variable, and appending it to the full name. For example, given the following
-config in the compose file:
+referenced in the Compose File by storing their SHA256 hash in a label on the
+variable and appending it to the full name. For example, given the following
+config in the Compose File:
 
 ```yaml
 configs:
@@ -287,7 +319,7 @@ This has two notable implications:
    stack will continue to use the variable created in the initial deployment,
    even if other variables or settings are updated.
 2. After the deployment is complete, the action will prune any unused variables
-   by checking the labels. If a variable is not referenced in the compose file
+   by checking the labels. If a variable is not referenced in the Compose File
    anymore, it will be safely removed from the cluster. This is important to
    keep the cluster clean and avoid cluttering it with old variables.
 
@@ -301,9 +333,9 @@ following template:
 ```
 
 As the name must be globally unique, this includes the stack name, the name of
-the variable (the key in the compose file), and the first 7 characters of the
-hash. This ensures that even if two stacks use the same variable name, they will
-not conflict.  
+the variable (the key in the Compose File), and the first seven characters of
+the hash. This ensures that even if two stacks use the same variable name, they
+will not conflict.  
 If you provide a custom name for the variable, it will be used verbatim, but
 **the hash will still be appended**. This is necessary to enable automatic
 change detection and pruning.
@@ -330,7 +362,7 @@ conversion of compose-spec-style inputs from `content` or `environment`.
 #### Data Transformation
 
 You can optionally transform the data of your configs and secrets during the
-deployment process using labels in your compose file. This is useful for
+deployment process using labels in your Compose File. This is useful for
 handling sensitive data that might be stored in an encoded format.  
 Add either the `com.matchory.deployment.encode` or
 `com.matchory.deployment.decode` label to your config or secret definition,
@@ -375,7 +407,7 @@ echo $final_schema | docker stack deploy \
 ### Post-Deployment Monitoring
 
 The action can optionally monitor your stacks for any post-deployment issues
-(e.g. restart cycles or rollbacks) and fail the deployment accordingly. This is
+(e.g., restart cycles or rollbacks) and fail the deployment accordingly. This is
 done by checking the status of the services in the stack after the deployment,
 waiting until all services are running and stable.  
 Especially for bigger deployments, this can take a while, so the monitoring
