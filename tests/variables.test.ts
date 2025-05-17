@@ -43,6 +43,7 @@ describe("Variables", () => {
     stack: "test",
     version: "1.0.0",
     envVarPrefix: "APP",
+    strictVariables: true,
     monitor: false,
     monitorTimeout: 300,
     monitorInterval: 5,
@@ -155,6 +156,36 @@ describe("Variables", () => {
           [nameLabel]: "foo",
           [hashLabel]:
             "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b",
+          [stackLabel]: "test",
+          [versionLabel]: "1.0.0",
+        },
+      });
+    });
+
+    it("should infer variables from the environment if strict variables are disabled", async () => {
+      const variable = defineVariable({
+        file: "./missing.txt",
+      });
+      const expectedHash = hashVariable("secret");
+
+      vi.spyOn(utils, "exists").mockResolvedValue(false);
+      vi.stubEnv("FOO", "secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+
+      await expect(
+        processVariable("foo", variable, {
+          ...settings,
+          strictVariables: false,
+        }),
+      ).resolves.toEqual({
+        name: `test-foo-${expectedHash.slice(0, 7)}`,
+        file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        labels: {
+          [nameLabel]: "foo",
+          [hashLabel]: expectedHash,
           [stackLabel]: "test",
           [versionLabel]: "1.0.0",
         },

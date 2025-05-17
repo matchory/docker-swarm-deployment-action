@@ -10,6 +10,7 @@ export interface Settings {
   version: string;
   composeFiles?: string[];
   envVarPrefix: string;
+  strictVariables: boolean;
   monitor: boolean;
   monitorTimeout: number;
   monitorInterval: number;
@@ -33,6 +34,8 @@ export function parseSettings() {
       /_$/,
       "",
     ),
+    strictVariables:
+      getBooleanInput("strict-variables", { required: false }) ?? false,
     monitor: getBooleanInput("monitor", { required: false }) ?? false,
     monitorTimeout: parseInt(getInput("monitor-timeout") || "300", 10),
     monitorInterval: parseInt(getInput("monitor-interval") || "5", 10),

@@ -33,6 +33,13 @@ inputs:
     description: >-
       Prefix filter for environment variables to automatically load as secrets.
     default: "DEPLOYMENT"
+  strict-variables:
+    description: >-
+      Whether to disable automatic fallback to matching environment variables
+      for file variable sources that don't exist in the working directory. This
+      is useful for ensuring that the action fails if a file variable source is
+      not found.
+    default: "true"
   monitor:
     description: >-
       Whether to monitor the stack after the deployment is complete. If an error

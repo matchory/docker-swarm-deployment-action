@@ -24,9 +24,10 @@ export async function processVariable(
   variable: Variable | null,
   {
     envVarPrefix,
+    strictVariables,
     stack,
     version,
-  }: Pick<Settings, "envVarPrefix" | "stack" | "version">,
+  }: Pick<Settings, "envVarPrefix" | "strictVariables" | "stack" | "version">,
 ): Promise<Variable> {
   core.debug(`Processing variable ${name}`);
 
@@ -41,18 +42,26 @@ export async function processVariable(
   }
 
   let modifiedVariable: FileVariable | undefined = undefined;
-  let content: string;
+  let content: string | undefined = undefined;
 
   // If a variable names a file explicitly, we need to check if the file exists.
   if ("file" in variable) {
-    content = await readFromFile(name, variable);
+    try {
+      content = await readFromFile(name, variable);
+    } catch (error) {
+      if (strictVariables) {
+        throw error;
+      }
+    }
   } else if ("environment" in variable) {
     content = readFromEnvironment(name, variable);
     modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
     content = readFromContent(name, variable);
     modifiedVariable = await transformVariable(content, name, variable);
-  } else {
+  }
+
+  if (content === undefined) {
     [content, modifiedVariable] = await inferVariable(name, variable, {
       envVarPrefix,
       stack,
@@ -67,8 +76,8 @@ export async function processVariable(
   }
 
   // If the variable specifies an encoding format, we need to encode or decode
-  // the content accordingly. This is useful for secrets that need to be
-  // passed as environment variables or in a specific format.
+  // the content accordingly. This is useful for secrets that need to be passed
+  // as environment variables or in a specific format.
   if (variable.labels && encodeLabel in variable.labels) {
     content = await encodeVariable(content, name, variable);
     modifiedVariable = await transformVariable(content, name, variable);

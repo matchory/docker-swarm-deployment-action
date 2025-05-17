@@ -22,6 +22,7 @@ describe("settings", () => {
     expect(settings.version).toBe("unknown");
     expect(settings.composeFiles).toEqual([]);
     expect(settings.envVarPrefix).toBe("DEPLOYMENT");
+    expect(settings.strictVariables).toBe(false);
     expect(settings.monitor).toBe(false);
     expect(settings.monitorTimeout).toBe(300);
     expect(settings.monitorInterval).toBe(5);
@@ -40,6 +41,7 @@ describe("settings", () => {
         })[name] || "",
     );
     vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings();
 

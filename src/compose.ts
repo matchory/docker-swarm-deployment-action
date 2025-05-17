@@ -146,15 +146,23 @@ export async function reconcileSpec(
   }
 
   if (composeSpec.secrets) {
+    core.startGroup("Processing secrets");
+
     for (const [name, entry] of Object.entries(composeSpec.secrets)) {
       composeSpec.secrets[name] = await processVariable(name, entry, settings);
     }
+
+    core.endGroup();
   }
 
   if (composeSpec.configs) {
+    core.startGroup("Processing configs");
+
     for (const [name, entry] of Object.entries(composeSpec.configs)) {
       composeSpec.configs[name] = await processVariable(name, entry, settings);
     }
+
+    core.endGroup();
   }
 
   return composeSpec;
