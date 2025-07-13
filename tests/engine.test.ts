@@ -18,6 +18,7 @@ describe("engine", () => {
     composeFiles: ["docker-compose.yml"],
     envVarPrefix: "APP",
     version: "1.0.0",
+    manageVariables: true,
     monitor: true,
     monitorTimeout: 300,
     monitorInterval: 5,

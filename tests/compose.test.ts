@@ -41,6 +41,7 @@ describe("Compose", () => {
 
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
+    manageVariables: true,
     monitorInterval: 5,
     monitor: false,
     stack: "test-stack",
@@ -279,6 +280,53 @@ describe("Compose", () => {
         },
       });
     });
+
+    it("should not process secrets and configs if variable management is disabled", async () => {
+      const composeSpec = defineComposeSpec({
+        version: "3.8",
+        services: {
+          web: {
+            image: "nginx:latest",
+          },
+        },
+        configs: {
+          config1: {
+            file: "config1.txt",
+          },
+        },
+        secrets: {
+          secret1: {
+            file: "secret1.txt",
+          },
+        },
+      });
+
+      await expect(
+        reconcileSpec(composeSpec, {
+          ...settings,
+          manageVariables: false,
+        }),
+      ).resolves.toEqual({
+        version: "3.8",
+        services: {
+          web: {
+            image: "nginx:latest",
+          },
+        },
+        configs: {
+          config1: {
+            file: "config1.txt",
+          },
+        },
+        secrets: {
+          secret1: {
+            file: "secret1.txt",
+          },
+        },
+      });
+
+      expect(processVariable).not.toHaveBeenCalled();
+    });
   });
 
   describe("Spec Normalization and Merging", () => {
@@ -386,6 +434,7 @@ describe("Compose", () => {
     const settings = defineSettings({
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
+      manageVariables: true,
       monitorInterval: 5,
       monitor: false,
       stack: "test-stack",

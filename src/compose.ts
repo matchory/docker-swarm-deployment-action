@@ -145,7 +145,7 @@ export async function reconcileSpec(
     throw new Error("Invalid stack specification: Missing services section");
   }
 
-  if (composeSpec.secrets) {
+  if (settings.manageVariables && composeSpec.secrets) {
     core.startGroup("Processing secrets");
 
     for (const [name, entry] of Object.entries(composeSpec.secrets)) {
@@ -155,7 +155,7 @@ export async function reconcileSpec(
     core.endGroup();
   }
 
-  if (composeSpec.configs) {
+  if (settings.manageVariables && composeSpec.configs) {
     core.startGroup("Processing configs");
 
     for (const [name, entry] of Object.entries(composeSpec.configs)) {
