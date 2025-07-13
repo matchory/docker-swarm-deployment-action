@@ -28,7 +28,12 @@ inputs:
        - `docker/docker-compose.yml`
        - `docker-compose.yaml`
        - `docker-compose.yml`
-
+  variables:
+    description: >-
+      Variables to pass to the deployment as a list of key-value pairs in the
+      format `KEY=value`, separated by newlines. Variables override those in the
+      process environment and can be used to pass through secrets or configs.
+    default: ""
   env-var-prefix:
     description: >-
       Prefix filter for environment variables to automatically load as secrets.
