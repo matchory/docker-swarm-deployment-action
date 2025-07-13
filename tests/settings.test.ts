@@ -1,8 +1,9 @@
 import * as core from "@actions/core";
+import { env } from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSettings } from "../src/settings.js";
 
-vi.mock("@actions/core");
+vi.mock("@actions/core", { spy: true });
 
 describe("settings", () => {
   beforeEach(() => {
@@ -16,7 +17,7 @@ describe("settings", () => {
     vi.stubEnv("GITHUB_REF", undefined);
     vi.stubEnv("GITHUB_SHA", undefined);
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.stack).toBe("unknown");
     expect(settings.version).toBe("unknown");
@@ -43,7 +44,7 @@ describe("settings", () => {
     vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
     vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.stack).toBe("custom-stack");
     expect(settings.version).toBe("1.0.0");
@@ -57,7 +58,7 @@ describe("settings", () => {
   it("should infer version from GITHUB_REF", () => {
     vi.stubEnv("GITHUB_REF", "refs/tags/v1.2.3");
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.version).toBe("v1.2.3");
   });
@@ -65,7 +66,7 @@ describe("settings", () => {
   it("should infer version from GITHUB_SHA if no GITHUB_REF is specified", () => {
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.version).toBe("4fadb58");
   });
@@ -73,7 +74,7 @@ describe("settings", () => {
   it("should infer stack name from GITHUB_REPOSITORY", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "user/repo");
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.stack).toBe("repo");
   });
@@ -81,6 +82,7 @@ describe("settings", () => {
   it("should handle missing GITHUB_REPOSITORY gracefully", () => {
     vi.stubEnv("GITHUB_REPOSITORY", undefined);
     const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.stack).toBe("unknown");
   });
@@ -89,7 +91,7 @@ describe("settings", () => {
     vi.stubEnv("COMPOSE_FILE", "file1.yml,file2.yml");
     vi.stubEnv("COMPOSE_PATH_SEPARATOR", ",");
 
-    const settings = parseSettings();
+    const settings = parseSettings(env);
 
     expect(settings.composeFiles).toEqual(["file1.yml", "file2.yml"]);
   });

@@ -24,13 +24,11 @@ export function defineSettings<T extends Settings>(settings: T) {
 /**
  * Parse settings from GitHub Actions inputs
  */
-export function parseSettings() {
+export function parseSettings(env: NodeJS.ProcessEnv) {
   debug("Parsing settings from inputs");
 
   return defineSettings({
-    stack: inferStackName(getInput("stack-name")),
-    version: inferVersion(getInput("version")),
-    composeFiles: inferComposeFiles(getInput("compose-file")),
+    composeFiles: inferComposeFiles(getInput("compose-file"), env),
     envVarPrefix: (getInput("env-var-prefix") || "DEPLOYMENT").replace(
       /_$/,
       "",
@@ -45,11 +43,11 @@ export function parseSettings() {
   });
 }
 
-function inferStackName(name: string | undefined) {
+function inferStackName(name: string | undefined, env: NodeJS.ProcessEnv) {
   return name || env.GITHUB_REPOSITORY?.split("/")?.pop() || "unknown";
 }
 
-function inferVersion(version: string | undefined) {
+function inferVersion(version: string | undefined, env: NodeJS.ProcessEnv) {
   if (version) {
     return version;
   }
@@ -61,8 +59,8 @@ function inferVersion(version: string | undefined) {
   return env.GITHUB_SHA?.substring(0, 7) ?? "unknown";
 }
 
-function inferComposeFiles(files?: string) {
-  const composeFiles = files ?? env.COMPOSE_FILE;
+function inferComposeFiles(files: string | undefined, env: NodeJS.ProcessEnv) {
+  const composeFiles = files || env.COMPOSE_FILE;
   const separator = env.COMPOSE_PATH_SEPARATOR || ":";
 
   return (composeFiles?.split(separator) ?? [])

@@ -1,9 +1,10 @@
 import * as core from "@actions/core";
+import { env } from "node:process";
 import { deploy } from "./deployment.js";
 import { parseSettings } from "./settings.js";
 
 export async function run() {
-  const settings = parseSettings();
+  const settings = parseSettings(env);
 
   try {
     const composeSpec = await deploy(settings);
