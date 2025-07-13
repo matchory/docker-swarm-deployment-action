@@ -38,6 +38,11 @@ inputs:
     description: >-
       Prefix filter for environment variables to automatically load as secrets.
     default: "DEPLOYMENT"
+  manage-variables:
+    description: >-
+      Whether to automatically manage configs and secrets. If set to `false`,
+      the action will leave the configs and secrets in the stack untouched.
+    default: "true"
   strict-variables:
     description: >-
       Whether to disable automatic fallback to matching environment variables
