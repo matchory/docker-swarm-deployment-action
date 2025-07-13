@@ -1,7 +1,7 @@
 {
   "name": "@matchory/docker-swarm-deployment-action",
   "description": "A GitHub Action to deploy a Docker Swarm stack.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": {
     "name": "Moritz Friedrich",
     "email": "moritz@matchory.com",
