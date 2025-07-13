@@ -2,7 +2,6 @@ import * as core from "@actions/core";
 import { createHash } from "crypto";
 import * as crypto from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
-import { env } from "node:process";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
@@ -26,8 +25,12 @@ export async function processVariable(
     envVarPrefix,
     strictVariables,
     stack,
+    variables,
     version,
-  }: Pick<Settings, "envVarPrefix" | "strictVariables" | "stack" | "version">,
+  }: Pick<
+    Settings,
+    "envVarPrefix" | "strictVariables" | "stack" | "variables" | "version"
+  >,
 ): Promise<Variable> {
   core.debug(`Processing variable ${name}`);
 
@@ -37,7 +40,7 @@ export async function processVariable(
     return variable;
   }
 
-  if (variable == null) {
+  if (variable === null) {
     variable = {};
   }
 
@@ -54,7 +57,7 @@ export async function processVariable(
       }
     }
   } else if ("environment" in variable) {
-    content = readFromEnvironment(name, variable);
+    content = readFromEnvironment(name, variable, variables);
     modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
     content = readFromContent(name, variable);
@@ -65,6 +68,7 @@ export async function processVariable(
     [content, modifiedVariable] = await inferVariable(name, variable, {
       envVarPrefix,
       stack,
+      variables,
     });
   }
 
@@ -129,18 +133,19 @@ async function readFromFile(name: string, variable: FileVariable) {
 function readFromEnvironment(
   name: string,
   { environment: variable }: EnvironmentVariable,
+  variables: Map<string, string>,
 ) {
-  if (!(variable in env) || env[variable] === undefined) {
+  if (!variables.has(variable)) {
     throw new Error(
       `Variable "${name}" specifies the environment variable ` +
         `"${variable}" as its source, but there is no such ` +
-        `variable defined in the environment. Ensure it exists, or remove ` +
+        "variable defined in the environment. Ensure it exists, or remove " +
         `the "environment" property from the variable definition to let ` +
-        `the action infer the value from the variable name automatically.`,
+        "the action infer the value from the variable name automatically.",
     );
   }
 
-  return String(env[variable]);
+  return String(variables.get(variable));
 }
 
 /**
@@ -157,7 +162,11 @@ function readFromContent(_name: string, { content }: ContentVariable) {
 async function inferVariable(
   name: string,
   variable: BaseVariable,
-  { envVarPrefix, stack }: Pick<Settings, "envVarPrefix" | "stack">,
+  {
+    envVarPrefix,
+    stack,
+    variables,
+  }: Pick<Settings, "envVarPrefix" | "stack" | "variables">,
 ): Promise<[string, FileVariable]> {
   const filePath = `./${name}.secret`;
 
@@ -186,17 +195,15 @@ async function inferVariable(
     `${stack}_${safeName}`,
     `${stack}_${safeName}`.toUpperCase(),
   ]) {
-    if (env[variant]) {
+    if (variables.has(variant)) {
       core.debug(
         `Loading variable "${name}" from environment variable "${variant}"`,
       );
 
       (variable as EnvironmentVariable).environment = variant;
+      const value = variables.get(variant)!;
 
-      return [
-        env[variant],
-        await transformVariable(env[variant], name, variable),
-      ] as const;
+      return [value, await transformVariable(value, name, variable)] as const;
     }
   }
 
@@ -384,8 +391,7 @@ export async function pruneSecrets(
     // Check for old secrets
     if (shouldRotate(new Date(CreatedAt ?? 0))) {
       core.warning(
-        `Secret "${name}" has been in use for too long and should ` +
-          `be rotated!`,
+        `Secret "${name}" has been in use for too long and should be rotated!`,
       );
     }
   }

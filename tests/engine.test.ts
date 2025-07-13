@@ -14,14 +14,16 @@ const mockedCore = vi.mocked(core);
 
 describe("engine", () => {
   const settings = defineSettings({
-    stack: "test-stack",
     composeFiles: ["docker-compose.yml"],
     envVarPrefix: "APP",
     version: "1.0.0",
     manageVariables: true,
     monitor: true,
-    monitorTimeout: 300,
     monitorInterval: 5,
+    monitorTimeout: 300,
+    stack: "test-stack",
+    strictVariables: false,
+    variables: new Map(),
   });
 
   beforeEach(() => {

@@ -34,19 +34,22 @@ vi.mock("@actions/core");
 vi.mock("../src/engine.js");
 
 describe("Variables", () => {
+  const settings = defineSettings({
+    envVarPrefix: "APP",
+    manageVariables: true,
+    monitor: false,
+    monitorInterval: 5,
+    monitorTimeout: 300,
+    stack: "test",
+    strictVariables: true,
+    variables: new Map(),
+    version: "1.0.0",
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllEnvs();
-  });
-
-  const settings = defineSettings({
-    stack: "test",
-    version: "1.0.0",
-    envVarPrefix: "APP",
-    strictVariables: true,
-    monitor: false,
-    monitorTimeout: 300,
-    monitorInterval: 5,
+    settings.variables = new Map();
   });
 
   describe("Processing", () => {
@@ -145,10 +148,10 @@ describe("Variables", () => {
     });
 
     it("should treat null variables as empty objects", async () => {
-      vi.stubEnv("foo", "secret");
       vi.spyOn(crypto, "randomUUID").mockImplementation(
         () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
       );
+      settings.variables.set("foo", "secret");
       await expect(processVariable("foo", null, settings)).resolves.toEqual({
         name: "test-foo-2bb80d5",
         file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
@@ -169,7 +172,7 @@ describe("Variables", () => {
       const expectedHash = hashVariable("secret");
 
       vi.spyOn(utils, "exists").mockResolvedValue(false);
-      vi.stubEnv("FOO", "secret");
+      settings.variables.set("FOO", "secret");
 
       vi.spyOn(crypto, "randomUUID").mockImplementation(
         () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
@@ -197,9 +200,9 @@ describe("Variables", () => {
         const variable = defineVariable({
           environment: "FOO_BAR",
         });
+        settings.variables.set("FOO_BAR", "secret");
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("FOO_BAR", "secret");
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
         );
@@ -319,12 +322,12 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("foo_bAr", "secret");
-        vi.stubEnv("FOO_BAR", "uppercase");
-        vi.stubEnv("APP_foo_bAr", "prefixed");
-        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
-        vi.stubEnv("test_foo_bAr", "stack");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("foo_bAr", "secret");
+        settings.variables.set("FOO_BAR", "uppercase");
+        settings.variables.set("APP_foo_bAr", "prefixed");
+        settings.variables.set("APP_FOO_BAR", "prefixed uppercase");
+        settings.variables.set("test_foo_bAr", "stack");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
@@ -348,7 +351,7 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("foo_bar_baz", "secret");
+        settings.variables.set("foo_bar_baz", "secret");
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
@@ -372,11 +375,11 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("FOO_BAR", "secret");
-        vi.stubEnv("APP_foo_bAr", "prefixed");
-        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
-        vi.stubEnv("test_foo_bAr", "stack");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("FOO_BAR", "secret");
+        settings.variables.set("APP_foo_bAr", "prefixed");
+        settings.variables.set("APP_FOO_BAR", "prefixed uppercase");
+        settings.variables.set("test_foo_bAr", "stack");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
@@ -400,10 +403,10 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("APP_foo_bAr", "secret");
-        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
-        vi.stubEnv("test_foo_bAr", "stack");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("APP_foo_bAr", "secret");
+        settings.variables.set("APP_FOO_BAR", "prefixed uppercase");
+        settings.variables.set("test_foo_bAr", "stack");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
         );
@@ -426,9 +429,9 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("APP_FOO_BAR", "secret");
-        vi.stubEnv("test_foo_bAr", "stack");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("APP_FOO_BAR", "secret");
+        settings.variables.set("test_foo_bAr", "stack");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
         );
@@ -451,8 +454,8 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("test_foo_bAr", "secret");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("test_foo_bAr", "secret");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
         );
@@ -475,7 +478,7 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("TEST_FOO_BAR", "secret");
+        settings.variables.set("TEST_FOO_BAR", "secret");
         vi.spyOn(crypto, "randomUUID").mockImplementation(
           () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
         );
@@ -498,12 +501,12 @@ describe("Variables", () => {
         const variable = defineVariable({});
         const expectedHash = hashVariable("secret");
 
-        vi.stubEnv("foo_bAr", "environment");
-        vi.stubEnv("FOO_BAR", "uppercase");
-        vi.stubEnv("APP_foo_bAr", "prefixed");
-        vi.stubEnv("APP_FOO_BAR", "prefixed uppercase");
-        vi.stubEnv("test_foo_bAr", "stack");
-        vi.stubEnv("TEST_FOO_BAR", "stack uppercase");
+        settings.variables.set("foo_bAr", "environment");
+        settings.variables.set("FOO_BAR", "uppercase");
+        settings.variables.set("APP_foo_bAr", "prefixed");
+        settings.variables.set("APP_FOO_BAR", "prefixed uppercase");
+        settings.variables.set("test_foo_bAr", "stack");
+        settings.variables.set("TEST_FOO_BAR", "stack uppercase");
 
         vi.spyOn(utils, "exists").mockResolvedValue(true);
         readFile.mockResolvedValue("secret");

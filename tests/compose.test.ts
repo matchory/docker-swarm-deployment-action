@@ -42,10 +42,12 @@ describe("Compose", () => {
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
     manageVariables: true,
-    monitorInterval: 5,
     monitor: false,
-    stack: "test-stack",
+    monitorInterval: 5,
     monitorTimeout: 300,
+    stack: "test-stack",
+    strictVariables: false,
+    variables: new Map(),
     version: "ebadf1",
   });
 
@@ -435,10 +437,12 @@ describe("Compose", () => {
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
       manageVariables: true,
-      monitorInterval: 5,
       monitor: false,
-      stack: "test-stack",
+      monitorInterval: 5,
       monitorTimeout: 300,
+      stack: "test-stack",
+      strictVariables: false,
+      variables: new Map(),
       version: "ebadf1",
     });
     const composeSpec = defineComposeSpec({

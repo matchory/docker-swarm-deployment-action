@@ -14,13 +14,15 @@ describe("Monitoring", () => {
   });
 
   const settings = defineSettings({
-    stack: "test",
-    version: "1.0.0",
     envVarPrefix: "APP",
     manageVariables: true,
     monitor: true,
-    monitorTimeout: 300,
     monitorInterval: 5,
+    monitorTimeout: 300,
+    stack: "testso",
+    strictVariables: false,
+    variables: new Map(),
+    version: "1.0.0",
   });
 
   it("should monitor deployment until all services are updated", async () => {
@@ -392,13 +394,15 @@ describe("Monitoring", () => {
     vi.spyOn(engine, "listServices");
 
     const noMonitorSettings = defineSettings({
-      stack: "test",
-      version: "1.0.0",
       envVarPrefix: "APP",
       manageVariables: true,
       monitor: false,
-      monitorTimeout: 300,
       monitorInterval: 5,
+      monitorTimeout: 300,
+      stack: "test",
+      strictVariables: false,
+      variables: new Map(),
+      version: "1.0.0",
     });
 
     await monitorDeployment(noMonitorSettings);

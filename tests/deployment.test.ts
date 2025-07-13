@@ -25,13 +25,15 @@ describe("Deployment", () => {
   describe("Deployment Process", () => {
     it("should perform an orderly deployment", async () => {
       const settings = defineSettings({
-        stack: "test-stack",
-        version: "1.2.3",
         envVarPrefix: "",
         manageVariables: true,
         monitor: false,
-        monitorTimeout: 0,
         monitorInterval: 0,
+        monitorTimeout: 0,
+        stack: "test-stack",
+        strictVariables: false,
+        variables: new Map(),
+        version: "1.2.3",
       });
 
       vi.spyOn(utils, "exists").mockResolvedValue(true);
@@ -115,13 +117,15 @@ describe("Deployment", () => {
 
     it("should monitor the deployed services post-deployment if enabled", async () => {
       const settings = defineSettings({
-        stack: "test-stack",
-        version: "1.2.3",
         envVarPrefix: "",
         manageVariables: true,
         monitor: true,
-        monitorTimeout: 0,
         monitorInterval: 0,
+        monitorTimeout: 0,
+        stack: "test-stack",
+        strictVariables: false,
+        variables: new Map(),
+        version: "1.2.3",
       });
 
       vi.spyOn(utils, "exists").mockResolvedValue(true);
