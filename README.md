@@ -108,14 +108,14 @@ jobs:
 To configure the action, you can use the following inputs:
 
 | Input              | Default                               | Description                                                                                                                       |
- |:-------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
+| :----------------- | :------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
 | `stack-name`       | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
 | `version`          | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
 | `compose-file`     | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
 | `env-var-prefix`   | `DEPLOYMENT_`                         | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution).                           |
 | `manage-variables` | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
 | `strict-variables` | `false`                               | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
-| `variables`        | _—_                                   | Variables as KEY=value pairs, separated by new lines, to apply in the environment.  Can be used to set secrets.                   |
+| `variables`        | _—_                                   | Variables as KEY=value pairs, separated by new lines, to apply in the environment. Can be used to set secrets.                    |
 | `monitor`          | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
 | `monitor-timeout`  | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval` | `10`                                  | The interval in seconds to check the stack status.                                                                                |
@@ -123,7 +123,7 @@ To configure the action, you can use the following inputs:
 ### Outputs
 
 | Output         | Description                                                          |
-|:---------------|:---------------------------------------------------------------------|
+| :------------- | :------------------------------------------------------------------- |
 | `status`       | The status of the deployment. Possible values: `success`, `failure`. |
 | `stack-name`   | The name of the stack that was deployed.                             |
 | `version`      | The version of the stack that was deployed.                          |
@@ -252,7 +252,7 @@ example will work just as well:
 ```yaml
 configs:
   # Pass an empty object, …
-  app_url: { }
+  app_url: {}
 
   # …or even a YAML-null value for brevity!
   database_username: ~
@@ -266,25 +266,28 @@ populate the `file` property with that. This is done by the following rules:
    will be used as the file source.
 2. If an environment variable with one of the following name patterns exists, it
    will be used as the environment source:n
-    - Exact variable key (e.g. `app_url`)
-    - Uppercase variable key (e.g. `APP_URL`)
-    - Variable key prefixed with the [`envVarPrefix`](#inputs) (e.g.
-      `DEPLOYMENT_app_url`)
-    - Uppercase variable key prefixed with the [env var prefix setting](#inputs)
-      (e.g. `DEPLOYMENT_APP_URL`)
-    - Variable key prefixed with the [stack name](#inputs) (e.g.
-      `my_repo_app_url`)
-    - Uppercase variable key prefixed with the [stack name](#inputs) (e.g.
-      `MY_REPO_APP_URL`)
+   - Exact variable key (e.g. `app_url`)
+   - Uppercase variable key (e.g. `APP_URL`)
+   - Variable key prefixed with the [`envVarPrefix`](#inputs) (e.g.
+     `DEPLOYMENT_app_url`)
+   - Uppercase variable key prefixed with the [env var prefix setting](#inputs)
+     (e.g. `DEPLOYMENT_APP_URL`)
+   - Variable key prefixed with the [stack name](#inputs) (e.g.
+     `my_repo_app_url`)
+   - Uppercase variable key prefixed with the [stack name](#inputs) (e.g.
+     `MY_REPO_APP_URL`)
 3. If neither of the above is found, an error will be thrown and the action will
    fail.
 
 #### Providing GitHub Secrets and Variables
-You can use GitHub Secrets and Variables to provide the values for your configs. This can be challenging if you have
-many variables, as you need to explicitly pass each one to the action; in cases where you use this action in a nested
+
+You can use GitHub Secrets and Variables to provide the values for your configs.
+This can be challenging if you have many variables, as you need to explicitly
+pass each one to the action; in cases where you use this action in a nested
 workflow, this means you have to define them in multiple places.  
-To avoid that, you can use the `variables` input to pass a list of key-value pairs, which will override any variables
-of the same name defined in the process environment:
+To avoid that, you can use the `variables` input to pass a list of key-value
+pairs, which will override any variables of the same name defined in the process
+environment:
 
 ```yaml
 - name: Deploy to Docker Swarm
