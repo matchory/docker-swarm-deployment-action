@@ -210,7 +210,7 @@ In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the
 following variables derived from the inputs are also available:
 
-- `MATCHORY_DEPLOYMENT_STACK_NAME`: The name of the stack being deployed.
+- `MATCHORY_DEPLOYMENT_STACK`: The name of the stack being deployed.
 - `MATCHORY_DEPLOYMENT_VERSION`: The version of the stack being deployed.
 
 ### Configuring Secrets and Configs
