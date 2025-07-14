@@ -183,11 +183,11 @@ export async function reconcileSpec(
  * to deploy them to Swarm.
  *
  * @param composeSpecs The Compose specifications to normalize
- * @param _settings The settings to use for the deployment
+ * @param settings The settings to use for the deployment
  */
 export async function normalizeSpec(
   composeSpecs: ComposeSpec[],
-  _settings: Readonly<Settings>,
+  settings: Readonly<Settings>,
 ) {
   // As we possibly have modified the Compose specs read from the input files,
   // we need to write them out to temporary files, so we can rely on the docker
@@ -204,7 +204,7 @@ export async function normalizeSpec(
   let spec;
 
   try {
-    spec = await normalizeStackSpecification(composeFiles);
+    spec = await normalizeStackSpecification(composeFiles, settings, false);
   } finally {
     // Remove the temporary files again, regardless of the exit code.
     await Promise.all(composeFiles.map((path) => unlink(path)));

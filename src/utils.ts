@@ -21,3 +21,13 @@ export async function exists(path: string) {
 export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+export function mapToObject<T>(map: Map<string, T>): Record<string, T> {
+  const object: Record<string, T> = {};
+
+  for (const [key, value] of map) {
+    object[key] = value;
+  }
+
+  return object;
+}

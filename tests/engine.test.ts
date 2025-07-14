@@ -66,7 +66,10 @@ describe("engine", () => {
       expect(mockedExec).toHaveBeenCalledWith("docker", expectedArgs, {
         input: Buffer.from(expectedStdin),
         silent: false,
-        env: undefined,
+        env: {
+          MATCHORY_DEPLOYMENT_VERSION: settings.version,
+          MATCHORY_DEPLOYMENT_STACK: settings.stack,
+        },
         listeners: expect.any(Object),
       });
       expect(mockedCore.info).toHaveBeenCalledWith(
@@ -89,7 +92,10 @@ describe("engine", () => {
         return 0;
       });
 
-      const result = await engine.normalizeComposeSpecification(composeFiles);
+      const result = await engine.normalizeComposeSpecification(
+        composeFiles,
+        settings,
+      );
 
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
@@ -111,7 +117,7 @@ describe("engine", () => {
 
         return 0;
       });
-      await engine.normalizeComposeSpecification(composeFiles, true);
+      await engine.normalizeComposeSpecification(composeFiles, settings, true);
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
         expect.arrayContaining(["--no-interpolate"]),
@@ -125,7 +131,12 @@ describe("engine", () => {
 
         return 0;
       });
-      await engine.normalizeComposeSpecification(composeFiles, false, true);
+      await engine.normalizeComposeSpecification(
+        composeFiles,
+        settings,
+        false,
+        true,
+      );
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
         expect.arrayContaining(["--resolve-image-digests"]),
@@ -140,7 +151,7 @@ describe("engine", () => {
         return 0;
       });
       await expect(
-        engine.normalizeComposeSpecification(composeFiles),
+        engine.normalizeComposeSpecification(composeFiles, settings),
       ).rejects.toThrowError(/No content produced/);
     });
 
@@ -151,7 +162,7 @@ describe("engine", () => {
         return 0;
       });
       await expect(
-        engine.normalizeComposeSpecification(composeFiles),
+        engine.normalizeComposeSpecification(composeFiles, settings),
       ).rejects.toThrowError(/Failed to parse JSON output/);
     });
   });
@@ -173,7 +184,10 @@ services:
         return 0;
       });
 
-      const result = await engine.normalizeStackSpecification(composeFiles);
+      const result = await engine.normalizeStackSpecification(
+        composeFiles,
+        settings,
+      );
 
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
@@ -192,7 +206,7 @@ services:
 
         return 0;
       });
-      await engine.normalizeStackSpecification(composeFiles, true);
+      await engine.normalizeStackSpecification(composeFiles, settings, true);
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
         expect.arrayContaining(["--skip-interpolation"]),
@@ -207,7 +221,7 @@ services:
         return 0;
       });
       await expect(
-        engine.normalizeStackSpecification(composeFiles),
+        engine.normalizeStackSpecification(composeFiles, settings),
       ).rejects.toThrowError(/No content produced/);
     });
 
@@ -219,7 +233,7 @@ services:
         return 0;
       });
       await expect(
-        engine.normalizeStackSpecification(composeFiles),
+        engine.normalizeStackSpecification(composeFiles, settings),
       ).rejects.toThrowError(/Failed to parse YAML output/);
     });
   });

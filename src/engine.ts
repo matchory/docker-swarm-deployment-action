@@ -3,13 +3,18 @@ import { exec } from "@actions/exec";
 import { dump, load } from "js-yaml";
 import type { ComposeSpec } from "./compose.js";
 import type { Settings } from "./settings.js";
+import { mapToObject } from "./utils";
 
 /**
  * Deploy the stack
  */
 export async function deployStack(
   spec: ComposeSpec,
-  settings: Readonly<Settings>,
+  {
+    stack,
+    variables,
+    version,
+  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
 ) {
   await executeDockerCommand(
     [
@@ -22,28 +27,49 @@ export async function deployStack(
       "--resolve-image=always",
       "--compose-file",
       "-",
-      settings.stack,
+      stack,
     ],
-    { stdin: dump(spec) },
+    {
+      stdin: dump(spec),
+      env: {
+        MATCHORY_DEPLOYMENT_STACK: stack,
+        MATCHORY_DEPLOYMENT_VERSION: version,
+        ...mapToObject(variables),
+      },
+    },
   );
 
-  core.info(`Deployed stack ${settings.stack}`);
+  core.info(`Deployed stack ${stack}`);
 }
 
 export async function normalizeComposeSpecification(
   composeFiles: string[],
+  {
+    stack,
+    variables,
+    version,
+  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
   skipInterpolation = false,
   pinImages = false,
 ) {
   const composeFileFlags = composeFiles.map((file) => `--compose-file=${file}`);
-  const content = await executeDockerCommand([
-    "compose",
-    "config",
-    ...composeFileFlags,
-    "--format=json",
-    skipInterpolation ? "--no-interpolate" : "",
-    pinImages ? "--resolve-image-digests" : "",
-  ]);
+  const content = await executeDockerCommand(
+    [
+      "compose",
+      "config",
+      ...composeFileFlags,
+      "--format=json",
+      skipInterpolation ? "--no-interpolate" : "",
+      pinImages ? "--resolve-image-digests" : "",
+    ],
+    {
+      env: {
+        MATCHORY_DEPLOYMENT_STACK: stack,
+        MATCHORY_DEPLOYMENT_VERSION: version,
+        ...mapToObject(variables),
+      },
+    },
+  );
 
   if (!content) {
     throw new Error(
@@ -67,15 +93,29 @@ export async function normalizeComposeSpecification(
 
 export async function normalizeStackSpecification(
   composeFiles: string[],
+  {
+    stack,
+    variables,
+    version,
+  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
   skipInterpolation = false,
 ) {
   const composeFileFlags = composeFiles.map((file) => `--compose-file=${file}`);
-  const content = await executeDockerCommand([
-    "stack",
-    "config",
-    ...composeFileFlags,
-    skipInterpolation ? "--skip-interpolation" : "",
-  ]);
+  const content = await executeDockerCommand(
+    [
+      "stack",
+      "config",
+      ...composeFileFlags,
+      skipInterpolation ? "--skip-interpolation" : "",
+    ],
+    {
+      env: {
+        MATCHORY_DEPLOYMENT_STACK: stack,
+        MATCHORY_DEPLOYMENT_VERSION: version,
+        ...mapToObject(variables),
+      },
+    },
+  );
 
   if (!content) {
     throw new Error(

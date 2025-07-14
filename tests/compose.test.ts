@@ -481,7 +481,10 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: undefined,
+          env: {
+            MATCHORY_DEPLOYMENT_STACK: "test-stack",
+            MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
+          },
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -516,7 +519,56 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: undefined,
+          env: {
+            MATCHORY_DEPLOYMENT_STACK: "test-stack",
+            MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
+          },
+          input: Buffer.from(
+            "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
+          ),
+          listeners: {
+            stdout: expect.any(Function),
+          },
+          silent: false,
+        },
+      );
+    });
+
+    it("should deploy the stack with a custom stack name and additional variables", async () => {
+      const customSettings = defineSettings({
+        ...settings,
+        version: "abcd123",
+        stack: "different-name",
+        variables: new Map([["CUSTOM_VAR", "custom_value"]]),
+      });
+
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "dump").mockReturnValue(
+        "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
+      );
+
+      await deployStack(composeSpec, customSettings);
+
+      expect(exec).toHaveBeenCalledWith(
+        "docker",
+        [
+          "stack",
+          "deploy",
+          "--prune",
+          "--quiet",
+          "--detach=true",
+          "--with-registry-auth",
+          "--resolve-image=always",
+          "--compose-file",
+          "-",
+          "different-name",
+        ],
+        {
+          env: {
+            MATCHORY_DEPLOYMENT_STACK: "different-name",
+            MATCHORY_DEPLOYMENT_VERSION: "abcd123",
+            CUSTOM_VAR: "custom_value",
+          },
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
