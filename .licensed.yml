@@ -7,13 +7,16 @@ allowed:
   - apache-2.0
   - bsd-2-clause
   - bsd-3-clause
+  - 0bsd
   - isc
   - mit
   - cc0-1.0
   - other
   - unlicense
+  - blueoak-1.0.0
 
 ignored:
   npm:
     # Used by Rollup.js when building in GitHub Actions
     - "@rollup/rollup-linux-x64-gnu"
+    - "buffers"
