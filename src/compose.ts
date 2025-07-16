@@ -145,24 +145,34 @@ export async function reconcileSpec(
     throw new Error("Invalid stack specification: Missing services section");
   }
 
-  if (settings.manageVariables && composeSpec.secrets) {
-    core.startGroup("Processing secrets");
+  if (settings.manageVariables) {
+    if (composeSpec.secrets) {
+      core.startGroup("Processing secrets");
 
-    for (const [name, entry] of Object.entries(composeSpec.secrets)) {
-      composeSpec.secrets[name] = await processVariable(name, entry, settings);
+      for (const [name, entry] of Object.entries(composeSpec.secrets)) {
+        composeSpec.secrets[name] = await processVariable(
+          name,
+          entry,
+          settings,
+        );
+      }
+
+      core.endGroup();
     }
 
-    core.endGroup();
-  }
+    if (composeSpec.configs) {
+      core.startGroup("Processing configs");
 
-  if (settings.manageVariables && composeSpec.configs) {
-    core.startGroup("Processing configs");
+      for (const [name, entry] of Object.entries(composeSpec.configs)) {
+        composeSpec.configs[name] = await processVariable(
+          name,
+          entry,
+          settings,
+        );
+      }
 
-    for (const [name, entry] of Object.entries(composeSpec.configs)) {
-      composeSpec.configs[name] = await processVariable(name, entry, settings);
+      core.endGroup();
     }
-
-    core.endGroup();
   }
 
   return composeSpec;

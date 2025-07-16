@@ -371,7 +371,7 @@ export async function pruneSecrets(
     core.debug(`Checking secret ${i + 1}/${items.length}: ${name}`);
 
     if (!labels) {
-      core.warning(`Found invalid secret "${name}": Missing labels. Pruning.`);
+      core.notice(`Found invalid secret "${name}": Missing labels. Pruning.`);
 
       await removeSecret(ID);
       continue;
@@ -380,9 +380,8 @@ export async function pruneSecrets(
     if (!specSecrets.includes(variableIdentifier(labels))) {
       const hash = labels.hash.substring(0, 7);
 
-      core.debug(
-        `Pruning outdated version "${hash}" of secret ` +
-          `"${labels.name}": ${name}`,
+      core.notice(
+        `Pruning outdated version "${hash}" of secret "${labels.name}": ${name}`,
       );
 
       await removeSecret(ID);
@@ -446,8 +445,8 @@ export async function pruneConfigs(
     core.debug(`Checking config ${i + 1}/${items.length}: ${name}`);
 
     if (!labels) {
-      core.warning(
-        `Found invalid config "${name}": Missing variable labels. Pruning.`,
+      core.notice(
+        `Found invalid config "${name}": Missing variable labels. Pruning.}`,
       );
 
       await removeConfig(ID);
@@ -457,9 +456,8 @@ export async function pruneConfigs(
     if (!specConfigs.includes(variableIdentifier(labels))) {
       const hash = labels.hash.substring(0, 7);
 
-      core.debug(
-        `Pruning outdated version "${hash}" of config ` +
-          `"${labels.name}": ${name}`,
+      core.notice(
+        `Pruning outdated version "${hash}" of config "${labels.name}": ${name}`,
       );
 
       await removeConfig(ID);

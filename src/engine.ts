@@ -114,6 +114,7 @@ export async function normalizeStackSpecification(
         MATCHORY_DEPLOYMENT_VERSION: version,
         ...mapToObject(variables),
       },
+      silent: true,
     },
   );
 
@@ -172,7 +173,7 @@ export async function listServices(
   filters: ServiceFilters,
   inspect?: boolean,
 ): Promise<ServiceMetadata[] | ServiceWithMetadata[]> {
-  core.startGroup("Listing services");
+  core.debug("Listing services");
 
   const filterFlags = buildFilters(
     {
@@ -185,12 +186,10 @@ export async function listServices(
   );
 
   try {
-    const output = await executeDockerCommand([
-      "service",
-      "ls",
-      "--format=json",
-      ...filterFlags,
-    ]);
+    const output = await executeDockerCommand(
+      ["service", "ls", "--format=json", ...filterFlags],
+      { silent: true },
+    );
     const services = parseLineDelimitedJson<ServiceMetadata>(output);
 
     if (!inspect) {
@@ -206,19 +205,17 @@ export async function listServices(
       ),
     );
   } catch (cause) {
-    throw new Error(`Failed to list services: ${cause}`, { cause });
-  } finally {
-    core.endGroup();
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    throw new Error(`Failed to list services: ${message}`, { cause });
   }
 }
 
 export async function inspectService(id: string) {
-  const output = await executeDockerCommand([
-    "service",
-    "inspect",
-    "--format=json",
-    id,
-  ]);
+  const output = await executeDockerCommand(
+    ["service", "inspect", "--format=json", id],
+    { silent: true },
+  );
 
   try {
     return JSON.parse(output) as Service;
@@ -237,17 +234,20 @@ export async function getServiceLogs(
   { tail, since }: { tail?: number; since?: Date },
 ) {
   try {
-    const output = await executeDockerCommand([
-      "service",
-      "logs",
-      "--raw",
-      "--no-trunc",
-      "--details",
-      "--timestamps",
-      tail ? `--tail=${tail}` : "",
-      since ? `--since=${since.toISOString()}` : "",
-      id,
-    ]);
+    const output = await executeDockerCommand(
+      [
+        "service",
+        "logs",
+        "--raw",
+        "--no-trunc",
+        "--details",
+        "--timestamps",
+        tail ? `--tail=${tail}` : "",
+        since ? `--since=${since.toISOString()}` : "",
+        id,
+      ],
+      { silent: true },
+    );
 
     return output
       .trim()
@@ -273,7 +273,7 @@ export async function listSecrets(filters: {
   name?: ValueFilter;
   labels?: KeyValueFilter;
 }) {
-  core.startGroup("Listing secrets");
+  core.info("Listing secrets");
 
   const filterFlags = buildFilters({
     id: filters.id,
@@ -282,12 +282,10 @@ export async function listSecrets(filters: {
   });
 
   try {
-    const output = await executeDockerCommand([
-      "secret",
-      "ls",
-      "--format=json",
-      ...filterFlags,
-    ]);
+    const output = await executeDockerCommand(
+      ["secret", "ls", "--format=json", ...filterFlags],
+      { silent: true },
+    );
 
     return parseLineDelimitedJson<StoredVariable>(output).map<SecretMetadata>(
       (secret) => ({
@@ -297,8 +295,6 @@ export async function listSecrets(filters: {
     );
   } catch (cause) {
     throw new Error(`Failed to list secrets: ${cause}`, { cause });
-  } finally {
-    core.endGroup();
   }
 }
 
@@ -307,7 +303,7 @@ export async function listConfigs(filters: {
   name?: ValueFilter;
   labels?: KeyValueFilter;
 }) {
-  core.startGroup("Listing configs");
+  core.debug("Listing configs");
 
   const filterFlags = buildFilters({
     id: filters.id,
@@ -316,12 +312,10 @@ export async function listConfigs(filters: {
   });
 
   try {
-    const output = await executeDockerCommand([
-      "config",
-      "ls",
-      "--format=json",
-      ...filterFlags,
-    ]);
+    const output = await executeDockerCommand(
+      ["config", "ls", "--format=json", ...filterFlags],
+      { silent: true },
+    );
 
     return parseLineDelimitedJson<StoredVariable>(output).map<ConfigMetadata>(
       (config) => ({
@@ -331,31 +325,40 @@ export async function listConfigs(filters: {
     );
   } catch (cause) {
     throw new Error(`Failed to list configs: ${cause}`, { cause });
-  } finally {
-    core.endGroup();
   }
 }
 
+/**
+ * Remove an unused secret
+ *
+ * This function removes a secret from the Swarm.
+ *
+ * @param id The ID of the secret to remove
+ */
 export async function removeSecret(id: string) {
-  core.startGroup(`Removing secret "${id}"`);
+  core.info(`Removing unused secret "${id}"`);
 
   try {
-    await executeDockerCommand(["secret", "rm", id]);
+    await executeDockerCommand(["secret", "rm", id], { silent: true });
   } catch (cause) {
     throw new Error(`Failed to remove secret "${id}": ${cause}`, { cause });
-  } finally {
-    core.endGroup();
   }
 }
 
+/**
+ * Remove an unused config value
+ *
+ * This function removes a config value from the Swarm.
+ *
+ * @param id The ID of the config to remove
+ */
 export async function removeConfig(id: string) {
-  core.startGroup(`Removing config "${id}"`);
+  core.info(`Removing unused config "${id}"`);
+
   try {
-    await executeDockerCommand(["config", "rm", id]);
+    await executeDockerCommand(["config", "rm", id], { silent: true });
   } catch (cause) {
     throw new Error(`Failed to remove config "${id}": ${cause}`, { cause });
-  } finally {
-    core.endGroup();
   }
 }
 
@@ -365,10 +368,11 @@ export async function removeConfig(id: string) {
  * This function executes a Docker command with the given arguments and options.
  * It captures the output from stdout and returns it as a string.
  *
- * @param args
- * @param stdin
- * @param env
- * @param silent
+ * @param args      The arguments to pass to the Docker command
+ * @param [stdin]   Optional input to pass to the command's stdin
+ * @param [env]     Optional environment variables to set for the command
+ * @param [silent]  If true, suppresses the output of the command to the action
+ *                  log output
  */
 async function executeDockerCommand(
   args: [string, ...string[]],
@@ -404,6 +408,15 @@ async function executeDockerCommand(
         },
       },
     );
+
+    core.info("Docker Command executed successfully");
+    core.debug(output);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    core.error(`Command failed: ${message}`);
+    core.error(output);
+
+    throw new Error(`Failed to execute Docker Command: ${message}`, { cause });
   } finally {
     core.endGroup();
   }

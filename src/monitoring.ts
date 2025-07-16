@@ -20,13 +20,12 @@ import { sleep } from "./utils.js";
  */
 export async function monitorDeployment(settings: Readonly<Settings>) {
   if (!settings.monitor) {
-    core.info("Post-Deployment monitoring is disabled");
+    core.info("Post-Deployment Monitoring is disabled");
 
     return;
   }
 
-  core.startGroup("Monitoring deployment rollout");
-  core.info(`Monitoring stack "${settings.stack}" for post-deployment issues`);
+  core.info(`Monitoring Stack "${settings.stack}" for Post-Deployment Issues`);
 
   const startTime = new Date();
   let attemptsLeft = Math.ceil(
@@ -46,7 +45,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
     );
 
     core.debug(
-      `Waiting for services to complete: ` +
+      `Waiting for services to finish updating: ` +
         `${completedServices.size}/${services.length}`,
     );
 
@@ -55,6 +54,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
         continue;
       }
 
+      const serviceIdentifier = service.Spec.Name ?? service.Name ?? service.ID;
       let complete;
 
       try {
@@ -73,13 +73,12 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
         const logs = await getServiceLogs(service.ID, { since: startTime });
 
         core.error(
-          `Service "${service.Spec.Name ?? service.ID}" failed to update: ` +
-            error.message,
+          `Service "${serviceIdentifier}" failed to update: ${error.message}`,
         );
         core.setOutput("service-logs", logs.toString());
         core.summary.addHeading("Service Logs", 2);
         core.summary.addRaw(
-          "Before the service update failed, the following logs were generated:",
+          `Before the "${serviceIdentifier}" service update failed, the following logs were generated:`,
           true,
         );
         core.summary.addTable([
@@ -107,7 +106,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
 
       if (complete) {
         core.info(
-          `Service "${service.Spec?.Name ?? service.Name}" has been deployed successfully`,
+          `Service "${serviceIdentifier}" has been deployed successfully`,
         );
         completedServices.add(service.ID);
       }
@@ -140,7 +139,7 @@ function isServiceUpdateComplete(service: ServiceWithMetadata) {
     return true;
   }
 
-  const updateStatus = service.UpdateStatus?.State ?? "unknown";
+  const updateStatus = service.UpdateStatus.State ?? "unknown";
 
   if (updateStatus === "completed") {
     core.debug(`Update of service "${name}" is complete`);
@@ -149,14 +148,16 @@ function isServiceUpdateComplete(service: ServiceWithMetadata) {
   }
 
   if (updateStatus === "updating") {
-    core.debug(`Update of service "${name}" is still in progress`);
+    core.info(`Update of service "${name}" is still in progress`);
 
     return false;
   }
 
   const reason = resolveFailureReason(updateStatus);
 
-  throw new Error(`Update of service "${name}" failed: ${reason}`);
+  throw new Error(`Update of service "${name}" failed: ${reason}`, {
+    cause: service.UpdateStatus,
+  });
 }
 
 /**
