@@ -135,7 +135,7 @@ function isServiceUpdateComplete(service: ServiceWithMetadata) {
   const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
-  if (isServiceRunning(service)) {
+  if (!service.UpdateStatus && isServiceRunning(service)) {
     return true;
   }
 
