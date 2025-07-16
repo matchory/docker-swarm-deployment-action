@@ -246,6 +246,31 @@ describe("Monitoring", () => {
           UpdateStatus: { State: "updating" },
         },
       ],
+      [
+        {
+          ID: "a",
+          Image: "web:latest",
+          Mode: "replicated",
+          Name: "web_service",
+          Ports: "",
+          Replicas: "3/3",
+          CreatedAt: new Date(),
+          UpdatedAt: new Date(),
+          Endpoint: {},
+          Version: { Index: 0 },
+          PreviousSpec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          Spec: {
+            Name: "web_service",
+            Labels: {},
+            TaskTemplate: {},
+          },
+          UpdateStatus: { State: "completed" },
+        },
+      ],
     ] satisfies ServiceWithMetadata[][];
     const listServices = vi
       .spyOn(engine, "listServices")
@@ -253,7 +278,8 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2])
       .mockResolvedValueOnce(serviceHistory[3])
-      .mockResolvedValueOnce(serviceHistory[4]);
+      .mockResolvedValueOnce(serviceHistory[4])
+      .mockResolvedValueOnce(serviceHistory[5]);
 
     const promise = monitorDeployment(settings);
     await vi.runAllTimersAsync();

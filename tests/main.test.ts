@@ -14,6 +14,18 @@ vi.mock("node:fs/promises", () => ({
   writeFile,
   unlink,
 }));
+
+const mockUploadArtifact = vi.hoisted(() => vi.fn());
+vi.mock("@actions/artifact", () => ({
+  DefaultArtifactClient: vi.fn(() => ({
+    uploadArtifact: mockUploadArtifact,
+  })),
+}));
+
+const mockRandomUUID = vi.hoisted(() => vi.fn());
+vi.mock("node:crypto", () => ({
+  randomUUID: mockRandomUUID,
+}));
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
 
@@ -56,7 +68,7 @@ describe("main", () => {
 
       // docker config ls
       .mockImplementationOnce(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(""));
+        options?.listeners?.stdout?.(Buffer.from("[]"));
 
         return 0;
       })
@@ -68,6 +80,11 @@ describe("main", () => {
         return 0;
       });
     readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile.mockResolvedValue(undefined);
+    mockRandomUUID
+      .mockReturnValueOnce("compose-temp-uuid") // For compose processing
+      .mockReturnValueOnce("artifact-uuid-123"); // For artifact storage
+    mockUploadArtifact.mockResolvedValueOnce({ id: "artifact-123" });
 
     await expect(run()).resolves.not.toThrow();
     expect(core.setFailed).not.toHaveBeenCalled();
@@ -98,8 +115,218 @@ describe("main", () => {
       return 0;
     });
     readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile.mockResolvedValue(undefined);
+    mockRandomUUID.mockReturnValue("undefined"); // For compose processing
 
     await expect(run()).resolves.not.toThrow();
+    expect(core.setFailed).toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
+  });
+
+  it("should store compose spec artifact successfully", async () => {
+    const composeSpec = defineComposeSpec({
+      services: {
+        app: {
+          image: "my-app:latest",
+          ports: ["80:80"],
+        },
+      },
+    });
+
+    vi.stubEnv("DOCKER_HOST", "tcp://localhost:2375");
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
+    vi.mocked(exec).mockResolvedValue(0);
+    vi.mocked(exec)
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+        return 0;
+      });
+
+    readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile.mockResolvedValue(undefined);
+    mockRandomUUID
+      .mockReturnValueOnce("compose-temp-uuid") // For compose processing
+      .mockReturnValueOnce("artifact-uuid-123") // For artifact storage
+      .mockReturnValue("fallback-uuid"); // For any additional calls
+    mockUploadArtifact.mockResolvedValueOnce({ id: "artifact-123" });
+
+    await expect(run()).resolves.not.toThrow();
+
+    // Check that writeFile was called at least twice (once for Compose temp file, once for artifact)
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    // Check that the artifact file was written with the correct content
+    expect(writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(/^\.\/compose-spec\.generated\..*\.json$/),
+      JSON.stringify(composeSpec, null, 2),
+    );
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
+      "compose-spec",
+      [expect.stringMatching(/^\.\/compose-spec\.generated\..*\.json$/)],
+      ".",
+      { retentionDays: 30 },
+    );
+    expect(core.warning).not.toHaveBeenCalled();
+  });
+
+  it("should warn when file writing fails but continue execution", async () => {
+    const composeSpec = defineComposeSpec({
+      services: {
+        app: {
+          image: "my-app:latest",
+          ports: ["80:80"],
+        },
+      },
+    });
+
+    vi.stubEnv("DOCKER_HOST", "tcp://localhost:2375");
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
+    vi.mocked(exec).mockResolvedValue(0);
+    vi.mocked(exec)
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+        return 0;
+      });
+
+    readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile
+      .mockResolvedValueOnce(undefined) // For compose processing
+      .mockRejectedValueOnce(new Error("Permission denied")); // For artifact storage
+    mockRandomUUID
+      .mockReturnValueOnce("compose-temp-uuid") // For compose processing
+      .mockReturnValueOnce("artifact-uuid-123"); // For artifact storage
+
+    await expect(run()).resolves.not.toThrow();
+
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "Failed to store compose spec artifact: Failed to write compose spec to file: Permission denied",
+      }),
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledWith("status", "success");
+  });
+
+  it("should warn when artifact upload fails but continue execution", async () => {
+    const composeSpec = defineComposeSpec({
+      services: {
+        app: {
+          image: "my-app:latest",
+          ports: ["80:80"],
+        },
+      },
+    });
+
+    vi.stubEnv("DOCKER_HOST", "tcp://localhost:2375");
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
+    vi.mocked(exec).mockResolvedValue(0);
+    vi.mocked(exec)
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+        return 0;
+      });
+
+    readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile.mockResolvedValue(undefined);
+    mockRandomUUID
+      .mockReturnValueOnce("compose-temp-uuid") // For compose processing
+      .mockReturnValueOnce("artifact-uuid-123"); // For artifact storage
+    mockUploadArtifact.mockRejectedValueOnce(new Error("Upload failed"));
+
+    await expect(run()).resolves.not.toThrow();
+
+    expect(writeFile).toHaveBeenCalled();
+    expect(mockUploadArtifact).toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "Failed to store compose spec artifact: Failed to upload compose spec artifact: Upload failed",
+      }),
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledWith("status", "success");
+  });
+
+  it("should not attempt to store artifact when deployment fails", async () => {
+    const composeSpec = defineComposeSpec({
+      services: {
+        app: {
+          image: "my-app:latest",
+          ports: ["80:80"],
+        },
+      },
+    });
+
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
+    vi.mocked(exec).mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
+      options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+      return 0;
+    });
+    readFile.mockResolvedValueOnce(dump(composeSpec));
+
+    await expect(run()).resolves.not.toThrow();
+
+    // writeFile is called once during compose processing (before deployment failure)
+    // but not for artifact storage since deployment failed
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(writeFile).toHaveBeenCalledWith(
+      "docker-compose.generated.undefined.yaml",
+      expect.any(String),
+    );
+    expect(mockUploadArtifact).not.toHaveBeenCalled();
     expect(core.setFailed).toHaveBeenCalled();
     expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
   });
