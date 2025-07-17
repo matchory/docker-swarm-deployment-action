@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ComposeSpec,
   defineComposeSpec,
+  interpolateSpec,
   loadComposeSpecs,
   normalizeSpec,
   reconcileSpec,
@@ -41,6 +42,7 @@ describe("Compose", () => {
 
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
+    keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
@@ -432,10 +434,528 @@ describe("Compose", () => {
     });
   });
 
+  describe("Spec Interpolation", () => {
+    let mockSettings: ReturnType<typeof defineSettings>;
+
+    beforeEach(() => {
+      mockSettings = {
+        ...settings,
+        variables: new Map([
+          ["SERVICE_NAME", "my-service"],
+          ["IMAGE_TAG", "v1.0.0"],
+          ["PORT", "8080"],
+          ["NETWORK", "my-network"],
+          ["VOLUME_PATH", "/data"],
+          ["EMPTY_VAR", ""],
+          ["ZERO_VAR", "0"],
+        ]),
+        keyInterpolation: false,
+      };
+    });
+
+    describe("value interpolation", () => {
+      it("should interpolate simple variables in values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${IMAGE_TAG}",
+              ports: ["${PORT}:80"],
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+              ports: ["8080:80"],
+            },
+          },
+        });
+      });
+
+      it("should interpolate variables with $VAR format", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:$IMAGE_TAG",
+              container_name: "$SERVICE_NAME",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+              container_name: "my-service",
+            },
+          },
+        });
+      });
+
+      it("should interpolate nested object values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              environment: {
+                APP_PORT: "${PORT}",
+                APP_NAME: "${SERVICE_NAME}",
+              },
+              labels: {
+                "traefik.http.routers.app.rule":
+                  "Host(`${SERVICE_NAME}.example.com`)",
+              },
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              environment: {
+                APP_PORT: "8080",
+                APP_NAME: "my-service",
+              },
+              labels: {
+                "traefik.http.routers.app.rule":
+                  "Host(`my-service.example.com`)",
+              },
+            },
+          },
+        });
+      });
+
+      it("should interpolate array values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              command: ["sh", "-c", "echo ${SERVICE_NAME}"],
+              volumes: ["${VOLUME_PATH}:/app/data"],
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              command: ["sh", "-c", "echo my-service"],
+              volumes: ["/data:/app/data"],
+            },
+          },
+        });
+      });
+
+      it("should handle default values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${MISSING_TAG:-latest}",
+              container_name: "${MISSING_NAME-default-name}",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:latest",
+              container_name: "default-name",
+            },
+          },
+        });
+      });
+
+      it("should handle empty and zero values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${EMPTY_VAR:-fallback}",
+              replicas: "${ZERO_VAR}",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:fallback",
+              replicas: "0",
+            },
+          },
+        });
+      });
+    });
+
+    describe("key interpolation", () => {
+      it("should not interpolate keys when keyInterpolation is false", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            "${SERVICE_NAME}": {
+              image: "nginx:${IMAGE_TAG}",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            "${SERVICE_NAME}": {
+              image: "nginx:v1.0.0",
+            },
+          },
+        });
+      });
+
+      it("should interpolate keys when keyInterpolation is true", async () => {
+        mockSettings.keyInterpolation = true;
+
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            "${SERVICE_NAME}": {
+              image: "nginx:${IMAGE_TAG}",
+            },
+          },
+          networks: {
+            "${NETWORK}": {
+              driver: "bridge",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            "my-service": {
+              image: "nginx:v1.0.0",
+            },
+          },
+          networks: {
+            "my-network": {
+              driver: "bridge",
+            },
+          },
+        });
+      });
+
+      it("should interpolate both keys and values when keyInterpolation is true", async () => {
+        mockSettings.keyInterpolation = true;
+
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            "${SERVICE_NAME}": {
+              image: "nginx:${IMAGE_TAG}",
+              environment: {
+                "${SERVICE_NAME}_PORT": "${PORT}",
+              },
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            "my-service": {
+              image: "nginx:v1.0.0",
+              environment: {
+                "my-service_PORT": "8080",
+              },
+            },
+          },
+        });
+      });
+    });
+
+    describe("secrets and configs", () => {
+      it("should interpolate secrets and configs", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${IMAGE_TAG}",
+            },
+          },
+          secrets: {
+            "my-secret": {
+              file: "${VOLUME_PATH}/secret.txt",
+            },
+          },
+          configs: {
+            "my-config": {
+              file: "${VOLUME_PATH}/config.yml",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+            },
+          },
+          secrets: {
+            "my-secret": {
+              file: "/data/secret.txt",
+            },
+          },
+          configs: {
+            "my-config": {
+              file: "/data/config.yml",
+            },
+          },
+        });
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should handle empty services object", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {},
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {},
+        });
+      });
+
+      it("should handle undefined variables gracefully", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${UNDEFINED_VAR}",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:",
+            },
+          },
+        });
+      });
+
+      it("should handle complex JSON structures", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${IMAGE_TAG}",
+              deploy: {
+                replicas: 3,
+                resources: {
+                  limits: {
+                    memory: "512M",
+                  },
+                  reservations: {
+                    memory: "256M",
+                  },
+                },
+              },
+            },
+          },
+          networks: {
+            frontend: {
+              driver: "overlay",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+              deploy: {
+                replicas: 3,
+                resources: {
+                  limits: {
+                    memory: "512M",
+                  },
+                  reservations: {
+                    memory: "256M",
+                  },
+                },
+              },
+            },
+          },
+          networks: {
+            frontend: {
+              driver: "overlay",
+            },
+          },
+        });
+      });
+
+      it("should preserve non-string values", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${IMAGE_TAG}",
+              deploy: {
+                replicas: 3,
+                restart_policy: {
+                  condition: "on-failure",
+                  delay: "5s",
+                  max_attempts: 3,
+                },
+              },
+              healthcheck: {
+                test: ["CMD", "curl", "-f", "http://localhost:${PORT}/health"],
+                interval: "30s",
+                timeout: "10s",
+                retries: 3,
+              },
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+              deploy: {
+                replicas: 3,
+                restart_policy: {
+                  condition: "on-failure",
+                  delay: "5s",
+                  max_attempts: 3,
+                },
+              },
+              healthcheck: {
+                test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
+                interval: "30s",
+                timeout: "10s",
+                retries: 3,
+              },
+            },
+          },
+        });
+      });
+
+      it("should handle escaped dollar signs", async () => {
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${IMAGE_TAG}",
+              environment: {
+                LITERAL_DOLLAR: "$$NOT_A_VARIABLE",
+                MIXED: "$$LITERAL and ${SERVICE_NAME}",
+              },
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v1.0.0",
+              environment: {
+                LITERAL_DOLLAR: "$$NOT_A_VARIABLE",
+                MIXED: "$$LITERAL and my-service",
+              },
+            },
+          },
+        });
+      });
+    });
+
+    describe("error handling", () => {
+      it("should handle malformed JSON gracefully", async () => {
+        // This test ensures that if the interpolation produces invalid JSON,
+        // the function will throw an appropriate error
+        mockSettings.variables.set("MALFORMED", '{"incomplete": ');
+
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:latest",
+              labels: {
+                config: "${MALFORMED}",
+              },
+            },
+          },
+        };
+
+        // This should not throw because the interpolation itself is valid JSON
+        const result = await interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:latest",
+              labels: {
+                config: '{"incomplete": ',
+              },
+            },
+          },
+        });
+      });
+    });
+  });
+
   describe("Stack Deployment", () => {
     const settings = defineSettings({
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
+      keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,

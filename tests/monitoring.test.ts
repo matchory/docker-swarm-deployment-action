@@ -15,6 +15,7 @@ describe("Monitoring", () => {
 
   const settings = defineSettings({
     envVarPrefix: "APP",
+    keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,

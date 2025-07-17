@@ -16,7 +16,7 @@ describe("engine", () => {
   const settings = defineSettings({
     composeFiles: ["docker-compose.yml"],
     envVarPrefix: "APP",
-    version: "1.0.0",
+    keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,
@@ -24,6 +24,7 @@ describe("engine", () => {
     stack: "test-stack",
     strictVariables: false,
     variables: new Map(),
+    version: "1.0.0",
   });
 
   beforeEach(() => {
