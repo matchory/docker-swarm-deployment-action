@@ -54,7 +54,8 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
         continue;
       }
 
-      const serviceIdentifier = service.Spec.Name ?? service.Name ?? service.ID;
+      const serviceIdentifier =
+        service.Spec?.Name ?? service.Name ?? service.ID;
       let complete;
 
       try {

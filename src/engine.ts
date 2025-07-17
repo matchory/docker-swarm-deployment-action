@@ -514,7 +514,7 @@ export type Service = {
   Version: {
     Index: number;
   };
-  Spec: {
+  Spec?: {
     Name: string;
     Labels: Record<string, string>;
     TaskTemplate: Record<string, unknown>;
