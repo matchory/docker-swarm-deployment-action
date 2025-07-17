@@ -495,10 +495,9 @@ function marshalLabels(labels: Record<string, string | number> | undefined) {
 }
 
 function shouldRotate(createdAt: Date) {
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  return createdAt < thirtyDaysAgo;
+  const oneYearAgo = new Date();
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  return createdAt < oneYearAgo;
 }
 
 // endregion

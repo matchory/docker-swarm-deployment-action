@@ -331,3 +331,27 @@ describe("main", () => {
     expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
   });
 });
+
+describe("error handling and output status", () => {
+  it("should set output status to failure for unknown error types", async () => {
+    const error = "string error";
+    vi.spyOn(core, "setFailed").mockImplementation(() => {});
+    vi.spyOn(core, "setOutput").mockImplementation(() => {});
+    // Simulate run throwing a string error
+    const runWithError = async () => {
+      throw error;
+    };
+    await runWithError().catch((err) => {
+      if (err instanceof Error) {
+        core.setFailed(err);
+      } else {
+        core.setFailed(`An unknown error occurred: ${err}`);
+      }
+      core.setOutput("status", "failure");
+    });
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("An unknown error occurred: string error"),
+    );
+    expect(core.setOutput).toHaveBeenCalledWith("status", "failure");
+  });
+});

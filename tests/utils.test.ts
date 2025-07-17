@@ -2,7 +2,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { exists, interpolateString, sleep } from "../src/utils.js";
 
-// @ts-expect-error -- false positive
 const base = fileURLToPath(new URL(".", import.meta.url));
 
 describe("Utilities", () => {
@@ -499,6 +498,26 @@ describe("Utilities", () => {
       it("should handle whitespace in variable names (should not match)", () => {
         const variables = new Map([["VAR NAME", "value"]]);
         expect(interpolateString("$VAR NAME", variables)).toBe(" NAME");
+      });
+    });
+
+    describe("edge cases and error propagation", () => {
+      it("should throw error for required variable substitution when missing", () => {
+        const variables = new Map();
+        expect(() => interpolateString("${MISSING?}", variables)).toThrow(
+          /required/,
+        );
+      });
+
+      it("should propagate error with variable name in message", () => {
+        const variables = new Map();
+        try {
+          interpolateString("${MISSING?}", variables);
+        } catch (error) {
+          expect((error as Error).message).toMatch(
+            /Failed to resolve variable MISSING/,
+          );
+        }
       });
     });
   });

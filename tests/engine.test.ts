@@ -223,7 +223,9 @@ services:
       });
       await expect(
         engine.normalizeStackSpecification(composeFiles, settings),
-      ).rejects.toThrowError(/No content produced/);
+      ).rejects.toThrow(
+        /Failed to load compose file\(s\): No content produced/
+      );
     });
 
     it("should throw error on invalid YAML", async () => {
@@ -558,6 +560,41 @@ services:
       await expect(engine.removeConfig("cfg1")).rejects.toThrowError(
         /Failed to remove config/,
       );
+    });
+  });
+
+  describe("error handling and edge cases", () => {
+    it("should throw error if docker command fails", async () => {
+      mockedExec.mockImplementationOnce(async () => {
+        throw new Error("docker error");
+      });
+      await expect(
+        engine.normalizeComposeSpecification(["docker-compose.yml"], settings)
+      ).rejects.toThrow(/docker error/);
+    });
+
+    it("should throw error if YAML output is empty", async () => {
+      mockedExec.mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      });
+      await expect(
+        engine.normalizeStackSpecification(["docker-compose.yml"], settings)
+      ).rejects.toThrow(
+        /Failed to load compose file\(s\): No content produced/
+      );
+    });
+
+    it("should handle parseFilter and parseLabelFilter edge cases", () => {
+      expect(engine.parseFilter("label", ["foo", "bar"])).toEqual([
+        "label=foo",
+        "label=bar",
+      ]);
+      expect(engine.parseLabelFilter({ foo: "bar" })).toEqual(["foo=bar"]);
+      expect(engine.parseLabelFilter(["foo", { bar: "baz" }])).toEqual([
+        "foo",
+        "bar=baz",
+      ]);
     });
   });
 });

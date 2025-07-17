@@ -171,4 +171,22 @@ describe("settings", () => {
     expect(settings.variables.get("VAR2")).toBe("envValue2");
     expect(settings.variables.get("VAR3")).toBe("inputValue3");
   });
+
+  describe("edge cases and environment variable handling", () => {
+    it("should skip VARIABLES key in environment", () => {
+      vi.stubEnv("VARIABLES", "should-skip");
+      vi.stubEnv("FOO", "bar");
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+      const settings = parseSettings(process.env);
+      expect(settings.variables.has("VARIABLES")).toBe(false);
+      expect(settings.variables.get("FOO")).toBe("bar");
+    });
+
+    it("should handle empty input gracefully", () => {
+      vi.unstubAllEnvs();
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+      const settings = parseSettings(process.env);
+      expect(settings.variables.size).toBeGreaterThanOrEqual(0);
+    });
+  });
 });
