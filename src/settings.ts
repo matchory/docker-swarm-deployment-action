@@ -7,6 +7,7 @@ import { debug } from "node:util";
 export interface Settings {
   composeFiles?: string[];
   envVarPrefix: string;
+  keyInterpolation: boolean;
   manageVariables: boolean;
   monitor: boolean;
   monitorInterval: number;
@@ -33,6 +34,8 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       /_$/,
       "",
     ),
+    keyInterpolation:
+      getBooleanInput("key-interpolation", { required: false }) ?? false,
     manageVariables:
       getBooleanInput("manage-variables", { required: false }) ?? true,
     monitor: getBooleanInput("monitor", { required: false }) ?? false,

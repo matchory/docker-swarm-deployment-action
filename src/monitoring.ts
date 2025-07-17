@@ -61,20 +61,14 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       try {
         complete = isServiceUpdateComplete(service);
       } catch (error) {
-        if (!(error instanceof Error)) {
-          core.error(
-            "An unexpected error occurred while checking the service" +
-              "status. This is likely a bug in the deployment action. Please " +
-              "report this issue in the repository.",
-          );
-
-          throw error;
-        }
-
         const logs = await getServiceLogs(service.ID, { since: startTime });
+        const message = error instanceof Error ? error.message : String(error);
 
         core.error(
-          `Service "${serviceIdentifier}" failed to update: ${error.message}`,
+          new Error(
+            `Service "${serviceIdentifier}" failed to update: ${message}`,
+            { cause: error },
+          ),
         );
         core.setOutput("service-logs", logs.toString());
         core.summary.addHeading("Service Logs", 2);
@@ -132,7 +126,12 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
  * @param service Service to check
  * @returns True if the service is complete, false otherwise
  */
-function isServiceUpdateComplete(service: ServiceWithMetadata) {
+export function isServiceUpdateComplete(
+  service: Pick<
+    ServiceWithMetadata,
+    "Spec" | "Name" | "ID" | "UpdateStatus" | "Replicas"
+  >,
+) {
   const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
@@ -140,7 +139,7 @@ function isServiceUpdateComplete(service: ServiceWithMetadata) {
     return true;
   }
 
-  const updateStatus = service.UpdateStatus.State ?? "unknown";
+  const updateStatus = service.UpdateStatus?.State ?? "unknown";
 
   if (updateStatus === "completed") {
     core.debug(`Update of service "${name}" is complete`);
@@ -172,7 +171,9 @@ function isServiceUpdateComplete(service: ServiceWithMetadata) {
  * @param service Service to check
  * @returns True if the service is running, false otherwise
  */
-function isServiceRunning(service: ServiceWithMetadata) {
+export function isServiceRunning(
+  service: Pick<ServiceWithMetadata, "Spec" | "Replicas" | "ID">,
+) {
   const name = service.Spec?.Name ?? service.ID;
   core.debug(`Checking if service "${name}" is currently running`);
 
@@ -216,7 +217,10 @@ function isServiceRunning(service: ServiceWithMetadata) {
  */
 function resolveFailureReason(
   state:
-    | Exclude<Service["UpdateStatus"]["State"], "completed" | "updating">
+    | Exclude<
+        Exclude<Service["UpdateStatus"], undefined>["State"],
+        "completed" | "updating"
+      >
     | "unknown",
 ) {
   return (

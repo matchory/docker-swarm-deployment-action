@@ -435,16 +435,16 @@ function buildFilters<
     .flatMap((value) => [flag, value] as const);
 }
 
-function parseFilter<K extends string, V extends string>(
-  key: K,
-  values: ValueFilter<V>,
-): NamedFilter<K, V>[] {
+export function parseFilter<K extends string, V extends string>(
+  name: K,
+  values: V | V[],
+): string[] {
   const filter = Array.isArray(values) ? values : ([values] as const);
 
-  return filter.map((value) => `${key}=${value}` as const);
+  return filter.map((value) => `${name}=${value}` as const);
 }
 
-function parseLabelFilter(
+export function parseLabelFilter(
   labels:
     | string
     | string[]
@@ -525,7 +525,7 @@ export type Service = {
     TaskTemplate: Record<string, unknown>;
   };
   Endpoint: Record<string, unknown>;
-  UpdateStatus: {
+  UpdateStatus?: {
     StartedAt?: string | undefined;
     CompletedAt?: string | undefined;
     Message?: string | undefined;
@@ -567,7 +567,3 @@ type KeyValueFilter<K extends string = string, V extends string = string> =
   | ValueFilter<K>
   | Record<K, V>
   | Array<K | Record<K, V>>;
-type NamedFilter<
-  K extends string = string,
-  V extends string = string,
-> = `${K}=${V}`;

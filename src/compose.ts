@@ -6,7 +6,7 @@ import { debug } from "node:util";
 import { join } from "path";
 import { normalizeStackSpecification } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists } from "./utils.js";
+import { exists, interpolateString } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";
@@ -225,6 +225,36 @@ export async function normalizeSpec(
   }
 
   return spec;
+}
+
+/**
+ * Interpolate variables in the Compose specification
+ *
+ * This function interpolates variables in the Compose specification, following
+ * the Compose Spec interpolation rules, with an optional exception: While
+ * Compose does not support interpolation of variables within keys, this can be
+ * optionally enabled by the `keyInterpolation` setting.
+ * This means that `$FOO: $BAR` will be replaced with `foo: bar` if enabled,
+ * while it would remain as `$FOO: bar` if disabled, leaving the key untouched.
+ *
+ * @param composeSpec The Compose specification to interpolate
+ * @param keyInterpolation Whether to interpolate variables in keys
+ * @param variables The variables to use for interpolation
+ */
+export function interpolateSpec(
+  composeSpec: ComposeSpec,
+  {
+    keyInterpolation,
+    variables,
+  }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
+) {
+  const spec = keyInterpolation
+    ? interpolateString(JSON.stringify(composeSpec), variables)
+    : JSON.stringify(composeSpec, (_, value) =>
+        typeof value === "string" ? interpolateString(value, variables) : value,
+      );
+
+  return JSON.parse(spec) as ComposeSpec;
 }
 
 export function defineComposeSpec<T extends ComposeSpec>(spec: T) {

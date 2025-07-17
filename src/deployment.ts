@@ -1,4 +1,5 @@
 import {
+  interpolateSpec,
   loadComposeSpecs,
   normalizeSpec,
   resolveComposeFiles,
@@ -15,14 +16,15 @@ export async function deploy(settings: Readonly<Settings>) {
   const composeFiles = await resolveComposeFiles(settings);
   const composeSpecs = await loadComposeSpecs(composeFiles, settings);
   const composeSpec = await normalizeSpec(composeSpecs, settings);
+  const finalSpec = interpolateSpec(composeSpec, settings);
 
-  await deployStack(composeSpec, settings);
+  await deployStack(finalSpec, settings);
 
   if (settings.monitor) {
     await monitorDeployment(settings);
   }
 
-  await pruneVariables(composeSpec, settings);
+  await pruneVariables(finalSpec, settings);
 
-  return composeSpec;
+  return finalSpec;
 }

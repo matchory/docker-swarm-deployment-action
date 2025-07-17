@@ -36,6 +36,7 @@ vi.mock("../src/engine.js");
 describe("Variables", () => {
   const settings = defineSettings({
     envVarPrefix: "APP",
+    keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,

@@ -26,6 +26,7 @@ describe("Deployment", () => {
     it("should perform an orderly deployment", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        keyInterpolation: false,
         manageVariables: true,
         monitor: false,
         monitorInterval: 0,
@@ -68,6 +69,14 @@ describe("Deployment", () => {
           },
         },
       });
+      vi.spyOn(compose, "interpolateSpec").mockReturnValue({
+        version: "3.8",
+        services: {
+          web: {
+            image: "nginx:latest",
+          },
+        },
+      });
       vi.spyOn(engine, "deployStack").mockResolvedValue(undefined);
       vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
 
@@ -91,6 +100,18 @@ describe("Deployment", () => {
         ],
         settings,
       );
+      expect(compose.interpolateSpec).toHaveBeenCalledWith(
+        {
+          version: "3.8",
+          services: {
+            web: {
+              image: "nginx:latest",
+            },
+          },
+        },
+        settings,
+      );
+
       expect(engine.deployStack).toHaveBeenCalledWith(
         {
           version: "3.8",
@@ -118,6 +139,7 @@ describe("Deployment", () => {
     it("should monitor the deployed services post-deployment if enabled", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        keyInterpolation: false,
         manageVariables: true,
         monitor: true,
         monitorInterval: 0,

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceWithMetadata } from "../src/engine.js";
 import * as engine from "../src/engine.js";
-import { monitorDeployment } from "../src/monitoring.js";
+import {
+  isServiceRunning,
+  isServiceUpdateComplete,
+  monitorDeployment,
+} from "../src/monitoring.js";
 import { defineSettings } from "../src/settings.js";
 
 vi.mock("@actions/core");
@@ -15,6 +19,7 @@ describe("Monitoring", () => {
 
   const settings = defineSettings({
     envVarPrefix: "APP",
+    keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,
@@ -400,7 +405,24 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
-    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
+      {
+        message: "Error occurred during service update",
+        timestamp: new Date(),
+        metadata: {
+          "com.docker.swarm.task": "task1",
+          "com.docker.swarm.service": "web_service",
+        },
+      },
+      {
+        message: "Service is rolling back",
+        timestamp: new Date(),
+        metadata: {
+          "com.docker.swarm.task": "task2",
+          "com.docker.swarm.service": "web_service",
+        },
+      },
+    ]);
 
     // noinspection JSVoidFunctionReturnValueUsed
     const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
@@ -421,6 +443,7 @@ describe("Monitoring", () => {
 
     const noMonitorSettings = defineSettings({
       envVarPrefix: "APP",
+      keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
@@ -434,5 +457,78 @@ describe("Monitoring", () => {
     await monitorDeployment(noMonitorSettings);
 
     expect(engine.listServices).not.toHaveBeenCalled();
+  });
+
+  describe("edge cases and error handling", () => {
+    it("should handle non-Error thrown in monitorDeployment", async () => {
+      vi.spyOn(engine, "listServices").mockResolvedValueOnce([
+        {
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          UpdateStatus: { State: "updating" },
+        },
+      ] as Awaited<ReturnType<typeof engine.listServices>>);
+      vi.spyOn(engine, "inspectService").mockImplementation(() => {
+        throw "string error";
+      });
+      const settings = defineSettings({
+        envVarPrefix: "APP",
+        keyInterpolation: false,
+        manageVariables: true,
+        monitor: true,
+        monitorInterval: 1,
+        monitorTimeout: 1,
+        stack: "test",
+        strictVariables: false,
+        variables: new Map(),
+        version: "1.0.0",
+      });
+      await expect(monitorDeployment(settings)).rejects.toThrow(
+        "Deployment timed out",
+      );
+    });
+
+    it("should throw error if service update fails", () => {
+      expect(() => {
+        isServiceUpdateComplete({
+          ID: "svc1",
+          Name: "svc1",
+          Replicas: "1/2",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          UpdateStatus: { State: "rollback_started" },
+        });
+      }).toThrow(/Update of service/);
+    });
+
+    it("should return true if service is still running", () => {
+      expect(
+        isServiceUpdateComplete({
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          Name: "svc1",
+          Replicas: "2/2",
+        }),
+      ).toBe(true);
+    });
+
+    it("should return false if service is partially running", () => {
+      expect(
+        isServiceRunning({
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          Replicas: "1/2",
+        }),
+      ).toBe(false);
+    });
+
+    it("should return true if service is running and replicas match", () => {
+      expect(
+        isServiceRunning({
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          Replicas: "2/2",
+        }),
+      ).toBe(true);
+    });
   });
 });
