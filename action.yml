@@ -52,9 +52,9 @@ inputs:
     default: "true"
   key-interpolation:
     description: >-
-      Whether to enable interpolation of environment variables within keys in the
-      Compose Specification, in addition to values. This is not supported by the
-      Compose Spec, and thus needs to be enabled explicitly.
+      Whether to enable interpolation of environment variables within keys in
+      the Compose Specification, in addition to values. This is not supported by
+      the Compose Spec, and thus needs to be enabled explicitly.
     default: "false"
   monitor:
     description: >-

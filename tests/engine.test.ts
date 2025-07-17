@@ -224,7 +224,7 @@ services:
       await expect(
         engine.normalizeStackSpecification(composeFiles, settings),
       ).rejects.toThrow(
-        /Failed to load compose file\(s\): No content produced/
+        /Failed to load compose file\(s\): No content produced/,
       );
     });
 
@@ -569,7 +569,7 @@ services:
         throw new Error("docker error");
       });
       await expect(
-        engine.normalizeComposeSpecification(["docker-compose.yml"], settings)
+        engine.normalizeComposeSpecification(["docker-compose.yml"], settings),
       ).rejects.toThrow(/docker error/);
     });
 
@@ -579,9 +579,9 @@ services:
         return 0;
       });
       await expect(
-        engine.normalizeStackSpecification(["docker-compose.yml"], settings)
+        engine.normalizeStackSpecification(["docker-compose.yml"], settings),
       ).rejects.toThrow(
-        /Failed to load compose file\(s\): No content produced/
+        /Failed to load compose file\(s\): No content produced/,
       );
     });
 
