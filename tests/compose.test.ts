@@ -907,8 +907,8 @@ describe("Compose", () => {
             app: {
               image: "nginx:v1.0.0",
               environment: {
-                LITERAL_DOLLAR: "$$NOT_A_VARIABLE",
-                MIXED: "$$LITERAL and my-service",
+                LITERAL_DOLLAR: "$NOT_A_VARIABLE",
+                MIXED: "$LITERAL and my-service",
               },
             },
           },

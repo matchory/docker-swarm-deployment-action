@@ -47,7 +47,7 @@ export function mapToObject<T>(map: Map<string, T>): Record<string, T> {
  * - If the variable is present, it returns the variable's value.
  *
  * Further, it supports both `${VARIABLE_NAME}` and `$VARIABLE_NAME` formats, recursive interpolation, and escaping of
- * dollar signs (e.g., `$$VARIABLE_NAME` will not be replaced).
+ * dollar signs (e.g., `$$VARIABLE_NAME` will become `$VARIABLE_NAME`).
  * When strict mode is enabled, it will throw an error if a variable is used, has no default value, and is not defined in
  * the variable map.
  *
@@ -60,6 +60,11 @@ export function interpolateString(
   variables: Map<string, string>,
   strict = false,
 ): string {
+  // First, replace escaped dollar signs with a placeholder to protect them
+  // during variable interpolation
+  const placeholder = "\u0000ESCAPED_DOLLAR\u0000";
+  str = str.replace(/\$\$/g, placeholder);
+
   let match: RegExpMatchArray | null;
 
   type Operator = ":-" | ":+" | ":?" | "?" | "-" | "+";
@@ -107,10 +112,8 @@ export function interpolateString(
     //  6. `${VAR+default}`
     //  7. `${VAR:?default}`
     //  8. `${VAR?default}`
-    // The regex will ignore any variables that are preceded by a dollar sign
-    // (e.g., `$$VAR`), which is useful for preserving dollar signs.
     match = str.match(
-      /(?<!\$)\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)([^{}]*))?})/i,
+      /\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)([^{}]*))?})/i,
     );
 
     // If we don't have any more matches, break out of the loop. This can happen
@@ -141,6 +144,9 @@ export function interpolateString(
 
     str = str.replace(fullMatch, replacement ?? "");
   } while (match);
+
+  // Finally, replace the placeholder back with single dollar signs
+  str = str.replace(new RegExp(placeholder, "g"), "$");
 
   return str;
 }
