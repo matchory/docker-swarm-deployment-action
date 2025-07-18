@@ -386,6 +386,7 @@ describe("Compose", () => {
           "config",
           "--compose-file=docker-compose.generated.10000000-0000-4000-0000-000000000000.yaml",
           "--compose-file=docker-compose.generated.20000000-0000-4000-0000-000000000000.yaml",
+          "--skip-interpolation",
         ],
         expect.anything(),
       );
