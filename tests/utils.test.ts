@@ -227,27 +227,54 @@ describe("Utilities", () => {
     });
 
     describe("Escaping", () => {
-      it("should not replace escaped variables with $$", () => {
+      it("should remove escape character from escaped variables with $$", () => {
         const variables = new Map([["NAME", "John"]]);
-        expect(interpolateString("$$NAME", variables)).toBe("$$NAME");
+        expect(interpolateString("$$NAME", variables)).toBe("$NAME");
       });
 
-      it("should not replace escaped variables with $${}", () => {
+      it("should remove escape character from escaped variables with $${}", () => {
         const variables = new Map([["NAME", "John"]]);
-        expect(interpolateString("$${NAME}", variables)).toBe("$${NAME}");
+        expect(interpolateString("$${NAME}", variables)).toBe("${NAME}");
       });
 
       it("should handle mix of escaped and unescaped variables", () => {
         const variables = new Map([["NAME", "John"]]);
         expect(interpolateString("Hello $NAME and $$NAME", variables)).toBe(
-          "Hello John and $$NAME",
+          "Hello John and $NAME",
         );
       });
 
       it("should handle escaped variables with operators", () => {
         const variables = new Map([["NAME", "John"]]);
         expect(interpolateString("$${NAME:-default}", variables)).toBe(
-          "$${NAME:-default}",
+          "${NAME:-default}",
+        );
+      });
+
+      it("should handle multiple consecutive escaped dollar signs", () => {
+        const variables = new Map([["NAME", "John"]]);
+        expect(interpolateString("$$$$NAME", variables)).toBe("$$NAME");
+      });
+
+      it("should handle escaped dollar followed by variable substitution", () => {
+        const variables = new Map([
+          ["NAME", "John"],
+          ["VAR", "value"],
+        ]);
+        expect(interpolateString("$$NAME$VAR", variables)).toBe("$NAMEvalue");
+      });
+
+      it("should handle literal dollar signs in escaped sequences", () => {
+        const variables = new Map<string, string>();
+        expect(interpolateString("Price: $$100", variables)).toBe(
+          "Price: $100",
+        );
+      });
+
+      it("should handle escaped braces without variables", () => {
+        const variables = new Map<string, string>();
+        expect(interpolateString("$${not_a_var}", variables)).toBe(
+          "${not_a_var}",
         );
       });
     });
@@ -428,7 +455,7 @@ describe("Utilities", () => {
         const template =
           "Real: $REAL_VAR, Escaped: $$ESCAPED_VAR, Mixed: ${REAL_VAR:-default}";
         expect(interpolateString(template, variables)).toBe(
-          "Real: value, Escaped: $$ESCAPED_VAR, Mixed: value",
+          "Real: value, Escaped: $ESCAPED_VAR, Mixed: value",
         );
       });
     });
