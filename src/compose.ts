@@ -214,7 +214,7 @@ export async function normalizeSpec(
   let spec;
 
   try {
-    spec = await normalizeStackSpecification(composeFiles, settings, false);
+    spec = await normalizeStackSpecification(composeFiles, settings, true);
   } finally {
     // Remove the temporary files again, regardless of the exit code.
     await Promise.all(composeFiles.map((path) => unlink(path)));
