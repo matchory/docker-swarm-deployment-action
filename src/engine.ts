@@ -32,8 +32,6 @@ export async function deployStack(
     {
       stdin: dump(spec),
       env: {
-        MATCHORY_DEPLOYMENT_STACK: stack,
-        MATCHORY_DEPLOYMENT_VERSION: version,
         ...mapToObject(variables),
       },
     },
@@ -64,8 +62,6 @@ export async function normalizeComposeSpecification(
     ],
     {
       env: {
-        MATCHORY_DEPLOYMENT_STACK: stack,
-        MATCHORY_DEPLOYMENT_VERSION: version,
         ...mapToObject(variables),
       },
     },
@@ -110,8 +106,6 @@ export async function normalizeStackSpecification(
     ],
     {
       env: {
-        MATCHORY_DEPLOYMENT_STACK: stack,
-        MATCHORY_DEPLOYMENT_VERSION: version,
         ...mapToObject(variables),
       },
       silent: true,

@@ -28,6 +28,14 @@ export function defineSettings<T extends Settings>(settings: T) {
 export function parseSettings(env: NodeJS.ProcessEnv) {
   debug("Parsing settings from inputs");
 
+  const stack = inferStackName(getInput("stack-name"), env);
+  const version = inferVersion(getInput("version"), env);
+  const variables = inferVariables(getInput("variables"), env);
+
+  // Add deployment variables that should be available during interpolation
+  variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
+  variables.set("MATCHORY_DEPLOYMENT_VERSION", version);
+
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
     envVarPrefix: (getInput("env-var-prefix") || "DEPLOYMENT").replace(
@@ -41,11 +49,11 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     monitor: getBooleanInput("monitor", { required: false }) ?? false,
     monitorInterval: parseInt(getInput("monitor-interval") || "5", 10),
     monitorTimeout: parseInt(getInput("monitor-timeout") || "300", 10),
-    stack: inferStackName(getInput("stack-name"), env),
+    stack,
     strictVariables:
       getBooleanInput("strict-variables", { required: false }) ?? false,
-    variables: inferVariables(getInput("variables"), env),
-    version: inferVersion(getInput("version"), env),
+    variables,
+    version,
   });
 }
 
