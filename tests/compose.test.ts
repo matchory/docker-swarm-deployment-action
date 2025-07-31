@@ -710,8 +710,12 @@ describe("Compose", () => {
             },
           },
           secrets: {
-            "my-secret": {
+            "file-secret": {
               file: "${VOLUME_PATH}/secret.txt",
+            },
+            "content-secret": {
+              content:
+                "secret=${SECRET_VALUE}\nclient_id=${CLIENT_ID}\n\nclient_secret=${CLIENT_SECRET}",
             },
           },
           configs: {
@@ -721,6 +725,9 @@ describe("Compose", () => {
           },
         };
 
+        mockSettings.variables.set("SECRET_VALUE", "my-secret-value");
+        mockSettings.variables.set("CLIENT_ID", "my-client-id");
+        mockSettings.variables.set("CLIENT_SECRET", "my-client-secret");
         const result = await interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
@@ -731,8 +738,12 @@ describe("Compose", () => {
             },
           },
           secrets: {
-            "my-secret": {
+            "file-secret": {
               file: "/data/secret.txt",
+            },
+            "content-secret": {
+              content:
+                "secret=my-secret-value\nclient_id=my-client-id\n\nclient_secret=my-client-secret",
             },
           },
           configs: {

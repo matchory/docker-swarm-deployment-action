@@ -10,11 +10,7 @@ import { mapToObject } from "./utils";
  */
 export async function deployStack(
   spec: ComposeSpec,
-  {
-    stack,
-    variables,
-    version,
-  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
+  { stack, variables }: Pick<Readonly<Settings>, "stack" | "variables">,
 ) {
   await executeDockerCommand(
     [
@@ -42,11 +38,7 @@ export async function deployStack(
 
 export async function normalizeComposeSpecification(
   composeFiles: string[],
-  {
-    stack,
-    variables,
-    version,
-  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
+  { variables }: Pick<Readonly<Settings>, "variables">,
   skipInterpolation = false,
   pinImages = false,
 ) {
@@ -89,11 +81,7 @@ export async function normalizeComposeSpecification(
 
 export async function normalizeStackSpecification(
   composeFiles: string[],
-  {
-    stack,
-    variables,
-    version,
-  }: Pick<Readonly<Settings>, "stack" | "variables" | "version">,
+  { variables }: Pick<Readonly<Settings>, "variables">,
   skipInterpolation = false,
 ) {
   const composeFileFlags = composeFiles.map((file) => `--compose-file=${file}`);

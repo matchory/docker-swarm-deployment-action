@@ -5,7 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists } from "./utils.js";
+import { exists, interpolateString } from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
 export const hashLabel = "com.matchory.deployment.hash";
@@ -60,7 +60,7 @@ export async function processVariable(
     content = readFromEnvironment(name, variable, variables);
     modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
-    content = readFromContent(name, variable);
+    content = readFromContent(name, variable, variables);
     modifiedVariable = await transformVariable(content, name, variable);
   }
 
@@ -155,8 +155,13 @@ function readFromEnvironment(
  * sure this has changed and assume if we've got a content value, it's valid
  * by now.
  */
-function readFromContent(_name: string, { content }: ContentVariable) {
-  return String(content);
+function readFromContent(
+  _name: string,
+  { content }: ContentVariable,
+  variables: Map<string, string>,
+) {
+  // Interpolate variables within the inline content
+  return interpolateString(String(content), variables);
 }
 
 async function inferVariable(
