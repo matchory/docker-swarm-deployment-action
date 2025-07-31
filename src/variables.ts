@@ -5,7 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists } from "./utils.js";
+import { exists, interpolateString } from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
 export const hashLabel = "com.matchory.deployment.hash";
@@ -60,7 +60,7 @@ export async function processVariable(
     content = readFromEnvironment(name, variable, variables);
     modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
-    content = readFromContent(name, variable);
+    content = readFromContent(name, variable, variables);
     modifiedVariable = await transformVariable(content, name, variable);
   }
 
@@ -145,7 +145,10 @@ function readFromEnvironment(
     );
   }
 
-  return String(variables.get(variable));
+  const content = String(variables.get(variable));
+
+  // Interpolate variables within the environment content
+  return interpolateString(content, variables);
 }
 
 /**
@@ -155,8 +158,15 @@ function readFromEnvironment(
  * sure this has changed and assume if we've got a content value, it's valid
  * by now.
  */
-function readFromContent(_name: string, { content }: ContentVariable) {
-  return String(content);
+function readFromContent(
+  _name: string,
+  { content }: ContentVariable,
+  variables: Map<string, string>,
+) {
+  const contentStr = String(content);
+
+  // Interpolate variables within the inline content
+  return interpolateString(contentStr, variables);
 }
 
 async function inferVariable(
@@ -201,9 +211,13 @@ async function inferVariable(
       );
 
       (variable as EnvironmentVariable).environment = variant;
-      const value = variables.get(variant)!;
+      const rawValue = variables.get(variant)!;
+      const interpolatedValue = interpolateString(rawValue, variables);
 
-      return [value, await transformVariable(value, name, variable)] as const;
+      return [
+        interpolatedValue,
+        await transformVariable(interpolatedValue, name, variable),
+      ] as const;
     }
   }
 

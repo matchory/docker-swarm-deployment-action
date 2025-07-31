@@ -32,6 +32,13 @@ vi.mock("node:crypto", {
 });
 vi.mock("@actions/core");
 vi.mock("../src/engine.js");
+vi.mock("../src/utils.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    exists: vi.fn(),
+  };
+});
 
 describe("Variables", () => {
   const settings = defineSettings({
@@ -222,6 +229,45 @@ describe("Variables", () => {
         });
       });
 
+      it("should interpolate variables within environment variable content", async () => {
+        const variable = defineVariable({
+          environment: "CONFIG_TEMPLATE",
+        });
+
+        settings.variables.set(
+          "CONFIG_TEMPLATE",
+          "server=${SERVER_HOST}:${SERVER_PORT:-3000}",
+        );
+        settings.variables.set("SERVER_HOST", "api.example.com");
+        // SERVER_PORT not set, should use default
+
+        const expectedContent = "server=api.example.com:3000";
+        const expectedHash = hashVariable(expectedContent);
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("server-config", variable, settings),
+        ).resolves.toEqual({
+          name: `test-server-config-${expectedHash.slice(0, 7)}`,
+          file: "./server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "server-config",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+
+        expect(writeFile).toHaveBeenCalledWith(
+          "./server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          expectedContent,
+          "utf8",
+        );
+      });
+
       it("should bail on missing environment variables", async () => {
         const variable = defineVariable({
           environment: "FOO_BAR",
@@ -262,9 +308,7 @@ describe("Variables", () => {
           file: "path/to/file",
         });
 
-        vi.mock("../src/utils.js", () => ({
-          exists: vi.fn(() => false),
-        }));
+        vi.spyOn(utils, "exists").mockReturnValue(Promise.resolve(false));
 
         await expect(
           processVariable("foo", variable, settings),
@@ -307,6 +351,77 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         });
+      });
+
+      it("should interpolate variables within content source", async () => {
+        const variable = defineVariable({
+          content: "client-id=${CLIENT_ID}\nclient-secret=${CLIENT_SECRET}",
+        });
+
+        settings.variables.set("CLIENT_ID", "my-client-id");
+        settings.variables.set("CLIENT_SECRET", "my-secret");
+
+        const expectedContent =
+          "client-id=my-client-id\nclient-secret=my-secret";
+        const expectedHash = hashVariable(expectedContent);
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("example-secret", variable, settings),
+        ).resolves.toEqual({
+          name: `test-example-secret-${expectedHash.slice(0, 7)}`,
+          file: "./example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "example-secret",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+
+        expect(writeFile).toHaveBeenCalledWith(
+          "./example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          expectedContent,
+          "utf8",
+        );
+      });
+
+      it("should interpolate variables within content source with default values", async () => {
+        const variable = defineVariable({
+          content: "url=${BASE_URL:-http://localhost}\nport=${PORT:-8080}",
+        });
+
+        settings.variables.set("BASE_URL", "https://example.com");
+        // PORT is not set, so should use default
+
+        const expectedContent = "url=https://example.com\nport=8080";
+        const expectedHash = hashVariable(expectedContent);
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("config", variable, settings),
+        ).resolves.toEqual({
+          name: `test-config-${expectedHash.slice(0, 7)}`,
+          file: "./config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "config",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+
+        expect(writeFile).toHaveBeenCalledWith(
+          "./config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          expectedContent,
+          "utf8",
+        );
       });
 
       it("should not throw an error if a variable is explicitly defined empty", async () => {
@@ -496,6 +611,43 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         });
+      });
+
+      it("should interpolate variables in inferred environment variables", async () => {
+        const variable = defineVariable({});
+
+        settings.variables.set(
+          "FOO_CONFIG",
+          "database=${DB_HOST:-localhost}:${DB_PORT:-5432}",
+        );
+        settings.variables.set("DB_HOST", "db.example.com");
+        // DB_PORT not set, should use default
+
+        const expectedContent = "database=db.example.com:5432";
+        const expectedHash = hashVariable(expectedContent);
+
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+
+        await expect(
+          processVariable("foo_config", variable, settings),
+        ).resolves.toEqual({
+          name: `test-foo_config-${expectedHash.slice(0, 7)}`,
+          file: "./foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          labels: {
+            [nameLabel]: "foo_config",
+            [hashLabel]: expectedHash,
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        });
+
+        expect(writeFile).toHaveBeenCalledWith(
+          "./foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          expectedContent,
+          "utf8",
+        );
       });
 
       it("should automatically use a secret file for missing sources", async () => {
