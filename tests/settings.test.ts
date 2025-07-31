@@ -189,4 +189,48 @@ describe("settings", () => {
       expect(settings.variables.size).toBeGreaterThanOrEqual(0);
     });
   });
+
+  describe("MATCHORY deployment variables", () => {
+    it("should include MATCHORY_DEPLOYMENT_STACK and MATCHORY_DEPLOYMENT_VERSION in variables", () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "owner/test-repo");
+      vi.stubEnv("GITHUB_SHA", "abc123def456");
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            "stack-name": "my-custom-stack",
+            version: "1.2.3",
+          })[name] || "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      expect(settings.stack).toBe("my-custom-stack");
+      expect(settings.version).toBe("1.2.3");
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_STACK")).toBe(
+        "my-custom-stack",
+      );
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_VERSION")).toBe(
+        "1.2.3",
+      );
+    });
+
+    it("should include inferred values for MATCHORY_DEPLOYMENT variables", () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "owner/inferred-repo");
+      vi.stubEnv("GITHUB_REF", "refs/tags/v2.0.0");
+      vi.spyOn(core, "getInput").mockReturnValue("");
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      expect(settings.stack).toBe("inferred-repo");
+      expect(settings.version).toBe("v2.0.0");
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_STACK")).toBe(
+        "inferred-repo",
+      );
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_VERSION")).toBe(
+        "v2.0.0",
+      );
+    });
+  });
 });

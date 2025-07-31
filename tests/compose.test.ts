@@ -950,6 +950,94 @@ describe("Compose", () => {
         });
       });
     });
+
+    describe("MATCHORY deployment variables", () => {
+      it("should interpolate MATCHORY_DEPLOYMENT_STACK and MATCHORY_DEPLOYMENT_VERSION", async () => {
+        // Set up settings with the deployment variables
+        const settingsWithDeploymentVars = {
+          ...mockSettings,
+          stack: "my-app-stack",
+          version: "v2.1.0",
+          variables: new Map([
+            ...mockSettings.variables,
+            ["MATCHORY_DEPLOYMENT_STACK", "my-app-stack"],
+            ["MATCHORY_DEPLOYMENT_VERSION", "v2.1.0"],
+          ]),
+        };
+
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:${MATCHORY_DEPLOYMENT_VERSION}",
+              labels: {
+                "com.example.stack": "${MATCHORY_DEPLOYMENT_STACK}",
+                "com.example.version": "${MATCHORY_DEPLOYMENT_VERSION}",
+              },
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, settingsWithDeploymentVars);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            app: {
+              image: "nginx:v2.1.0",
+              labels: {
+                "com.example.stack": "my-app-stack",
+                "com.example.version": "v2.1.0",
+              },
+            },
+          },
+        });
+      });
+
+      it("should interpolate MATCHORY_DEPLOYMENT variables in keys when keyInterpolation is enabled", async () => {
+        const settingsWithDeploymentVars = {
+          ...mockSettings,
+          keyInterpolation: true,
+          stack: "test-stack",
+          version: "v1.0.0",
+          variables: new Map([
+            ...mockSettings.variables,
+            ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
+            ["MATCHORY_DEPLOYMENT_VERSION", "v1.0.0"],
+          ]),
+        };
+
+        const spec: ComposeSpec = {
+          version: "3.9",
+          services: {
+            "${MATCHORY_DEPLOYMENT_STACK}-app": {
+              image: "nginx:${MATCHORY_DEPLOYMENT_VERSION}",
+            },
+          },
+          networks: {
+            "${MATCHORY_DEPLOYMENT_STACK}-network": {
+              driver: "overlay",
+            },
+          },
+        };
+
+        const result = await interpolateSpec(spec, settingsWithDeploymentVars);
+
+        expect(result).toEqual({
+          version: "3.9",
+          services: {
+            "test-stack-app": {
+              image: "nginx:v1.0.0",
+            },
+          },
+          networks: {
+            "test-stack-network": {
+              driver: "overlay",
+            },
+          },
+        });
+      });
+    });
   });
 
   describe("Stack Deployment", () => {
