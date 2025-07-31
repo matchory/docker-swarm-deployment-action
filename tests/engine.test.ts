@@ -23,7 +23,10 @@ describe("engine", () => {
     monitorTimeout: 300,
     stack: "test-stack",
     strictVariables: false,
-    variables: new Map(),
+    variables: new Map([
+      ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
+      ["MATCHORY_DEPLOYMENT_VERSION", "1.0.0"],
+    ]),
     version: "1.0.0",
   });
 
@@ -68,8 +71,8 @@ describe("engine", () => {
         input: Buffer.from(expectedStdin),
         silent: false,
         env: {
-          MATCHORY_DEPLOYMENT_VERSION: settings.version,
-          MATCHORY_DEPLOYMENT_STACK: settings.stack,
+          MATCHORY_DEPLOYMENT_STACK: "test-stack",
+          MATCHORY_DEPLOYMENT_VERSION: "1.0.0",
         },
         listeners: expect.any(Object),
       });

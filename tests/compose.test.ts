@@ -1051,7 +1051,10 @@ describe("Compose", () => {
       monitorTimeout: 300,
       stack: "test-stack",
       strictVariables: false,
-      variables: new Map(),
+      variables: new Map([
+        ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
+        ["MATCHORY_DEPLOYMENT_VERSION", "ebadf1"],
+      ]),
       version: "ebadf1",
     });
     const composeSpec = defineComposeSpec({
@@ -1148,7 +1151,11 @@ describe("Compose", () => {
         ...settings,
         version: "abcd123",
         stack: "different-name",
-        variables: new Map([["CUSTOM_VAR", "custom_value"]]),
+        variables: new Map([
+          ["CUSTOM_VAR", "custom_value"],
+          ["MATCHORY_DEPLOYMENT_STACK", "different-name"],
+          ["MATCHORY_DEPLOYMENT_VERSION", "abcd123"],
+        ]),
       });
 
       vi.mocked(exec).mockResolvedValue(0);
