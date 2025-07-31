@@ -7,10 +7,11 @@
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
 > A powerful GitHub Action to deploy your applications to a Docker Swarm
-> cluster. It automatically handles features from the Compose Specification,
-> rotates configs and secrets for you, and can optionally monitor stacks for any
-> post-deployment issues (e.g., restart cycles or rollbacks) and let the
-> deployment fail accordingly.  
+> cluster. It automatically reconciles features from the newer Compose
+> Specification usually not available in Docker Swarm, rotates configs and
+> secrets for you, and can optionally monitor stacks for any post-deployment
+> issues (e.g., restart cycles or rollbacks) and let the deployment fail
+> accordingly.  
 > Designed to "do the right thing" out of the box, with flexible options for
 > customization.
 
@@ -18,7 +19,6 @@
 
 ## ✨ Features
 
-- **Easy Setup:** The action uses
 - **Easy Setup:** The action uses
   [the same environment variables](https://docs.docker.com/reference/cli/docker/#environment-variables)
   as the Docker CLI, so you can connect to your Docker Swarm cluster using a
