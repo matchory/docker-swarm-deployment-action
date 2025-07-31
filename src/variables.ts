@@ -208,10 +208,7 @@ async function inferVariable(
       (variable as EnvironmentVariable).environment = variant;
       const value = variables.get(variant)!;
 
-      return [
-        value,
-        await transformVariable(value, name, variable),
-      ] as const;
+      return [value, await transformVariable(value, name, variable)] as const;
     }
   }
 

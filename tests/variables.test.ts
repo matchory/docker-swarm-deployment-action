@@ -623,7 +623,8 @@ describe("Variables", () => {
         settings.variables.set("DB_HOST", "db.example.com");
         // DB_PORT not set, should use default
 
-        const expectedContent = "database=${DB_HOST:-localhost}:${DB_PORT:-5432}";
+        const expectedContent =
+          "database=${DB_HOST:-localhost}:${DB_PORT:-5432}";
         const expectedHash = hashVariable(expectedContent);
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(
