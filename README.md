@@ -19,6 +19,7 @@
 ## ✨ Features
 
 - **Easy Setup:** The action uses
+- **Easy Setup:** The action uses
   [the same environment variables](https://docs.docker.com/reference/cli/docker/#environment-variables)
   as the Docker CLI, so you can connect to your Docker Swarm cluster using a
   context, and via all transports supported by Docker (e.g., HTTP, TCP, SSH,
@@ -198,7 +199,7 @@ Specification. Instead, it:
   multiple files into a single, canonical Compose Specification.
 
 This ensures that regardless of the exact format you use (even mixing them), the
-final configuration passed to docker stack deploy is valid and correctly
+final configuration passed to `docker stack deploy` is valid and correctly
 interpreted by Docker Swarm.
 
 #### Variable interpolation
