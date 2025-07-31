@@ -229,7 +229,7 @@ describe("Variables", () => {
         });
       });
 
-      it("should interpolate variables within environment variable content", async () => {
+      it("should not interpolate variables within environment variable content", async () => {
         const variable = defineVariable({
           environment: "CONFIG_TEMPLATE",
         });
@@ -241,7 +241,7 @@ describe("Variables", () => {
         settings.variables.set("SERVER_HOST", "api.example.com");
         // SERVER_PORT not set, should use default
 
-        const expectedContent = "server=api.example.com:3000";
+        const expectedContent = "server=${SERVER_HOST}:${SERVER_PORT:-3000}";
         const expectedHash = hashVariable(expectedContent);
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(
@@ -613,7 +613,7 @@ describe("Variables", () => {
         });
       });
 
-      it("should interpolate variables in inferred environment variables", async () => {
+      it("should not interpolate variables in inferred environment variables", async () => {
         const variable = defineVariable({});
 
         settings.variables.set(
@@ -623,7 +623,7 @@ describe("Variables", () => {
         settings.variables.set("DB_HOST", "db.example.com");
         // DB_PORT not set, should use default
 
-        const expectedContent = "database=db.example.com:5432";
+        const expectedContent = "database=${DB_HOST:-localhost}:${DB_PORT:-5432}";
         const expectedHash = hashVariable(expectedContent);
 
         vi.spyOn(crypto, "randomUUID").mockImplementation(

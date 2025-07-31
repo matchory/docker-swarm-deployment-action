@@ -145,10 +145,7 @@ function readFromEnvironment(
     );
   }
 
-  const content = String(variables.get(variable));
-
-  // Interpolate variables within the environment content
-  return interpolateString(content, variables);
+  return String(variables.get(variable));
 }
 
 /**
@@ -163,10 +160,8 @@ function readFromContent(
   { content }: ContentVariable,
   variables: Map<string, string>,
 ) {
-  const contentStr = String(content);
-
   // Interpolate variables within the inline content
-  return interpolateString(contentStr, variables);
+  return interpolateString(String(content), variables);
 }
 
 async function inferVariable(
@@ -211,12 +206,11 @@ async function inferVariable(
       );
 
       (variable as EnvironmentVariable).environment = variant;
-      const rawValue = variables.get(variant)!;
-      const interpolatedValue = interpolateString(rawValue, variables);
+      const value = variables.get(variant)!;
 
       return [
-        interpolatedValue,
-        await transformVariable(interpolatedValue, name, variable),
+        value,
+        await transformVariable(value, name, variable),
       ] as const;
     }
   }
