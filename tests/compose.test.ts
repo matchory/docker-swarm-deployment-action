@@ -105,7 +105,13 @@ describe("Compose", () => {
         "docker-compose.yaml",
       ]);
 
-      expect(utils.exists).toHaveBeenCalledTimes(5);
+      expect(utils.exists).toHaveBeenCalledTimes(11);
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.yml");
       expect(utils.exists).toHaveBeenCalledWith(
         "docker-compose.production.yaml",
       );
@@ -120,7 +126,61 @@ describe("Compose", () => {
     it("should throw an error if no compose file is found", async () => {
       vi.spyOn(utils, "exists").mockResolvedValue(false);
       await expect(resolveComposeFiles(settings)).rejects.toThrowError();
-      expect(utils.exists).toHaveBeenCalledTimes(10);
+      expect(utils.exists).toHaveBeenCalledTimes(20);
+    });
+
+    it("should find and prefer compose.yaml over docker-compose.yaml", async () => {
+      vi.spyOn(utils, "exists").mockImplementation(
+        async (path: string) =>
+          path === "compose.yaml" || path === "docker-compose.yaml",
+      );
+
+      await expect(resolveComposeFiles(settings)).resolves.toEqual([
+        "compose.yaml",
+      ]);
+
+      expect(utils.exists).toHaveBeenCalledTimes(5);
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
+    });
+
+    it("should find and prefer compose.yml over docker-compose.yml", async () => {
+      vi.spyOn(utils, "exists").mockImplementation(
+        async (path: string) =>
+          path === "compose.yml" || path === "docker-compose.yml",
+      );
+
+      await expect(resolveComposeFiles(settings)).resolves.toEqual([
+        "compose.yml",
+      ]);
+
+      expect(utils.exists).toHaveBeenCalledTimes(6);
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
+      expect(utils.exists).toHaveBeenCalledWith("compose.yml");
+    });
+
+    it("should find and prefer compose.production.yaml with highest priority", async () => {
+      vi.spyOn(utils, "exists").mockImplementation(
+        async (path: string) =>
+          path === "compose.production.yaml" ||
+          path === "docker-compose.production.yaml" ||
+          path === "compose.yaml" ||
+          path === "docker-compose.yaml",
+      );
+
+      await expect(resolveComposeFiles(settings)).resolves.toEqual([
+        "compose.production.yaml",
+      ]);
+
+      expect(utils.exists).toHaveBeenCalledTimes(1);
+      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
     });
   });
 

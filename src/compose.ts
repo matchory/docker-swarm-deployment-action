@@ -12,14 +12,24 @@ import { processVariable, type Variable } from "./variables.js";
 export const schemaVersion = "3.9";
 
 export const defaultVariants = [
+  "compose.production.yaml",
+  "compose.production.yml",
+  "compose.prod.yaml",
+  "compose.prod.yml",
+  "compose.yaml",
+  "compose.yml",
   "docker-compose.production.yaml",
   "docker-compose.production.yml",
   "docker-compose.prod.yaml",
   "docker-compose.prod.yml",
   "docker-compose.yaml",
   "docker-compose.yml",
+  join(".docker", "compose.yaml"),
+  join(".docker", "compose.yml"),
   join(".docker", "docker-compose.yaml"),
   join(".docker", "docker-compose.yml"),
+  join("docker", "compose.yaml"),
+  join("docker", "compose.yml"),
   join("docker", "docker-compose.yaml"),
   join("docker", "docker-compose.yml"),
 ] as const;
