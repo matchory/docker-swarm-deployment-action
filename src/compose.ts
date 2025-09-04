@@ -6,7 +6,7 @@ import { debug } from "node:util";
 import { join } from "path";
 import { normalizeStackSpecification } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists, interpolateString } from "./utils.js";
+import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";
@@ -87,12 +87,11 @@ export async function resolveComposeFiles(
   // the Compose File to deploy, using the first one we find. This allows users
   // to use the action without having to specify a Compose File, as long as they
   // follow the naming conventions outlined in the documentation.
-  for (const location of defaultVariants) {
-    if (await exists(location)) {
-      core.info(`Found Compose File at "${location}"`);
-
-      return [location] as const;
-    }
+  const foundFile = await findFirstExistingFile(defaultVariants);
+  
+  if (foundFile) {
+    core.info(`Found Compose File at "${foundFile}"`);
+    return [foundFile] as const;
   }
 
   // We couldn't find any Compose Files, so we throw an error and abort the

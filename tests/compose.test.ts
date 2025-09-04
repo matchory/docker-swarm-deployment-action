@@ -20,6 +20,7 @@ import { processVariable } from "../src/variables.js";
 const unlink = vi.hoisted(() => vi.fn());
 const writeFile = vi.hoisted(() => vi.fn());
 const readFile = vi.hoisted(() => vi.fn());
+const readdir = vi.hoisted(() => vi.fn());
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -27,6 +28,7 @@ vi.mock("node:fs/promises", () => ({
   writeFile,
   readFile,
   unlink,
+  readdir,
 }));
 vi.mock("node:crypto", {
   spy: true,
@@ -97,90 +99,87 @@ describe("Compose", () => {
     });
 
     it("should find and return a compose file in common locations", async () => {
-      vi.spyOn(utils, "exists").mockImplementation(
-        async (path: string) => path === "docker-compose.yaml",
-      );
+      // Mock readdir to return docker-compose.yaml in the current directory
+      vi.mocked(readdir).mockImplementation(async (path: string) => {
+        if (path === ".") {
+          return ["docker-compose.yaml"] as any;
+        }
+        throw new Error("Directory not found");
+      });
 
       await expect(resolveComposeFiles(settings)).resolves.toEqual([
         "docker-compose.yaml",
       ]);
 
-      expect(utils.exists).toHaveBeenCalledTimes(11);
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.yml");
-      expect(utils.exists).toHaveBeenCalledWith(
-        "docker-compose.production.yaml",
-      );
-      expect(utils.exists).toHaveBeenCalledWith(
-        "docker-compose.production.yml",
-      );
-      expect(utils.exists).toHaveBeenCalledWith("docker-compose.prod.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("docker-compose.prod.yml");
-      expect(utils.exists).toHaveBeenCalledWith("docker-compose.yaml");
+      // Should have called readdir for each unique directory
+      expect(readdir).toHaveBeenCalledWith(".");
+      expect(readdir).toHaveBeenCalledWith(".docker");
+      expect(readdir).toHaveBeenCalledWith("docker");
     });
 
     it("should throw an error if no compose file is found", async () => {
-      vi.spyOn(utils, "exists").mockResolvedValue(false);
+      // Mock readdir to return empty arrays (no files found)
+      vi.mocked(readdir).mockResolvedValue([] as any);
+      
       await expect(resolveComposeFiles(settings)).rejects.toThrowError();
-      expect(utils.exists).toHaveBeenCalledTimes(20);
+      
+      // Should have tried to read each unique directory
+      expect(readdir).toHaveBeenCalledWith(".");
+      expect(readdir).toHaveBeenCalledWith(".docker");
+      expect(readdir).toHaveBeenCalledWith("docker");
     });
 
     it("should find and prefer compose.yaml over docker-compose.yaml", async () => {
-      vi.spyOn(utils, "exists").mockImplementation(
-        async (path: string) =>
-          path === "compose.yaml" || path === "docker-compose.yaml",
-      );
+      // Mock readdir to return both files, but compose.yaml should be preferred
+      vi.mocked(readdir).mockImplementation(async (path: string) => {
+        if (path === ".") {
+          return ["compose.yaml", "docker-compose.yaml"] as any;
+        }
+        throw new Error("Directory not found");
+      });
 
       await expect(resolveComposeFiles(settings)).resolves.toEqual([
         "compose.yaml",
       ]);
 
-      expect(utils.exists).toHaveBeenCalledTimes(5);
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
+      expect(readdir).toHaveBeenCalledWith(".");
     });
 
     it("should find and prefer compose.yml over docker-compose.yml", async () => {
-      vi.spyOn(utils, "exists").mockImplementation(
-        async (path: string) =>
-          path === "compose.yml" || path === "docker-compose.yml",
-      );
+      // Mock readdir to return both files, but compose.yml should be preferred
+      vi.mocked(readdir).mockImplementation(async (path: string) => {
+        if (path === ".") {
+          return ["compose.yml", "docker-compose.yml"] as any;
+        }
+        throw new Error("Directory not found");
+      });
 
       await expect(resolveComposeFiles(settings)).resolves.toEqual([
         "compose.yml",
       ]);
 
-      expect(utils.exists).toHaveBeenCalledTimes(6);
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.prod.yml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.yaml");
-      expect(utils.exists).toHaveBeenCalledWith("compose.yml");
+      expect(readdir).toHaveBeenCalledWith(".");
     });
 
     it("should find and prefer compose.production.yaml with highest priority", async () => {
-      vi.spyOn(utils, "exists").mockImplementation(
-        async (path: string) =>
-          path === "compose.production.yaml" ||
-          path === "docker-compose.production.yaml" ||
-          path === "compose.yaml" ||
-          path === "docker-compose.yaml",
-      );
+      // Mock readdir to return multiple files, but compose.production.yaml should be preferred
+      vi.mocked(readdir).mockImplementation(async (path: string) => {
+        if (path === ".") {
+          return [
+            "compose.production.yaml",
+            "docker-compose.production.yaml",
+            "compose.yaml",
+            "docker-compose.yaml"
+          ] as any;
+        }
+        throw new Error("Directory not found");
+      });
 
       await expect(resolveComposeFiles(settings)).resolves.toEqual([
         "compose.production.yaml",
       ]);
 
-      expect(utils.exists).toHaveBeenCalledTimes(1);
-      expect(utils.exists).toHaveBeenCalledWith("compose.production.yaml");
+      expect(readdir).toHaveBeenCalledWith(".");
     });
   });
 

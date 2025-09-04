@@ -1,4 +1,5 @@
-import { access, constants } from "node:fs/promises";
+import { access, constants, readdir } from "node:fs/promises";
+import { dirname, basename, join as joinPath } from "node:path";
 
 /**
  * Check if a file or directory exists
@@ -13,6 +14,55 @@ export async function exists(path: string) {
   }
 
   return true;
+}
+
+/**
+ * Efficiently find the first existing file from a list of candidate paths
+ * by grouping paths by directory and reading each directory only once.
+ *
+ * @param paths Array of file paths to check, in priority order
+ * @returns The first existing file path, or null if none exist
+ */
+export async function findFirstExistingFile(
+  paths: readonly string[]
+): Promise<string | null> {
+  // Group paths by their directory to minimize directory reads
+  const pathsByDir = new Map<string, string[]>();
+  
+  for (const path of paths) {
+    const dir = dirname(path);
+    
+    if (!pathsByDir.has(dir)) {
+      pathsByDir.set(dir, []);
+    }
+    pathsByDir.get(dir)!.push(path);
+  }
+
+  // Read each directory once and cache the results
+  const filesByDir = new Map<string, Set<string>>();
+  
+  for (const [dir, _] of pathsByDir) {
+    try {
+      const files = await readdir(dir);
+      filesByDir.set(dir, new Set(files));
+    } catch {
+      // Directory doesn't exist or isn't readable
+      filesByDir.set(dir, new Set());
+    }
+  }
+
+  // Now check paths in priority order against cached directory contents
+  for (const path of paths) {
+    const dir = dirname(path);
+    const fileName = basename(path);
+    const filesInDir = filesByDir.get(dir);
+    
+    if (filesInDir && filesInDir.has(fileName)) {
+      return path;
+    }
+  }
+  
+  return null;
 }
 
 /**
