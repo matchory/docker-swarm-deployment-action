@@ -47,9 +47,9 @@
 ### Simple Usage
 
 In most cases, you don't need to explicitly tell the action where your Compose
-file is. If your file is named commonly ( like `docker-compose.yaml` or
-`docker-compose.production.yml`) and is in your repository's root or a standard
-location, the action will find it automatically.
+file is. If your file is named commonly (like `compose.yaml`, `compose.yml`,
+`docker-compose.yaml`, or `docker-compose.production.yml`) and is in your
+repository's root or a standard location, the action will find it automatically.
 
 Here's a basic workflow example:
 
@@ -139,18 +139,32 @@ If the `compose-file` input is not specified, the action automatically searches
 for your Compose File(s) in the following common locations and names, in
 descending order:
 
-1. `docker-compose.production.yaml`
-2. `docker-compose.production.yml`
-3. `docker-compose.prod.yaml`
-4. `docker-compose.prod.yml`
-5. `docker-compose.yaml`
-6. `docker-compose.yml`
-7. `.docker/docker-compose.yaml`
-8. `.docker/docker-compose.yml`
-9. `docker/docker-compose.yaml`
-10. `docker/docker-compose.yml`
+1. `compose.production.yaml`
+2. `compose.production.yml`
+3. `compose.prod.yaml`
+4. `compose.prod.yml`
+5. `compose.yaml`
+6. `compose.yml`
+7. `docker-compose.production.yaml`
+8. `docker-compose.production.yml`
+9. `docker-compose.prod.yaml`
+10. `docker-compose.prod.yml`
+11. `docker-compose.yaml`
+12. `docker-compose.yml`
+13. `.docker/compose.yaml`
+14. `.docker/compose.yml`
+15. `.docker/docker-compose.yaml`
+16. `.docker/docker-compose.yml`
+17. `docker/compose.yaml`
+18. `docker/compose.yml`
+19. `docker/docker-compose.yaml`
+20. `docker/docker-compose.yml`
 
-The first file found will be used. This covers most standard project structures.
+The first file found will be used. Modern `compose.*` files take priority over
+legacy `docker-compose.*` files, following the
+[Compose Specification](https://www.compose-spec.io/) standardized in 2021. This
+covers most standard project structures while maintaining full backward
+compatibility.
 
 #### Using environment variables
 

@@ -4,15 +4,16 @@ import { dump } from "js-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
 import { run } from "../src/main.js";
-import * as utils from "../src/utils.js";
 
 const readFile = vi.hoisted(() => vi.fn());
 const writeFile = vi.hoisted(() => vi.fn());
 const unlink = vi.hoisted(() => vi.fn());
+const readdir = vi.hoisted(() => vi.fn());
 vi.mock("node:fs/promises", () => ({
   readFile,
   writeFile,
   unlink,
+  readdir,
 }));
 
 const mockUploadArtifact = vi.hoisted(() => vi.fn());
@@ -33,6 +34,14 @@ describe("main", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllEnvs();
+
+    // Set up default readdir mock to return compose files
+    vi.mocked(readdir).mockImplementation(async (path: string) => {
+      if (path === ".") {
+        return ["compose.yaml"];
+      }
+      throw new Error("Directory not found");
+    });
   });
 
   it("should deploy an application", async () => {
@@ -49,7 +58,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValue(0);
     vi.mocked(exec)
       // docker stack config
@@ -107,7 +115,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValueOnce(0).mockResolvedValueOnce(1);
     vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
       options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
@@ -137,7 +144,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValue(0);
     vi.mocked(exec)
       .mockImplementationOnce(async (_0, _1, options) => {
@@ -201,7 +207,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValue(0);
     vi.mocked(exec)
       .mockImplementationOnce(async (_0, _1, options) => {
@@ -255,7 +260,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValue(0);
     vi.mocked(exec)
       .mockImplementationOnce(async (_0, _1, options) => {
@@ -309,7 +313,6 @@ describe("main", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
     vi.spyOn(core, "getInput").mockReturnValue("");
-    vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
     vi.mocked(exec).mockResolvedValueOnce(0).mockResolvedValueOnce(1);
     vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
       options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));

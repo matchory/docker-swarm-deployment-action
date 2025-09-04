@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { exists, interpolateString, sleep } from "../src/utils.js";
+import {
+  exists,
+  findFirstExistingFile,
+  interpolateString,
+  sleep,
+} from "../src/utils.js";
 
 const base = fileURLToPath(new URL(".", import.meta.url));
 
@@ -12,6 +17,38 @@ describe("Utilities", () => {
 
     it("should return false for non-existing files", async () => {
       await expect(exists("some-missing-file.json")).resolves.toBe(false);
+    });
+  });
+
+  describe("findFirstExistingFile", () => {
+    it("should return the first existing file", async () => {
+      const result = await findFirstExistingFile([
+        "non-existent-file.txt",
+        `${base}/../package.json`,
+        `${base}/../README.md`,
+      ]);
+      expect(result).toBe(`${base}/../package.json`);
+    });
+
+    it("should return null if no files exist", async () => {
+      const result = await findFirstExistingFile([
+        "non-existent-1.txt",
+        "non-existent-2.txt",
+      ]);
+      expect(result).toBeNull();
+    });
+
+    it("should handle files in different directories", async () => {
+      const result = await findFirstExistingFile([
+        "non-existent.txt",
+        `${base}/../package.json`,
+      ]);
+      expect(result).toBe(`${base}/../package.json`);
+    });
+
+    it("should handle empty array", async () => {
+      const result = await findFirstExistingFile([]);
+      expect(result).toBeNull();
     });
   });
 
