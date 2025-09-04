@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { exists, findFirstExistingFile, interpolateString, sleep } from "../src/utils.js";
+import {
+  exists,
+  findFirstExistingFile,
+  interpolateString,
+  sleep,
+} from "../src/utils.js";
 
 const base = fileURLToPath(new URL(".", import.meta.url));
 
@@ -20,7 +25,7 @@ describe("Utilities", () => {
       const result = await findFirstExistingFile([
         "non-existent-file.txt",
         `${base}/../package.json`,
-        `${base}/../README.md`
+        `${base}/../README.md`,
       ]);
       expect(result).toBe(`${base}/../package.json`);
     });
@@ -28,7 +33,7 @@ describe("Utilities", () => {
     it("should return null if no files exist", async () => {
       const result = await findFirstExistingFile([
         "non-existent-1.txt",
-        "non-existent-2.txt"
+        "non-existent-2.txt",
       ]);
       expect(result).toBeNull();
     });
@@ -36,7 +41,7 @@ describe("Utilities", () => {
     it("should handle files in different directories", async () => {
       const result = await findFirstExistingFile([
         "non-existent.txt",
-        `${base}/../package.json`
+        `${base}/../package.json`,
       ]);
       expect(result).toBe(`${base}/../package.json`);
     });

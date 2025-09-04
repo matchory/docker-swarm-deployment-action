@@ -47,8 +47,8 @@
 ### Simple Usage
 
 In most cases, you don't need to explicitly tell the action where your Compose
-file is. If your file is named commonly (like `compose.yaml`, `compose.yml`, 
-`docker-compose.yaml`, or `docker-compose.production.yml`) and is in your 
+file is. If your file is named commonly (like `compose.yaml`, `compose.yml`,
+`docker-compose.yaml`, or `docker-compose.production.yml`) and is in your
 repository's root or a standard location, the action will find it automatically.
 
 Here's a basic workflow example:
@@ -161,9 +161,9 @@ descending order:
 20. `docker/docker-compose.yml`
 
 The first file found will be used. Modern `compose.*` files take priority over
-legacy `docker-compose.*` files, following the 
-[Compose Specification](https://www.compose-spec.io/) standardized in 2021.
-This covers most standard project structures while maintaining full backward
+legacy `docker-compose.*` files, following the
+[Compose Specification](https://www.compose-spec.io/) standardized in 2021. This
+covers most standard project structures while maintaining full backward
 compatibility.
 
 #### Using environment variables

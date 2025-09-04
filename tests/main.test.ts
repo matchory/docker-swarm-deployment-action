@@ -4,7 +4,6 @@ import { dump } from "js-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
 import { run } from "../src/main.js";
-import * as utils from "../src/utils.js";
 
 const readFile = vi.hoisted(() => vi.fn());
 const writeFile = vi.hoisted(() => vi.fn());
@@ -35,11 +34,11 @@ describe("main", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllEnvs();
-    
+
     // Set up default readdir mock to return compose files
     vi.mocked(readdir).mockImplementation(async (path: string) => {
       if (path === ".") {
-        return ["compose.yaml"] as any;
+        return ["compose.yaml"];
       }
       throw new Error("Directory not found");
     });

@@ -102,7 +102,7 @@ describe("Compose", () => {
       // Mock readdir to return docker-compose.yaml in the current directory
       vi.mocked(readdir).mockImplementation(async (path: string) => {
         if (path === ".") {
-          return ["docker-compose.yaml"] as any;
+          return ["docker-compose.yaml"];
         }
         throw new Error("Directory not found");
       });
@@ -119,10 +119,10 @@ describe("Compose", () => {
 
     it("should throw an error if no compose file is found", async () => {
       // Mock readdir to return empty arrays (no files found)
-      vi.mocked(readdir).mockResolvedValue([] as any);
-      
+      vi.mocked(readdir).mockResolvedValue([]);
+
       await expect(resolveComposeFiles(settings)).rejects.toThrowError();
-      
+
       // Should have tried to read each unique directory
       expect(readdir).toHaveBeenCalledWith(".");
       expect(readdir).toHaveBeenCalledWith(".docker");
@@ -133,7 +133,7 @@ describe("Compose", () => {
       // Mock readdir to return both files, but compose.yaml should be preferred
       vi.mocked(readdir).mockImplementation(async (path: string) => {
         if (path === ".") {
-          return ["compose.yaml", "docker-compose.yaml"] as any;
+          return ["compose.yaml", "docker-compose.yaml"];
         }
         throw new Error("Directory not found");
       });
@@ -149,7 +149,7 @@ describe("Compose", () => {
       // Mock readdir to return both files, but compose.yml should be preferred
       vi.mocked(readdir).mockImplementation(async (path: string) => {
         if (path === ".") {
-          return ["compose.yml", "docker-compose.yml"] as any;
+          return ["compose.yml", "docker-compose.yml"];
         }
         throw new Error("Directory not found");
       });
@@ -169,8 +169,8 @@ describe("Compose", () => {
             "compose.production.yaml",
             "docker-compose.production.yaml",
             "compose.yaml",
-            "docker-compose.yaml"
-          ] as any;
+            "docker-compose.yaml",
+          ];
         }
         throw new Error("Directory not found");
       });
@@ -525,7 +525,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -549,7 +549,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -579,7 +579,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -609,7 +609,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -633,7 +633,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -657,7 +657,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -682,7 +682,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -711,7 +711,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -743,7 +743,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -787,7 +787,7 @@ describe("Compose", () => {
         mockSettings.variables.set("SECRET_VALUE", "my-secret-value");
         mockSettings.variables.set("CLIENT_ID", "my-client-id");
         mockSettings.variables.set("CLIENT_SECRET", "my-client-secret");
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -821,7 +821,7 @@ describe("Compose", () => {
           services: {},
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -839,7 +839,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -877,7 +877,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -929,7 +929,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -969,7 +969,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -1005,7 +1005,7 @@ describe("Compose", () => {
         };
 
         // This should not throw because the interpolation itself is valid JSON
-        const result = await interpolateSpec(spec, mockSettings);
+        const result = interpolateSpec(spec, mockSettings);
 
         expect(result).toEqual({
           version: "3.9",
@@ -1048,7 +1048,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, settingsWithDeploymentVars);
+        const result = interpolateSpec(spec, settingsWithDeploymentVars);
 
         expect(result).toEqual({
           version: "3.9",
@@ -1091,7 +1091,7 @@ describe("Compose", () => {
           },
         };
 
-        const result = await interpolateSpec(spec, settingsWithDeploymentVars);
+        const result = interpolateSpec(spec, settingsWithDeploymentVars);
 
         expect(result).toEqual({
           version: "3.9",

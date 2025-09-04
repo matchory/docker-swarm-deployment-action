@@ -88,7 +88,7 @@ export async function resolveComposeFiles(
   // to use the action without having to specify a Compose File, as long as they
   // follow the naming conventions outlined in the documentation.
   const foundFile = await findFirstExistingFile(defaultVariants);
-  
+
   if (foundFile) {
     core.info(`Found Compose File at "${foundFile}"`);
     return [foundFile] as const;
