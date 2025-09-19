@@ -404,6 +404,38 @@ services:
       });
     });
 
+    it("should handle empty log lines", async () => {
+      const mockOutput = `\n\n`;
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(mockOutput));
+        return 0;
+      });
+
+      const logs = await engine.getServiceLogs("abc", {});
+
+      expect(logs).toHaveLength(0);
+    });
+
+    it("should handle invalid timestamps in log lines", async () => {
+      const mockOutput = `invalid-timestamp foo=bar Some log message`;
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(mockOutput));
+        return 0;
+      });
+
+      const logs = await engine.getServiceLogs("abc", {});
+
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toEqual({
+        timestamp: null,
+        metadata: { foo: "bar" },
+        message: "Some log message",
+      });
+      expect(mockedCore.warning).toHaveBeenCalledWith(
+        expect.stringMatching(/Unexpected invalid timestamp/),
+      );
+    });
+
     it("should handle the since option", async () => {
       const sinceDate = new Date(Date.now() - 60_000); // 1 minute ago
       await engine.getServiceLogs("abc", { since: sinceDate });
