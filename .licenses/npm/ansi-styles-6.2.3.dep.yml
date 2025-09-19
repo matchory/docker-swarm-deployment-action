@@ -1,6 +1,6 @@
 ---
 name: ansi-styles
-version: 6.2.1
+version: 6.2.3
 type: npm
 summary: ANSI escape codes for styling strings in the terminal
 homepage:

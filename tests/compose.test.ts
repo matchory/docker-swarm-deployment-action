@@ -1172,6 +1172,7 @@ describe("Compose", () => {
           ),
           listeners: {
             stdout: expect.any(Function),
+            stderr: expect.any(Function),
           },
           silent: false,
         },
@@ -1210,6 +1211,7 @@ describe("Compose", () => {
           ),
           listeners: {
             stdout: expect.any(Function),
+            stderr: expect.any(Function),
           },
           silent: false,
         },
@@ -1260,6 +1262,7 @@ describe("Compose", () => {
           ),
           listeners: {
             stdout: expect.any(Function),
+            stderr: expect.any(Function),
           },
           silent: false,
         },

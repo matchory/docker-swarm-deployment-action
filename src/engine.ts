@@ -375,6 +375,7 @@ async function executeDockerCommand(
       : Buffer.from(stdin)
     : undefined;
   let output = "";
+  let errorOutput = "";
 
   core.startGroup(`docker ${args.join(" ")}`);
 
@@ -388,16 +389,17 @@ async function executeDockerCommand(
         env,
         listeners: {
           stdout: (data) => (output += data.toString()),
+          stderr: (data) => (errorOutput += data.toString()),
         },
       },
     );
 
-    core.info("Docker Command executed successfully");
-    core.debug(output);
+    core.info(output);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     core.error(`Command failed: ${message}`);
     core.error(output);
+    core.error(errorOutput);
 
     throw new Error(`Failed to execute Docker Command: ${message}`, { cause });
   } finally {
