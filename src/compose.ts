@@ -112,9 +112,13 @@ export async function loadComposeSpecs(
   composeFiles: Readonly<Array<string>>,
   settings: Readonly<Settings>,
 ) {
-  return Promise.all(
-    composeFiles.map((path) => loadComposeSpec(path, settings)),
-  );
+  const specs = [];
+
+  for (const filename of composeFiles) {
+    specs.push(await loadComposeSpec(filename, settings));
+  }
+
+  return specs;
 }
 
 async function loadComposeSpec(filename: string, settings: Settings) {

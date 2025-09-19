@@ -178,14 +178,15 @@ export async function listServices(
       return services;
     }
 
-    return Promise.all(
-      services.map((metadata) =>
-        inspectService(metadata.ID).then((service) => ({
-          ...metadata,
-          ...service,
-        })),
-      ),
-    );
+    const inspectedServices: ServiceWithMetadata[] = [];
+
+    for (const metadata of services) {
+      const service = await inspectService(metadata.ID);
+
+      inspectedServices.push({ ...metadata, ...service });
+    }
+
+    return inspectedServices;
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
 
