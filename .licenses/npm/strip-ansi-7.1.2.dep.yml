@@ -1,6 +1,6 @@
 ---
 name: strip-ansi
-version: 7.1.0
+version: 7.1.2
 type: npm
 summary: Strip ANSI escape codes from a string
 homepage:
