@@ -235,11 +235,24 @@ export async function getServiceLogs(
     return output
       .trim()
       .split("\n")
-      .map((line = "") => {
-        const [timestamp, metadata, ...rest] = line.split(" ");
+      .filter((line) => !!line?.trim())
+      .map((line) => {
+        const [rawTimestamp, metadata, ...rest] = line.split(" ");
+        let timestamp: Date | null;
+
+        try {
+          timestamp = new Date(rawTimestamp);
+
+          if (isNaN(timestamp.getTime())) {
+            throw new Error("Invalid date");
+          }
+        } catch {
+          core.warning(`Unexpected invalid timestamp: ${rawTimestamp}`);
+          timestamp = null;
+        }
 
         return {
-          timestamp: new Date(timestamp),
+          timestamp,
           metadata: parseLabels(metadata),
           message: rest.join(" "),
         };
