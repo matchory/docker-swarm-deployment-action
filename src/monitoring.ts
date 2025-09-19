@@ -70,6 +70,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
             { cause: error },
           ),
         );
+        core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
         core.setOutput("service-logs", logs.toString());
         core.summary.addHeading("Service Logs", 2);
         core.summary.addRaw(
@@ -229,7 +230,7 @@ function resolveFailureReason(
       rollback_started: "Service failed to update and is being rolled back",
       rollback_completed: "Service failed to update and was rolled back",
       rollback_paused: "Service is paused and is being rolled back",
-      unknown: "Service update status is unknown",
+      unknown: `Service update status '${state}' is unknown`,
     }[state] ?? "Unknown failure reason"
   );
 }
