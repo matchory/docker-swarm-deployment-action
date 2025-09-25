@@ -201,7 +201,17 @@ export async function inspectService(id: string) {
   );
 
   try {
-    return JSON.parse(output) as Service;
+    const result = JSON.parse(output) as Service | Service[];
+
+    if (Array.isArray(result)) {
+      if (result.length === 0) {
+        throw new Error(`Service "${id}" not found`);
+      }
+
+      return result[0];
+    }
+
+    return result;
   } catch (cause) {
     throw new Error(
       `Failed to inspect service ${id}: Failed to parse JSON output. ` +
