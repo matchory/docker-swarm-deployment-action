@@ -89,7 +89,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
               : []),
           ],
           ...logs.map((entry) => [
-            { data: entry.timestamp.toISOString() },
+            { data: entry.timestamp!.toISOString() },
             { data: entry.message },
             ...(entry.metadata
               ? Object.values(entry.metadata).map((value) => ({ data: value }))
@@ -137,13 +137,17 @@ export function isServiceUpdateComplete(
   core.debug(`Checking update status of service ${name}`);
 
   if (!service.UpdateStatus && isServiceRunning(service)) {
+    core.info(
+      `Service "${name}" is still running and did not require an update`,
+    );
+
     return true;
   }
 
   const updateStatus = service.UpdateStatus?.State ?? "unknown";
 
   if (updateStatus === "completed") {
-    core.debug(`Update of service "${name}" is complete`);
+    core.info(`Update of service "${name}" is complete`);
 
     return true;
   }
@@ -154,7 +158,10 @@ export function isServiceUpdateComplete(
     return false;
   }
 
-  const reason = resolveFailureReason(updateStatus);
+  const reason = resolveFailureReason(
+    updateStatus,
+    service.UpdateStatus?.Message,
+  );
 
   throw new Error(`Update of service "${name}" failed: ${reason}`, {
     cause: service.UpdateStatus,
@@ -214,6 +221,7 @@ export function isServiceRunning(
  * The function returns a human-readable string describing the failure reason.
  *
  * @param state The state of the service update
+ * @param message Optional message providing additional context
  * @returns A human-readable string describing the failure reason
  */
 function resolveFailureReason(
@@ -223,14 +231,16 @@ function resolveFailureReason(
         "completed" | "updating"
       >
     | "unknown",
+  message?: string,
 ) {
-  return (
+  const reason =
     {
       paused: "Service is paused",
       rollback_started: "Service failed to update and is being rolled back",
       rollback_completed: "Service failed to update and was rolled back",
       rollback_paused: "Service is paused and is being rolled back",
       unknown: `Service update status '${state}' is unknown`,
-    }[state] ?? "Unknown failure reason"
-  );
+    }[state] ?? "Unknown failure reason";
+
+  return reason + (message ? `: ${message}` : "");
 }
