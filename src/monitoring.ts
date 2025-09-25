@@ -39,6 +39,8 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       throw new Error("Deployment timed out");
     }
 
+    await sleep(settings.monitorInterval * 1_000);
+
     services = await listServices(
       { labels: { "com.docker.stack.namespace": settings.stack } },
       true,
@@ -106,12 +108,6 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
         );
         completedServices.add(service.ID);
       }
-    }
-
-    // In case all services have been updated during the first iteration, we
-    // don't want to sleep and drag out the deployment process unnecessarily.
-    if (completedServices.size < services.length) {
-      await sleep(settings.monitorInterval * 1_000);
     }
   } while (completedServices.size < services.length);
 
@@ -189,7 +185,9 @@ export function isServiceRunning(
     const [running = 0, desired = 0] = service.Replicas.split("/", 2);
 
     if (running === desired) {
-      core.debug(`Service "${name}" is running`);
+      core.debug(
+        `Service "${name}" is running (${running}/${desired} replicas)`,
+      );
 
       return true;
     }
