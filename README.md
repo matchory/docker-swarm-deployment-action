@@ -361,7 +361,7 @@ use HEREDOC syntax [similar to `$GITHUB_ENV`](https://docs.github.com/en/actions
 ```yaml
 variables: |
     APP_URL=https://myapp.example.com
-    NODE_LIST=<<EOF
+    NODE_LIST<<EOF
     node-1.example.com
     node-2.example.com
     node-3.example.com
