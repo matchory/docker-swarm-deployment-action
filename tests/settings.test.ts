@@ -502,5 +502,55 @@ SCRIPT_END`;
 echo "Starting application..."
 cd /app && npm start`);
     });
+
+    it("should handle invalid delimiter patterns as regular key=value pairs", () => {
+      const variablesInput = `INVALID_DELIMITER<<WITH SPACE
+should not be treated as heredoc
+WITH SPACE
+ANOTHER_INVALID<<with-dashes
+also should not work
+with-dashes
+VALID_DELIMITER<<EOF
+this should work
+EOF
+REGULAR=value`;
+
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) => ({
+          variables: variablesInput,
+        })[name] || "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      // These should not be parsed since they don't match valid patterns
+      expect(settings.variables.has("INVALID_DELIMITER")).toBe(false);
+      expect(settings.variables.has("ANOTHER_INVALID")).toBe(false);
+      expect(settings.variables.get("VALID_DELIMITER")).toBe("this should work");
+      expect(settings.variables.get("REGULAR")).toBe("value");
+    });
+
+    it("should handle whitespace in delimiter comparison correctly", () => {
+      const variablesInput = `TEST_VAR<<EOF
+line1
+  EOF  
+line2
+EOF`;
+
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) => ({
+          variables: variablesInput,
+        })[name] || "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      // Should not match "  EOF  " but should match exact "EOF"
+      expect(settings.variables.get("TEST_VAR")).toBe(
+        "line1\n  EOF  \nline2",
+      );
+    });
   });
 });

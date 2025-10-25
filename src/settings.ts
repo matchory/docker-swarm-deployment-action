@@ -114,7 +114,7 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
     }
 
     // Check for HEREDOC syntax: KEY<<DELIMITER
-    const heredocMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)<<(.+)$/);
+    const heredocMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)<<([A-Za-z0-9_]+)$/);
     if (heredocMatch) {
       const [, key, delimiter] = heredocMatch;
       const contentLines: string[] = [];
@@ -122,7 +122,7 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
 
       // Collect lines until we find the delimiter
       while (i < lines.length) {
-        if (lines[i].trim() === delimiter.trim()) {
+        if (lines[i] === delimiter) {
           // Found the closing delimiter
           break;
         }
