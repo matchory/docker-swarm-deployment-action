@@ -100,15 +100,47 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
     return variables;
   }
 
-  // Parse input as a string of key=value pairs
-  return input
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => !!line && !line.startsWith("#"))
-    .reduce((acc, line) => {
+  // Parse input supporting both key=value and multi-line HEREDOC syntax
+  const lines = input.split("\n");
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    // Skip empty lines and comments
+    if (!line || line.startsWith("#")) {
+      i++;
+      continue;
+    }
+
+    // Check for HEREDOC syntax: KEY<<DELIMITER
+    const heredocMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)<<(.+)$/);
+    if (heredocMatch) {
+      const [, key, delimiter] = heredocMatch;
+      const contentLines: string[] = [];
+      i++; // Move to the next line after the HEREDOC declaration
+
+      // Collect lines until we find the delimiter
+      while (i < lines.length) {
+        if (lines[i].trim() === delimiter.trim()) {
+          // Found the closing delimiter
+          break;
+        }
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      // Set the multi-line content
+      variables.set(key, contentLines.join("\n"));
+      i++; // Skip the delimiter line
+    } else {
+      // Traditional key=value format
       const [key, ...parts] = line.split("=").map((part) => part.trim());
       const content = parts.join("=");
+      variables.set(key, content);
+      i++;
+    }
+  }
 
-      return acc.set(key, content);
-    }, variables);
+  return variables;
 }
