@@ -516,9 +516,10 @@ EOF
 REGULAR=value`;
 
       vi.spyOn(core, "getInput").mockImplementation(
-        (name) => ({
-          variables: variablesInput,
-        })[name] || "",
+        (name) =>
+          ({
+            variables: variablesInput,
+          })[name] || "",
       );
       vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
@@ -527,7 +528,9 @@ REGULAR=value`;
       // These should not be parsed since they don't match valid patterns
       expect(settings.variables.has("INVALID_DELIMITER")).toBe(false);
       expect(settings.variables.has("ANOTHER_INVALID")).toBe(false);
-      expect(settings.variables.get("VALID_DELIMITER")).toBe("this should work");
+      expect(settings.variables.get("VALID_DELIMITER")).toBe(
+        "this should work",
+      );
       expect(settings.variables.get("REGULAR")).toBe("value");
     });
 
@@ -539,18 +542,17 @@ line2
 EOF`;
 
       vi.spyOn(core, "getInput").mockImplementation(
-        (name) => ({
-          variables: variablesInput,
-        })[name] || "",
+        (name) =>
+          ({
+            variables: variablesInput,
+          })[name] || "",
       );
       vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
       // Should not match "  EOF  " but should match exact "EOF"
-      expect(settings.variables.get("TEST_VAR")).toBe(
-        "line1\n  EOF  \nline2",
-      );
+      expect(settings.variables.get("TEST_VAR")).toBe("line1\n  EOF  \nline2");
     });
   });
 });

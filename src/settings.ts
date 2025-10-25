@@ -114,11 +114,16 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
     }
 
     // Check for HEREDOC syntax: KEY<<DELIMITER
-    const heredocMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)<<([A-Za-z0-9_]+)$/);
+    const heredocMatch = line.match(
+      /^([A-Za-z_][A-Za-z0-9_]*)<<([A-Za-z0-9_]+)$/,
+    );
+
     if (heredocMatch) {
       const [, key, delimiter] = heredocMatch;
       const contentLines: string[] = [];
-      i++; // Move to the next line after the HEREDOC declaration
+
+      // Move to the next line after the HEREDOC declaration
+      i++;
 
       // Collect lines until we find the delimiter
       while (i < lines.length) {
@@ -126,18 +131,19 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
           // Found the closing delimiter
           break;
         }
+
         contentLines.push(lines[i]);
         i++;
       }
 
-      // Set the multi-line content
       variables.set(key, contentLines.join("\n"));
-      i++; // Skip the delimiter line
+
+      // Skip the delimiter line
+      i++;
     } else {
       // Traditional key=value format
       const [key, ...parts] = line.split("=").map((part) => part.trim());
-      const content = parts.join("=");
-      variables.set(key, content);
+      variables.set(key, parts.join("="));
       i++;
     }
   }
