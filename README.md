@@ -348,10 +348,27 @@ environment:
   with:
     stack-name: my-application
     variables: |
+      # Lines starting with '#' are ignored as comments
       APP_URL=https://myapp.example.com
       DATABASE_USERNAME=${{ vars.DATABASE_USERNAME }}
       DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
 ```
+
+##### Setting multi-line variables
+If you need to set multi-line variables (e.g., PEM keys or certificates), you can
+use HEREDOC syntax [similar to `$GITHUB_ENV`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#multiline-strings):
+
+```yaml
+variables: |
+    APP_URL=https://myapp.example.com
+    NODE_LIST=<<EOF
+    node-1.example.com
+    node-2.example.com
+    node-3.example.com
+    EOF
+    DATABASE_USERNAME=${{ vars.DATABASE_USERNAME }}
+```
+
 
 #### Automatic Rotation
 
