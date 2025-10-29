@@ -504,7 +504,6 @@ function parseLabels(labels: string = "") {
     })
     .reduce<Record<string, string>>(
       (acc, [key, value]) => ({
-        // biome-ignore lint/performance/noAccumulatingSpread: Easiest way to merge the object here
         ...acc,
         [key]: value,
       }),

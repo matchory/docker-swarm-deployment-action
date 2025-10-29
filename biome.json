@@ -100,7 +100,12 @@
     {
       "includes": ["tests/**/*.ts"],
       "linter": {
-        "rules": { "suspicious": { "noTemplateCurlyInString": "off" } }
+        "rules": {
+          "suspicious": {
+            "noTemplateCurlyInString": "off",
+            "noEmptyBlockStatements": "off"
+          }
+        }
       }
     }
   ]

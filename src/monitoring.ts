@@ -91,7 +91,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
               : []),
           ],
           ...logs.map((entry) => [
-            { data: entry.timestamp?.toISOString() ?? '<no timestamp>' },
+            { data: entry.timestamp?.toISOString() ?? "<no timestamp>" },
             { data: entry.message },
             ...(entry.metadata
               ? Object.values(entry.metadata).map((value) => ({ data: value }))

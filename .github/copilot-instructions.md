@@ -17,7 +17,7 @@ extensive error handling.
 **Main Languages**: TypeScript, YAML, Bash  
 **Package Manager**: npm (v10.8.2+)  
 **Key Dependencies**: @actions/core, @actions/exec, js-yaml  
-**Build Tools**: unbuild, @vercel/ncc, vitest, eslint, prettier
+**Build Tools**: unbuild, @vercel/ncc, vitest, biome
 
 ## Build and Validation Commands
 
@@ -39,8 +39,8 @@ GitHub executes. Always run `npm run package` after code changes.
 
 ```bash
 npm run test           # Run vitest test suite (takes ~2 seconds, expect 98%+ coverage)
-npm run lint           # ESLint checking (must pass)
-npm run format:check   # Prettier formatting check
+npm run lint           # Biome checking (must pass)
+npm run format:check   # Biome formatting check
 npm run format:write   # Fix formatting issues automatically
 ```
 
@@ -85,10 +85,9 @@ npm run local-action   # Test action locally with .env file
 - **`package.json`**: Node.js project configuration and script definitions
 - **`tsconfig.json`**, **`tsconfig.base.json`**, **`tsconfig.node.json`**:
   TypeScript configuration
+- **`biome.json`**: Biome code formatting and linting configuration
 - **`build.config.ts`**: unbuild configuration for TypeScript compilation
 - **`vitest.config.ts`**: Test runner configuration with coverage settings
-- **`eslint.config.mjs`**: ESLint configuration (flat config format)
-- **`.prettierrc.yml`** + **`.prettierignore`**: Code formatting configuration
 - **`.node-version`**: Specifies Node.js 23.10.0 requirement
 
 ### Testing (`/tests/`)
@@ -112,7 +111,7 @@ coverage:
 ### Build Outputs
 
 - **`/out/`**: TypeScript compilation output (intermediate)
-- **`/dist/`**: Final bundled action code (committed to repo, used by GitHub)
+- **`/dist/`**: Final bundled action code (committed to repository, used by GitHub)
 - **`/coverage/`**: Test coverage reports
 - **`/badges/`**: Coverage badges (SVG files)
 
@@ -165,8 +164,8 @@ coverage:
 - **Docker Operations**: `src/engine.ts` + `src/deployment.ts`
 - **Compose Handling**: `src/compose.ts` + `src/variables.ts`
 - **Monitoring Logic**: `src/monitoring.ts`
-- **Bug Fixes**: Corresponding source file + add/update tests
-- **Documentation**: `README.md` (auto-formatted by prettier)
+- **Bugfixes**: Corresponding source file + add/update tests
+- **Documentation**: `README.md` (autoformatted by biome)
 
 **Trust these instructions** - they are based on comprehensive repository
 analysis and successful command execution. Only explore further if the provided

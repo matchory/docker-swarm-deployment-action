@@ -41,7 +41,7 @@
     "bundle": "npx @vercel/ncc build out/index.cjs --source-map --license licenses.txt --minify --out dist --target es2022 --no-cache",
     "ci-test": "npx vitest",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
-    "format:write": "npx @biomejs/biome format --write --unsafe",
+    "format:write": "npx @biomejs/biome check --write --unsafe",
     "format:check": "npx @biomejs/biome format",
     "lint": "npx @biomejs/biome lint",
     "licensed": "licensed cache",
