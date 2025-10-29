@@ -140,9 +140,7 @@ export function isServiceUpdateComplete(
       );
       return true;
     } else {
-      core.info(
-        `Service "${name}" is still updating (UpdateStatus missing and replicas not fully running)`,
-      );
+      core.info(`Service "${name}" is still updating`);
       return false;
     }
   }
