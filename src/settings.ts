@@ -238,12 +238,12 @@ function isJsonLike(input: string): boolean {
   if (!input.startsWith("{") || !input.endsWith("}")) {
     return false;
   }
-  
+
   // Additional heuristics to filter out common false positives
   // If it contains KEY= patterns without proper JSON structure, likely KEY=VALUE format
   if (input.includes("=") && !input.includes(":")) {
     return false;
   }
-  
+
   return true;
 }

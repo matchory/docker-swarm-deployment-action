@@ -817,7 +817,8 @@ VAR2=value2}`;
         VAR_TO_EXCLUDE: "var_value",
       });
 
-      const extraVariables = "EXTRA_VAR=extra_value\nVAR_TO_EXCLUDE=extra_override";
+      const extraVariables =
+        "EXTRA_VAR=extra_value\nVAR_TO_EXCLUDE=extra_override";
       const excludeList = "VAR_TO_EXCLUDE\nEXTRA_VAR";
 
       vi.spyOn(core, "getInput").mockImplementation(
