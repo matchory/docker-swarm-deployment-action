@@ -6,8 +6,8 @@ summary: TypeScript definitions for tunnel
 homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/tunnel
 license: mit
 licenses:
-- sources: LICENSE
-  text: |2
+  - sources: LICENSE
+    text: |2
         MIT License
 
         Copyright (c) Microsoft Corporation.

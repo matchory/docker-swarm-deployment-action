@@ -6,8 +6,8 @@ summary: Public API for OpenTelemetry
 homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/api
 license: apache-2.0
 licenses:
-- sources: LICENSE
-  text: |2
+  - sources: LICENSE
+    text: |2
                                      Apache License
                                Version 2.0, January 2004
                             http://www.apache.org/licenses/
@@ -209,14 +209,14 @@ licenses:
        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
        See the License for the specific language governing permissions and
        limitations under the License.
-- sources: README.md
-  text: |-
-    Apache 2.0 - See [LICENSE][license-url] for more information.
+  - sources: README.md
+    text: |-
+      Apache 2.0 - See [LICENSE][license-url] for more information.
 
-    [opentelemetry-js]: https://github.com/open-telemetry/opentelemetry-js
+      [opentelemetry-js]: https://github.com/open-telemetry/opentelemetry-js
 
-    [discussions-url]: https://github.com/open-telemetry/opentelemetry-js/discussions
-    [license-url]: https://github.com/open-telemetry/opentelemetry-js/blob/main/api/LICENSE
-    [docs-tracing]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/tracing.md
-    [docs-sdk-registration]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/sdk-registration.md
+      [discussions-url]: https://github.com/open-telemetry/opentelemetry-js/discussions
+      [license-url]: https://github.com/open-telemetry/opentelemetry-js/blob/main/api/LICENSE
+      [docs-tracing]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/tracing.md
+      [docs-sdk-registration]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/sdk-registration.md
 notices: []

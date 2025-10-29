@@ -6,6 +6,6 @@ summary: Unpack multibyte binary values from buffers
 homepage:
 license: mit
 licenses:
-- sources: README.markdown
-  text: MIT
+  - sources: README.markdown
+    text: MIT
 notices: []

@@ -6,8 +6,8 @@ summary: Recursive fs.readdir with streaming API and glob filtering.
 homepage: https://github.com/Yqnn/node-readdir-glob
 license: apache-2.0
 licenses:
-- sources: LICENSE
-  text: |2-
+  - sources: LICENSE
+    text: |2-
                                      Apache License
                                Version 2.0, January 2004
                             http://www.apache.org/licenses/
