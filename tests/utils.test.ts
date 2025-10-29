@@ -530,8 +530,7 @@ describe("Utilities", () => {
     describe("Performance and edge cases", () => {
       it("should handle very long strings efficiently", () => {
         const variables = new Map([["VAR", "replacement"]]);
-        const longString =
-          "prefix ".repeat(1000) + "$VAR" + " suffix".repeat(1000);
+        const longString = `${"prefix ".repeat(1000)}$VAR${" suffix".repeat(1000)}`;
         const result = interpolateString(longString, variables);
         expect(result).toContain("replacement");
         expect(result).not.toContain("$VAR");

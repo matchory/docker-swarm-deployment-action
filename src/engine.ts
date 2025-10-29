@@ -253,7 +253,7 @@ export async function getServiceLogs(
         try {
           timestamp = new Date(rawTimestamp);
 
-          if (isNaN(timestamp.getTime())) {
+          if (Number.isNaN(timestamp.getTime())) {
             throw new Error("Invalid date");
           }
         } catch {
@@ -411,8 +411,12 @@ async function executeDockerCommand(
         silent,
         env,
         listeners: {
-          stdout: (data) => (output += data.toString()),
-          stderr: (data) => (errorOutput += data.toString()),
+          stdout: (data) => {
+            output += data.toString();
+          },
+          stderr: (data) => {
+            errorOutput += data.toString();
+          },
         },
       },
     );
@@ -500,6 +504,7 @@ function parseLabels(labels: string = "") {
     })
     .reduce<Record<string, string>>(
       (acc, [key, value]) => ({
+        // biome-ignore lint/performance/noAccumulatingSpread: Easiest way to merge the object here
         ...acc,
         [key]: value,
       }),

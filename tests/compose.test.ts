@@ -1,6 +1,6 @@
+import * as crypto from "node:crypto";
 import { exec } from "@actions/exec";
 import * as yaml from "js-yaml";
-import * as crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ComposeSpec,
@@ -429,7 +429,7 @@ describe("Compose", () => {
         .mockReturnValueOnce("20000000-0000-4000-0000-000000000000");
       vi.spyOn(yaml, "load").mockReturnValue(outputSpec);
       vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
-        options!.listeners!.stdout!(Buffer.from("output that can be parsed"));
+        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
 
         return 0;
       });

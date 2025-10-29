@@ -58,7 +58,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
 
       const serviceIdentifier =
         service.Spec?.Name ?? service.Name ?? service.ID;
-      let complete;
+      let complete: boolean;
 
       try {
         complete = isServiceUpdateComplete(service);
@@ -91,7 +91,7 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
               : []),
           ],
           ...logs.map((entry) => [
-            { data: entry.timestamp!.toISOString() },
+            { data: entry.timestamp?.toISOString() ?? '<no timestamp>' },
             { data: entry.message },
             ...(entry.metadata
               ? Object.values(entry.metadata).map((value) => ({ data: value }))

@@ -1,5 +1,5 @@
-import * as core from "@actions/core";
 import { env } from "node:process";
+import * as core from "@actions/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSettings } from "../src/settings.js";
 

@@ -1,14 +1,14 @@
-import { DefaultArtifactClient } from "@actions/artifact";
-import * as core from "@actions/core";
 import { writeFile } from "node:fs/promises";
 import { env } from "node:process";
+import { DefaultArtifactClient } from "@actions/artifact";
+import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose";
 import { deploy } from "./deployment.js";
 import { parseSettings } from "./settings.js";
 
 export async function run() {
   const settings = parseSettings(env);
-  let composeSpec: ComposeSpec | undefined = undefined;
+  let composeSpec: ComposeSpec | undefined;
 
   try {
     composeSpec = await deploy(settings);

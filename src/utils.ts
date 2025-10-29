@@ -35,7 +35,7 @@ export async function findFirstExistingFile(
     if (!pathsByDir.has(dir)) {
       pathsByDir.set(dir, []);
     }
-    pathsByDir.get(dir)!.push(path);
+    pathsByDir.get(dir)?.push(path);
   }
 
   // Read each directory once and cache the results
@@ -57,7 +57,7 @@ export async function findFirstExistingFile(
     const fileName = basename(path);
     const filesInDir = filesByDir.get(dir);
 
-    if (filesInDir && filesInDir.has(fileName)) {
+    if (filesInDir?.has(fileName)) {
       return path;
     }
   }

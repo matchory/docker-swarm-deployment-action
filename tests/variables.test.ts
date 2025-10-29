@@ -1,5 +1,5 @@
-import * as core from "@actions/core";
 import * as crypto from "node:crypto";
+import * as core from "@actions/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
 import * as engine from "../src/engine.js";

@@ -1,5 +1,5 @@
-import { getBooleanInput, getInput } from "@actions/core";
 import { debug } from "node:util";
+import { getBooleanInput, getInput } from "@actions/core";
 
 /**
  * Deployment settings

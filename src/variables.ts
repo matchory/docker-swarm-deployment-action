@@ -1,7 +1,7 @@
-import * as core from "@actions/core";
-import { createHash } from "crypto";
 import * as crypto from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
@@ -44,8 +44,8 @@ export async function processVariable(
     variable = {};
   }
 
-  let modifiedVariable: FileVariable | undefined = undefined;
-  let content: string | undefined = undefined;
+  let modifiedVariable: FileVariable | undefined;
+  let content: string | undefined;
 
   // If a variable names a file explicitly, we need to check if the file exists.
   if ("file" in variable) {
@@ -206,7 +206,7 @@ async function inferVariable(
       );
 
       (variable as EnvironmentVariable).environment = variant;
-      const value = variables.get(variant)!;
+      const value = variables.get(variant) ?? "";
 
       return [value, await transformVariable(value, name, variable)] as const;
     }
@@ -241,7 +241,7 @@ async function encodeVariable(
   name: string,
   variable: Variable,
 ) {
-  const format = variable.labels![
+  const format = variable.labels?.[
     encodeLabel
   ].toString() as keyof typeof encoders;
 
@@ -264,7 +264,7 @@ async function decodeVariable(
   name: string,
   variable: Variable,
 ) {
-  const format = variable.labels![
+  const format = variable.labels?.[
     decodeLabel
   ].toString() as keyof typeof decoders;
 
@@ -358,7 +358,7 @@ export async function pruneSecrets(
     },
   });
 
-  if (items.length == 0) {
+  if (items.length === 0) {
     return;
   }
 
@@ -432,7 +432,7 @@ export async function pruneConfigs(
     },
   });
 
-  if (items.length == 0) {
+  if (items.length === 0) {
     return;
   }
 

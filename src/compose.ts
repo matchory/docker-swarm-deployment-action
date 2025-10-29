@@ -1,9 +1,9 @@
-import * as core from "@actions/core";
-import { dump, load } from "js-yaml";
 import { randomUUID } from "node:crypto";
 import { readFile, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { debug } from "node:util";
-import { join } from "path";
+import * as core from "@actions/core";
+import { dump, load } from "js-yaml";
 import { normalizeStackSpecification } from "./engine";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
@@ -224,7 +224,7 @@ export async function normalizeSpec(
     }),
   );
 
-  let spec;
+  let spec: Awaited<ComposeSpec>;
 
   try {
     spec = await normalizeStackSpecification(composeFiles, settings, true);

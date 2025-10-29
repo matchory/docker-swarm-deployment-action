@@ -1,4 +1,4 @@
-import { describe, it, vi, expect } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./main.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),

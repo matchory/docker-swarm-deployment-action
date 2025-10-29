@@ -267,7 +267,7 @@ services:
       const mockOutput = JSON.stringify(mockServiceMetadata);
       mockedExec.mockImplementation(async (_0, args, options) => {
         if (args?.includes("ls")) {
-          options?.listeners?.stdout?.(Buffer.from(mockOutput + "\n"));
+          options?.listeners?.stdout?.(Buffer.from(`${mockOutput}\n`));
         }
         return 0;
       });
@@ -288,7 +288,7 @@ services:
 
       mockedExec.mockImplementation(async (_0, args, options) => {
         if (args?.includes("ls")) {
-          options?.listeners?.stdout?.(Buffer.from(mockLsOutput + "\n"));
+          options?.listeners?.stdout?.(Buffer.from(`${mockLsOutput}\n`));
         } else if (args?.includes("inspect")) {
           options?.listeners?.stdout?.(Buffer.from(mockInspectOutput));
         }
@@ -466,7 +466,7 @@ services:
       };
       const mockOutput = JSON.stringify(mockSecret);
       mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(mockOutput + "\n"));
+        options?.listeners?.stdout?.(Buffer.from(`${mockOutput}\n`));
         return 0;
       });
 
@@ -522,7 +522,7 @@ services:
       };
       const mockOutput = JSON.stringify(mockConfig);
       mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(mockOutput + "\n"));
+        options?.listeners?.stdout?.(Buffer.from(`${mockOutput}\n`));
         return 0;
       });
 
