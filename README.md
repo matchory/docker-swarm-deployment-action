@@ -116,7 +116,10 @@ To configure the action, you can use the following inputs:
 | `env-var-prefix`   | `DEPLOYMENT_`                         | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution).                           |
 | `manage-variables` | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
 | `strict-variables` | `false`                               | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
-| `variables`        | _—_                                   | Variables as KEY=value pairs, separated by new lines, to apply in the environment. Can be used to set secrets.                    |
+| `variables`        | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.           |
+| `secrets`          | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.  |
+| `exclude-variables`| _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to all variable sources.                        |
+| `extra-variables`  | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
 | `monitor`          | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
 | `monitor-timeout`  | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval` | `10`                                  | The interval in seconds to check the stack status.                                                                                |
@@ -335,12 +338,37 @@ populate the `file` property with that. This is done by the following rules:
 #### Providing GitHub Secrets and Variables
 
 You can use GitHub Secrets and Variables to provide the values for your configs.
-This can be challenging if you have many variables, as you need to explicitly
-pass each one to the action; in cases where you use this action in a nested
-workflow, this means you have to define them in multiple places.  
-To avoid that, you can use the `variables` input to pass a list of key-value
-pairs, which will override any variables of the same name defined in the process
-environment:
+This action supports multiple ways to pass variables, making it easy to work with
+both individual variables and bulk repository configuration.
+
+##### Using JSON input (Recommended)
+
+The easiest way to pass all repository secrets and variables is using JSON input.
+This approach eliminates the need to list each variable individually:
+
+```yaml
+- name: Deploy to Docker Swarm
+  uses: matchory/deployment@v1
+  with:
+    stack-name: my-application
+    # Pass all repository variables as JSON
+    variables: ${{ toJSON(vars) }}
+    # Pass all repository secrets as JSON
+    secrets: ${{ toJSON(secrets) }}
+    # Optionally exclude specific variables
+    exclude-variables: |
+      SOME_INTERNAL_VAR
+      CI_TOKEN
+    # Add extra runtime variables if needed
+    extra-variables: |
+      DEPLOYMENT_ID=${{ github.run_id }}
+      BUILD_URL=${{ github.repository }}/actions/runs/${{ github.run_id }}
+```
+
+##### Using key-value pairs
+
+You can also use the traditional approach with explicit key-value pairs.
+This gives you fine-grained control over which variables to include:
 
 ```yaml
 - name: Deploy to Docker Swarm
@@ -354,11 +382,22 @@ environment:
       DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
 ```
 
+##### Variable priority and merging
+
+When using multiple input sources, variables are merged with the following priority
+(later sources override earlier ones):
+
+1. **Environment variables** (lowest priority)
+2. **`variables` input** (JSON or key-value)
+3. **`secrets` input** (JSON or key-value)
+4. **`extra-variables` input** (highest priority)
+
+The `exclude-variables` filter is applied after all merging is complete.
+
 ##### Setting multi-line variables
 
-If you need to set multi-line variables (e.g., PEM keys or certificates), you
-can use HEREDOC syntax
-[similar to `$GITHUB_ENV`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#multiline-strings):
+Multi-line variables (e.g., PEM keys or certificates) are supported in key-value
+inputs using HEREDOC syntax [similar to `$GITHUB_ENV`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#multiline-strings):
 
 ```yaml
 variables: |
@@ -369,6 +408,25 @@ variables: |
   node-3.example.com
   EOF
   DATABASE_USERNAME=${{ vars.DATABASE_USERNAME }}
+```
+
+##### Mixed usage examples
+
+You can mix JSON and key-value formats as needed:
+
+```yaml
+# Example: Use JSON for bulk config, key-value for specific overrides
+- name: Deploy to Docker Swarm
+  uses: matchory/deployment@v1
+  with:
+    variables: ${{ toJSON(vars) }}           # All repository variables
+    secrets: ${{ toJSON(secrets) }}          # All repository secrets  
+    extra-variables: |                       # Runtime-specific variables
+      DEPLOYMENT_TIME=${{ github.event.head_commit.timestamp }}
+      GIT_SHA=${{ github.sha }}
+    exclude-variables: |                     # Remove sensitive CI variables
+      GITHUB_TOKEN
+      RUNNER_TOKEN
 ```
 
 #### Automatic Rotation

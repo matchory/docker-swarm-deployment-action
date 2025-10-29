@@ -31,8 +31,29 @@ inputs:
   variables:
     description: >-
       Variables to pass to the deployment as a list of key-value pairs in the
-      format `KEY=value`, separated by newlines. Variables override those in the
-      process environment and can be used to pass through secrets or configs.
+      format `KEY=value`, separated by newlines, or as JSON object (e.g., from
+      `${{ toJSON(vars) }`). Variables override those in the process 
+      environment and can be used to pass through secrets or configs.
+    default: ""
+  secrets:
+    description: >-
+      Variables to pass to the deployment as a list of key-value pairs in the
+      format `KEY=value`, separated by newlines, or as JSON object (e.g., from
+      `${{ toJSON(secrets) }`). Secrets have higher priority than variables and
+      override those in the process environment.
+    default: ""
+  exclude-variables:
+    description: >-
+      List of variable names to exclude from the final deployment, separated by
+      newlines. Applies to variables from environment, variables, and secrets 
+      sources. Does not affect extra-variables which have highest priority.
+    default: ""
+  extra-variables:
+    description: >-
+      Additional variables to pass to the deployment as a list of key-value 
+      pairs in the format `KEY=value`, separated by newlines, or as JSON 
+      object. These have the highest priority and override all other variable
+      sources.
     default: ""
   env-var-prefix:
     description: >-

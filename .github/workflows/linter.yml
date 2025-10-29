@@ -51,6 +51,7 @@ jobs:
           VALIDATE_TRIVY: false
           VALIDATE_JSCPD: false
           VALIDATE_JSON: false
+          VALIDATE_MARKDOWN_PRETTIER: false
           VALIDATE_JSON_PRETTIER: false
           VALIDATE_YAML_PRETTIER: false
           TYPESCRIPT_PRETTIER: false

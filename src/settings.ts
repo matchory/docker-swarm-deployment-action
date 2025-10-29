@@ -30,7 +30,15 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
 
   const stack = inferStackName(getInput("stack-name"), env);
   const version = inferVersion(getInput("version"), env);
-  const variables = inferVariables(getInput("variables"), env);
+  const variables = inferVariables(
+    {
+      variables: getInput("variables"),
+      secrets: getInput("secrets"),
+      excludeVariables: getInput("exclude-variables"),
+      extraVariables: getInput("extra-variables"),
+    },
+    env,
+  );
 
   // Add deployment variables that should be available during interpolation
   variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
@@ -82,10 +90,17 @@ function inferComposeFiles(files: string | undefined, env: NodeJS.ProcessEnv) {
     .filter(Boolean);
 }
 
-function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
+interface VariableInputs {
+  variables?: string;
+  secrets?: string;
+  excludeVariables?: string;
+  extraVariables?: string;
+}
+
+function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
   const variables = new Map<string, string>();
 
-  // Read environment variables from the process environment as defaults
+  // Step 1: Read environment variables from the process environment as defaults
   for (const [key, content] of Object.entries(env)) {
     if (key === "VARIABLES") {
       continue;
@@ -96,11 +111,78 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
     }
   }
 
+  // Step 2: Parse and merge variables from the variables input
+  if (inputs.variables) {
+    const parsedVariables = parseVariableInput(inputs.variables);
+    for (const [key, value] of parsedVariables) {
+      variables.set(key, value);
+    }
+  }
+
+  // Step 3: Parse and merge secrets (higher priority than variables)
+  if (inputs.secrets) {
+    const parsedSecrets = parseVariableInput(inputs.secrets);
+    for (const [key, value] of parsedSecrets) {
+      variables.set(key, value);
+    }
+  }
+
+  // Step 4: Apply exclusions (before extra variables to ensure they have highest priority)
+  if (inputs.excludeVariables) {
+    const excludeList = inputs.excludeVariables
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const key of excludeList) {
+      variables.delete(key);
+    }
+  }
+
+  // Step 5: Parse and merge extra variables (highest priority, cannot be excluded)
+  if (inputs.extraVariables) {
+    const parsedExtraVariables = parseVariableInput(inputs.extraVariables);
+    for (const [key, value] of parsedExtraVariables) {
+      variables.set(key, value);
+    }
+  }
+
+  return variables;
+}
+
+function parseVariableInput(input: string): Map<string, string> {
+  const variables = new Map<string, string>();
+
   if (!input) {
     return variables;
   }
 
-  // Parse input supporting both key=value and multi-line HEREDOC syntax
+  const trimmedInput = input.trim();
+
+  // Try to parse as JSON first
+  if (isJsonLike(trimmedInput)) {
+    try {
+      const parsed = JSON.parse(trimmedInput);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value === "string") {
+            variables.set(key, value);
+          } else if (value !== null && value !== undefined) {
+            variables.set(key, String(value));
+          }
+        }
+        return variables;
+      }
+    } catch {
+      // If JSON parsing fails, fall through to KEY=VALUE parsing
+    }
+  }
+
+  // Parse as KEY=VALUE format with HEREDOC support
   const lines = input.split("\n");
   let i = 0;
 
@@ -149,4 +231,19 @@ function inferVariables(input: string | undefined, env: NodeJS.ProcessEnv) {
   }
 
   return variables;
+}
+
+function isJsonLike(input: string): boolean {
+  // Quick check to avoid expensive JSON.parse calls for obviously non-JSON strings
+  if (!input.startsWith("{") || !input.endsWith("}")) {
+    return false;
+  }
+
+  // Additional heuristics to filter out common false positives
+  // If it contains KEY= patterns without proper JSON structure, likely KEY=VALUE format
+  if (input.includes("=") && !input.includes(":")) {
+    return false;
+  }
+
+  return true;
 }
