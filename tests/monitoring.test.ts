@@ -539,9 +539,7 @@ describe("Monitoring", () => {
           Name: "svc1",
           Replicas: "1/2",
           Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
-          UpdateStatus: { Message: "Service is updating" } as Partial<
-            NonNullable<ServiceWithMetadata["UpdateStatus"]>
-          >,
+          UpdateStatus: { Message: "Service is updating" },
         }),
       ).toBe(false); // Should return false (still updating)
     });
@@ -555,7 +553,7 @@ describe("Monitoring", () => {
           Replicas: "1/2",
           Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
           UpdateStatus: {
-            State: undefined as undefined,
+            State: undefined,
             Message: "Service is updating",
           },
         }),
