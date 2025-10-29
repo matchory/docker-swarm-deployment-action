@@ -1,9 +1,9 @@
 ---
-name: bare-events
-version: 2.8.1
+name: events-universal
+version: 1.0.1
 type: npm
-summary: Event emitters for JavaScript
-homepage: https://github.com/holepunchto/bare-events#readme
+summary: Universal wrapper for the Node.js events module
+homepage: https://github.com/holepunchto/events-universal#readme
 license: apache-2.0
 licenses:
 - sources: LICENSE

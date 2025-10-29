@@ -1,16 +1,16 @@
 ---
-name: "@octokit/core"
-version: 5.2.2
+name: xmlbuilder
+version: 11.0.1
 type: npm
-summary: Extendable client for GitHub's REST & GraphQL APIs
-homepage:
+summary: An XML builder for node.js
+homepage: http://github.com/oozcitak/xmlbuilder-js
 license: mit
 licenses:
 - sources: LICENSE
   text: |
-    The MIT License
+    The MIT License (MIT)
 
-    Copyright (c) 2019 Octokit contributors
+    Copyright (c) 2013 Ozgur Ozcitak
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,4 @@ licenses:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
-- sources: README.md
-  text: "[MIT](LICENSE)"
 notices: []

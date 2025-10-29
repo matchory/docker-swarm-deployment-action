@@ -1,9 +1,9 @@
 ---
-name: bare-events
-version: 2.8.1
+name: "@opentelemetry/api"
+version: 1.9.0
 type: npm
-summary: Event emitters for JavaScript
-homepage: https://github.com/holepunchto/bare-events#readme
+summary: Public API for OpenTelemetry
+homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/api
 license: apache-2.0
 licenses:
 - sources: LICENSE
@@ -210,5 +210,13 @@ licenses:
        See the License for the specific language governing permissions and
        limitations under the License.
 - sources: README.md
-  text: Apache-2.0
+  text: |-
+    Apache 2.0 - See [LICENSE][license-url] for more information.
+
+    [opentelemetry-js]: https://github.com/open-telemetry/opentelemetry-js
+
+    [discussions-url]: https://github.com/open-telemetry/opentelemetry-js/discussions
+    [license-url]: https://github.com/open-telemetry/opentelemetry-js/blob/main/api/LICENSE
+    [docs-tracing]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/tracing.md
+    [docs-sdk-registration]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/sdk-registration.md
 notices: []

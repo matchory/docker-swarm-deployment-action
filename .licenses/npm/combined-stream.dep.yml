@@ -1,16 +1,14 @@
 ---
-name: "@octokit/core"
-version: 5.2.2
+name: combined-stream
+version: 1.0.8
 type: npm
-summary: Extendable client for GitHub's REST & GraphQL APIs
-homepage:
+summary: A stream that emits multiple other streams one after another.
+homepage: https://github.com/felixge/node-combined-stream
 license: mit
 licenses:
-- sources: LICENSE
+- sources: License
   text: |
-    The MIT License
-
-    Copyright (c) 2019 Octokit contributors
+    Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +27,6 @@ licenses:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
-- sources: README.md
-  text: "[MIT](LICENSE)"
+- sources: Readme.md
+  text: combined-stream is licensed under the MIT license.
 notices: []

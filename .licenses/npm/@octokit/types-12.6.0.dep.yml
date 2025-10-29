@@ -1,8 +1,8 @@
 ---
-name: "@octokit/plugin-rest-endpoint-methods"
-version: 10.4.1
+name: "@octokit/types"
+version: 12.6.0
 type: npm
-summary: Octokit plugin adding one method for all of api.github.com REST API endpoints
+summary: Shared TypeScript definitions for Octokit projects
 homepage:
 license: mit
 licenses:
