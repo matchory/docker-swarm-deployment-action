@@ -132,15 +132,22 @@ export function isServiceUpdateComplete(
   const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
-  if (!service.UpdateStatus && isServiceRunning(service)) {
-    core.info(
-      `Service "${name}" is still running and did not require an update`,
-    );
-
-    return true;
+  // Handle missing UpdateStatus
+  if (!service.UpdateStatus) {
+    if (isServiceRunning(service)) {
+      core.info(
+        `Service "${name}" is still running and did not require an update`,
+      );
+      return true;
+    } else {
+      core.info(`Service "${name}" is still updating`);
+      return false;
+    }
   }
 
-  const updateStatus = service.UpdateStatus?.State ?? "unknown";
+  // If UpdateStatus exists but State is missing, treat it as "updating"
+  // This handles race conditions where service hasn't fully started yet
+  const updateStatus = service.UpdateStatus?.State ?? "updating";
 
   if (updateStatus === "completed") {
     core.info(`Update of service "${name}" is complete`);

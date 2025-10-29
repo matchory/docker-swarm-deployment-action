@@ -530,5 +530,47 @@ describe("Monitoring", () => {
         }),
       ).toBe(true);
     });
+
+    it("should treat missing UpdateStatus.State as 'updating'", () => {
+      // Test case for the issue: when UpdateStatus exists but State is missing
+      expect(
+        isServiceUpdateComplete({
+          ID: "svc1",
+          Name: "svc1",
+          Replicas: "1/2",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          UpdateStatus: { Message: "Service is updating" },
+        }),
+      ).toBe(false); // Should return false (still updating)
+    });
+
+    it("should treat undefined UpdateStatus.State as 'updating'", () => {
+      // Test case for when UpdateStatus.State is explicitly undefined
+      expect(
+        isServiceUpdateComplete({
+          ID: "svc1",
+          Name: "svc1",
+          Replicas: "1/2",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          UpdateStatus: {
+            State: undefined,
+            Message: "Service is updating",
+          },
+        }),
+      ).toBe(false); // Should return false (still updating)
+    });
+
+    it("should treat missing UpdateStatus as 'updating' when service is not fully running", () => {
+      // New test for missing UpdateStatus with partial replicas
+      expect(
+        isServiceUpdateComplete({
+          ID: "svc1",
+          Name: "svc1",
+          Replicas: "1/3", // Not fully running
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          // UpdateStatus is completely missing
+        }),
+      ).toBe(false); // Should return false (still updating)
+    });
   });
 });
