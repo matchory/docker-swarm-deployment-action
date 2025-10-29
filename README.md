@@ -362,7 +362,7 @@ This approach eliminates the need to list each variable individually:
     # Add extra runtime variables if needed
     extra-variables: |
       DEPLOYMENT_ID=${{ github.run_id }}
-      BUILD_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BUILD_URL=${{ github.repository }}/actions/runs/${{ github.run_id }}
 ```
 
 ##### Using key-value pairs
