@@ -782,7 +782,7 @@ VAR2=value2}`;
       expect(settings.variables.has("EXCLUDE_VAR")).toBe(false);
     });
 
-    it("should exclude variables from all sources", () => {
+    it("should exclude variables from environment, variables, and secrets sources", () => {
       vi.stubEnv("ENV_EXCLUDE", "env_value");
 
       const variablesJson = JSON.stringify({
@@ -793,16 +793,13 @@ VAR2=value2}`;
         SECRET_EXCLUDE: "secret_value",
       });
 
-      const extraVariables = "EXTRA_EXCLUDE=extra_value";
-      const excludeList =
-        "ENV_EXCLUDE\nVAR_EXCLUDE\nSECRET_EXCLUDE\nEXTRA_EXCLUDE";
+      const excludeList = "ENV_EXCLUDE\nVAR_EXCLUDE\nSECRET_EXCLUDE";
 
       vi.spyOn(core, "getInput").mockImplementation(
         (name) =>
           ({
             variables: variablesJson,
             secrets: secretsJson,
-            "extra-variables": extraVariables,
             "exclude-variables": excludeList,
           })[name] || "",
       );
@@ -813,7 +810,33 @@ VAR2=value2}`;
       expect(settings.variables.has("ENV_EXCLUDE")).toBe(false);
       expect(settings.variables.has("VAR_EXCLUDE")).toBe(false);
       expect(settings.variables.has("SECRET_EXCLUDE")).toBe(false);
-      expect(settings.variables.has("EXTRA_EXCLUDE")).toBe(false);
+    });
+
+    it("should not exclude extra variables even if listed in exclude-variables", () => {
+      const variablesJson = JSON.stringify({
+        VAR_TO_EXCLUDE: "var_value",
+      });
+
+      const extraVariables = "EXTRA_VAR=extra_value\nVAR_TO_EXCLUDE=extra_override";
+      const excludeList = "VAR_TO_EXCLUDE\nEXTRA_VAR";
+
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            variables: variablesJson,
+            "extra-variables": extraVariables,
+            "exclude-variables": excludeList,
+          })[name] || "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      // VAR_TO_EXCLUDE from variables source should be excluded
+      // But when re-added via extra-variables, it should be present
+      expect(settings.variables.get("VAR_TO_EXCLUDE")).toBe("extra_override");
+      // EXTRA_VAR should be present despite being in exclude list
+      expect(settings.variables.get("EXTRA_VAR")).toBe("extra_value");
     });
 
     it("should handle empty exclude list", () => {

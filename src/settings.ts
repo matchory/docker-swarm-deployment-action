@@ -127,15 +127,7 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
     }
   }
 
-  // Step 4: Parse and merge extra variables (highest priority)
-  if (inputs.extraVariables) {
-    const parsedExtraVariables = parseVariableInput(inputs.extraVariables);
-    for (const [key, value] of parsedExtraVariables) {
-      variables.set(key, value);
-    }
-  }
-
-  // Step 5: Apply exclusions
+  // Step 4: Apply exclusions (before extra variables to ensure they have highest priority)
   if (inputs.excludeVariables) {
     const excludeList = inputs.excludeVariables
       .split("\n")
@@ -144,6 +136,14 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
 
     for (const key of excludeList) {
       variables.delete(key);
+    }
+  }
+
+  // Step 5: Parse and merge extra variables (highest priority, cannot be excluded)
+  if (inputs.extraVariables) {
+    const parsedExtraVariables = parseVariableInput(inputs.extraVariables);
+    for (const [key, value] of parsedExtraVariables) {
+      variables.set(key, value);
     }
   }
 

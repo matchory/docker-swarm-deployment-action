@@ -45,8 +45,8 @@ inputs:
   exclude-variables:
     description: >-
       List of variable names to exclude from the final deployment, separated by
-      newlines. Applies to variables from all sources (environment, variables,
-      secrets, extra-variables).
+      newlines. Applies to variables from environment, variables, and secrets 
+      sources. Does not affect extra-variables which have highest priority.
     default: ""
   extra-variables:
     description: >-
