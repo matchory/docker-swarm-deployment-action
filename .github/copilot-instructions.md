@@ -14,23 +14,18 @@ This is a **GitHub Action** written in **TypeScript** that deploys applications 
 
 ## Build and Validation Commands
 
-**ALWAYS run these commands in sequence for a complete build:**
+**Environment is pre-initialized**: Dependencies are already installed and the project is built via the `.github/workflows/copilot-setup-steps.yml` workflow.
 
-### 1. Environment Setup
-```bash
-# Ensure Node.js 20+ is available (check .node-version file)
-npm ci  # Install dependencies - ALWAYS run this first
-```
-**Note**: `npm ci` shows deprecated package warnings (rimraf, eslint@8) - these are expected and can be ignored.
+### Available Commands (No Setup Required)
 
-### 2. Build Process (Required Order)
 ```bash
 npm run build    # TypeScript compilation via unbuild → creates /out directory
 npm run bundle   # Bundle for Action distribution → creates /dist directory
+npm run package  # Combined build + bundle (shortcut for both above)
 ```
-**Critical**: The `/dist` directory contains the final bundled Action code that GitHub executes. Always run both commands after code changes.
+**Critical**: The `/dist` directory contains the final bundled Action code that GitHub executes. Always run `npm run package` after code changes.
 
-### 3. Testing and Quality Checks
+### Testing and Quality Checks
 ```bash
 npm run test           # Run vitest test suite (takes ~2 seconds, expect 98%+ coverage)
 npm run lint           # ESLint checking (must pass)
@@ -39,13 +34,13 @@ npm run format:write   # Fix formatting issues automatically
 ```
 **Common Issue**: `format:check` may fail if README.md has formatting issues. Run `format:write` to fix.
 
-### 4. Complete Pipeline
+### Complete Pipeline
 ```bash
 npm run all  # Runs: format:write → lint → test → coverage → package
 ```
 **Note**: The `coverage` step may fail due to network restrictions (img.shields.io unavailable), but this doesn't affect functionality.
 
-### 5. Development Commands
+### Development Commands
 ```bash
 npm run package:watch  # Watch mode for bundle rebuilding during development
 npm run local-action   # Test action locally with .env file
@@ -120,6 +115,7 @@ All source files have corresponding `.test.ts` files with comprehensive coverage
 2. **Missing dist updates**: Always run `npm run package` after code changes
 3. **Test environment**: Tests mock Docker commands - no real Docker required for testing
 4. **Network dependencies**: Some scripts (coverage badges) may fail in restricted environments
+5. **Pre-initialized environment**: Dependencies and build are already prepared via copilot-setup-steps.yml workflow
 
 ### Key Dependencies to Avoid Updating Carelessly
 - `@actions/*` packages: Core GitHub Actions functionality
