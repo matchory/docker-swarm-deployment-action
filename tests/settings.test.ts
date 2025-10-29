@@ -561,7 +561,7 @@ EOF`;
       const jsonInput = JSON.stringify({
         VAR1: "value1",
         VAR2: "value2",
-        VAR3: "value with spaces"
+        VAR3: "value with spaces",
       });
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -582,7 +582,7 @@ EOF`;
     it("should parse JSON secrets input", () => {
       const jsonSecrets = JSON.stringify({
         SECRET1: "secretvalue1",
-        SECRET2: "secretvalue2"
+        SECRET2: "secretvalue2",
       });
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -604,7 +604,7 @@ EOF`;
         NUMBER_VAR: 42,
         BOOLEAN_VAR: true,
         NULL_VAR: null,
-        UNDEFINED_VAR: undefined
+        UNDEFINED_VAR: undefined,
       });
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -640,6 +640,26 @@ EOF`;
       expect(settings.variables.get("VAR1")).toBe("fallback_value");
     });
 
+    it("should not mistake KEY=VALUE patterns wrapped in braces as JSON", () => {
+      const fakeJson = `{VAR1=value1
+VAR2=value2}`;
+
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            variables: fakeJson,
+          })[name] || "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      // Should be parsed as KEY=VALUE, not attempted as JSON
+      // The braces become part of the key/value since they're not proper JSON
+      expect(settings.variables.get("{VAR1")).toBe("value1");
+      expect(settings.variables.get("VAR2")).toBe("value2}");
+    });
+
     it("should not parse arrays as JSON", () => {
       const arrayJson = JSON.stringify(["value1", "value2"]);
 
@@ -662,18 +682,18 @@ EOF`;
   describe("Multiple input sources with priority", () => {
     it("should merge variables, secrets, and extra-variables with correct priority", () => {
       vi.stubEnv("ENV_VAR", "env_value");
-      
+
       const variablesJson = JSON.stringify({
         VAR1: "from_variables",
         VAR2: "from_variables",
-        ENV_VAR: "overridden_by_variables"
+        ENV_VAR: "overridden_by_variables",
       });
-      
+
       const secretsJson = JSON.stringify({
         VAR2: "from_secrets",
-        SECRET1: "secret_value"
+        SECRET1: "secret_value",
       });
-      
+
       const extraVariables = "VAR2=from_extra\nEXTRA_VAR=extra_value";
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -715,9 +735,9 @@ EOF`;
 
     it("should handle mixed JSON and KEY=VALUE formats", () => {
       const variablesJson = JSON.stringify({
-        JSON_VAR: "json_value"
+        JSON_VAR: "json_value",
       });
-      
+
       const secretsKeyValue = "KEY_VAL_SECRET=keyval_value";
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -741,9 +761,9 @@ EOF`;
       const variablesJson = JSON.stringify({
         KEEP_VAR: "keep",
         EXCLUDE_VAR: "should_be_excluded",
-        ANOTHER_KEEP: "keep_this"
+        ANOTHER_KEEP: "keep_this",
       });
-      
+
       const excludeList = "EXCLUDE_VAR\nNONEXISTENT_VAR";
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -764,17 +784,18 @@ EOF`;
 
     it("should exclude variables from all sources", () => {
       vi.stubEnv("ENV_EXCLUDE", "env_value");
-      
+
       const variablesJson = JSON.stringify({
-        VAR_EXCLUDE: "var_value"
+        VAR_EXCLUDE: "var_value",
       });
-      
+
       const secretsJson = JSON.stringify({
-        SECRET_EXCLUDE: "secret_value"
+        SECRET_EXCLUDE: "secret_value",
       });
-      
+
       const extraVariables = "EXTRA_EXCLUDE=extra_value";
-      const excludeList = "ENV_EXCLUDE\nVAR_EXCLUDE\nSECRET_EXCLUDE\nEXTRA_EXCLUDE";
+      const excludeList =
+        "ENV_EXCLUDE\nVAR_EXCLUDE\nSECRET_EXCLUDE\nEXTRA_EXCLUDE";
 
       vi.spyOn(core, "getInput").mockImplementation(
         (name) =>
@@ -797,7 +818,7 @@ EOF`;
 
     it("should handle empty exclude list", () => {
       const variablesJson = JSON.stringify({
-        VAR1: "value1"
+        VAR1: "value1",
       });
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -818,9 +839,9 @@ EOF`;
       const variablesJson = JSON.stringify({
         KEEP: "value",
         EXCLUDE1: "exclude1",
-        EXCLUDE2: "exclude2"
+        EXCLUDE2: "exclude2",
       });
-      
+
       const excludeList = "\n  EXCLUDE1  \n\n  EXCLUDE2  \n  ";
 
       vi.spyOn(core, "getInput").mockImplementation(
@@ -884,7 +905,9 @@ SECRET2=simple_secret`;
 
       const settings = parseSettings(env);
 
-      expect(settings.variables.get("SECRET1")).toBe("multi-line\nsecret content");
+      expect(settings.variables.get("SECRET1")).toBe(
+        "multi-line\nsecret content",
+      );
       expect(settings.variables.get("SECRET2")).toBe("simple_secret");
     });
 
@@ -907,8 +930,9 @@ SECRET2=simple_secret`;
     it("should preserve MATCHORY deployment variables", () => {
       vi.stubEnv("GITHUB_REPOSITORY", "owner/test-repo");
       vi.stubEnv("GITHUB_SHA", "abc123def456");
-      
-      const excludeList = "MATCHORY_DEPLOYMENT_STACK\nMATCHORY_DEPLOYMENT_VERSION";
+
+      const excludeList =
+        "MATCHORY_DEPLOYMENT_STACK\nMATCHORY_DEPLOYMENT_VERSION";
 
       vi.spyOn(core, "getInput").mockImplementation(
         (name) =>
@@ -924,8 +948,12 @@ SECRET2=simple_secret`;
 
       // MATCHORY variables should still be present even if in exclude list
       // because they're added after exclusion
-      expect(settings.variables.get("MATCHORY_DEPLOYMENT_STACK")).toBe("my-stack");
-      expect(settings.variables.get("MATCHORY_DEPLOYMENT_VERSION")).toBe("1.0.0");
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_STACK")).toBe(
+        "my-stack",
+      );
+      expect(settings.variables.get("MATCHORY_DEPLOYMENT_VERSION")).toBe(
+        "1.0.0",
+      );
     });
   });
 });

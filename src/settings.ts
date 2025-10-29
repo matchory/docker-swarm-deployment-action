@@ -30,12 +30,15 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
 
   const stack = inferStackName(getInput("stack-name"), env);
   const version = inferVersion(getInput("version"), env);
-  const variables = inferVariables({
-    variables: getInput("variables"),
-    secrets: getInput("secrets"),
-    excludeVariables: getInput("exclude-variables"),
-    extraVariables: getInput("extra-variables"),
-  }, env);
+  const variables = inferVariables(
+    {
+      variables: getInput("variables"),
+      secrets: getInput("secrets"),
+      excludeVariables: getInput("exclude-variables"),
+      extraVariables: getInput("extra-variables"),
+    },
+    env,
+  );
 
   // Add deployment variables that should be available during interpolation
   variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
@@ -138,7 +141,7 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    
+
     for (const key of excludeList) {
       variables.delete(key);
     }
@@ -149,18 +152,22 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
 
 function parseVariableInput(input: string): Map<string, string> {
   const variables = new Map<string, string>();
-  
+
   if (!input) {
     return variables;
   }
 
   const trimmedInput = input.trim();
-  
+
   // Try to parse as JSON first
   if (isJsonLike(trimmedInput)) {
     try {
       const parsed = JSON.parse(trimmedInput);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
         for (const [key, value] of Object.entries(parsed)) {
           if (typeof value === "string") {
             variables.set(key, value);
@@ -227,5 +234,16 @@ function parseVariableInput(input: string): Map<string, string> {
 }
 
 function isJsonLike(input: string): boolean {
-  return input.startsWith("{") && input.endsWith("}");
+  // Quick check to avoid expensive JSON.parse calls for obviously non-JSON strings
+  if (!input.startsWith("{") || !input.endsWith("}")) {
+    return false;
+  }
+  
+  // Additional heuristics to filter out common false positives
+  // If it contains KEY= patterns without proper JSON structure, likely KEY=VALUE format
+  if (input.includes("=") && !input.includes(":")) {
+    return false;
+  }
+  
+  return true;
 }
