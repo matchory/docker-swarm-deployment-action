@@ -32,14 +32,14 @@ inputs:
     description: >-
       Variables to pass to the deployment as a list of key-value pairs in the
       format `KEY=value`, separated by newlines, or as JSON object (e.g., from
-      `${{ toJSON(vars) }`). Variables override those in the process 
+      `toJSON(vars)`). Variables override those in the process 
       environment and can be used to pass through secrets or configs.
     default: ""
   secrets:
     description: >-
       Variables to pass to the deployment as a list of key-value pairs in the
       format `KEY=value`, separated by newlines, or as JSON object (e.g., from
-      `${{ toJSON(secrets) }`). Secrets have higher priority than variables and
+      `toJSON(secrets)`). Secrets have higher priority than variables and
       override those in the process environment.
     default: ""
   exclude-variables:
