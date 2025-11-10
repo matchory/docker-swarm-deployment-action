@@ -83,11 +83,14 @@ function inferVersion(version: string | undefined, env: NodeJS.ProcessEnv) {
 
 function inferComposeFiles(files: string | undefined, env: NodeJS.ProcessEnv) {
   const composeFiles = files || env.COMPOSE_FILE;
-  
+
   // If input contains newlines and no custom separator is set, use newline as separator
   const hasCustomSeparator = env.COMPOSE_PATH_SEPARATOR !== undefined;
   const hasNewlines = composeFiles?.includes("\n") ?? false;
-  const separator = hasNewlines && !hasCustomSeparator ? "\n" : (env.COMPOSE_PATH_SEPARATOR || ":");
+  const separator =
+    hasNewlines && !hasCustomSeparator
+      ? "\n"
+      : env.COMPOSE_PATH_SEPARATOR || ":";
 
   return (composeFiles?.split(separator) ?? [])
     .map((file) => file.trim())

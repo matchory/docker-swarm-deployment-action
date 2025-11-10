@@ -145,14 +145,18 @@ describe("settings", () => {
 
     const settings = parseSettings(env);
 
-    expect(settings.composeFiles).toEqual(["compose.foo.yaml", "compose.bar.yaml"]);
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
   });
 
   it("should parse newline-delimited compose files with YAML pipe syntax", () => {
     vi.spyOn(core, "getInput").mockImplementation(
       (name) =>
         ({
-          "compose-file": "compose.foo.yaml\ncompose.bar.yaml\ncompose.baz.yaml",
+          "compose-file":
+            "compose.foo.yaml\ncompose.bar.yaml\ncompose.baz.yaml",
         })[name] || "",
     );
     vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
@@ -183,7 +187,10 @@ describe("settings", () => {
 
     const settings = parseSettings(env);
 
-    expect(settings.composeFiles).toEqual(["compose.foo.yaml", "compose.bar.yaml"]);
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
   });
 
   it("should handle newline-delimited compose files with whitespace", () => {
@@ -200,7 +207,10 @@ describe("settings", () => {
 
     const settings = parseSettings(env);
 
-    expect(settings.composeFiles).toEqual(["compose.foo.yaml", "compose.bar.yaml"]);
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
   });
 
   it("should still use colon separator when no newlines present", () => {
@@ -217,7 +227,10 @@ describe("settings", () => {
 
     const settings = parseSettings(env);
 
-    expect(settings.composeFiles).toEqual(["compose.foo.yaml", "compose.bar.yaml"]);
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
   });
 
   it("should prioritize custom COMPOSE_PATH_SEPARATOR over newlines", () => {
