@@ -189,19 +189,41 @@ input:
     compose-file: path/to/your/custom-compose.yaml
 ```
 
-To use multiple files:
+To use multiple files, you can provide them in several ways:
 
 ```yaml
-- name: Deploy with Multiple Compose Files
+- name: Deploy with Multiple Compose Files (newline-delimited)
   uses: your-github-username/your-repo-name@v1
   with:
     stack-name: my-application
-    compose-file: compose.yaml:compose.override.yaml # Using default separator ':'
-    # Or with a different separator:
-    # compose-file: compose.yaml,compose.override.yaml
-    # env:
-    #   COMPOSE_FILE_SEPARATOR: ','
+    compose-file: |
+      compose.yaml
+      compose.override.yaml
 ```
+
+```yaml
+- name: Deploy with Multiple Compose Files (colon-separated)
+  uses: your-github-username/your-repo-name@v1
+  with:
+    stack-name: my-application
+    compose-file: compose.yaml:compose.override.yaml
+```
+
+```yaml
+- name: Deploy with Multiple Compose Files (custom separator)
+  uses: your-github-username/your-repo-name@v1
+  with:
+    stack-name: my-application
+    compose-file: compose.yaml,compose.override.yaml
+  env:
+    COMPOSE_FILE_SEPARATOR: ','
+```
+
+**Note:** If the `compose-file` input contains newlines and no custom
+`COMPOSE_FILE_SEPARATOR` is set, the action will automatically use newlines as
+the separator. This allows you to use YAML's multiline syntax (`|` or `>`) for
+cleaner configuration. If a custom separator is explicitly set, it will be used
+regardless of newlines in the input.
 
 ### How Compose Files Are Processed
 
