@@ -189,19 +189,20 @@ input:
     compose-file: path/to/your/custom-compose.yaml
 ```
 
-To use multiple files:
+To use multiple files, separate them with newlines:
 
 ```yaml
 - name: Deploy with Multiple Compose Files
   uses: your-github-username/your-repo-name@v1
   with:
     stack-name: my-application
-    compose-file: compose.yaml:compose.override.yaml # Using default separator ':'
-    # Or with a different separator:
-    # compose-file: compose.yaml,compose.override.yaml
-    # env:
-    #   COMPOSE_FILE_SEPARATOR: ','
+    compose-file: |
+      compose.yaml
+      compose.override.yaml
 ```
+
+You can also use a custom delimiter (defaults to `:`) by setting the
+`COMPOSE_FILE_SEPARATOR` environment variable.
 
 ### How Compose Files Are Processed
 

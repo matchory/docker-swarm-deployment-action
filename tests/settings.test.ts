@@ -131,6 +131,130 @@ describe("settings", () => {
     expect(settings.composeFiles).toEqual(["file1.yml", "file2.yml"]);
   });
 
+  it("should parse newline-delimited compose files", () => {
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file": "compose.foo.yaml\ncompose.bar.yaml",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
+  });
+
+  it("should parse newline-delimited compose files with YAML pipe syntax", () => {
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file":
+            "compose.foo.yaml\ncompose.bar.yaml\ncompose.baz.yaml",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+      "compose.baz.yaml",
+    ]);
+  });
+
+  it("should handle newline-delimited compose files with empty lines", () => {
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file": "compose.foo.yaml\n\ncompose.bar.yaml\n",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
+  });
+
+  it("should handle newline-delimited compose files with whitespace", () => {
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file": "  compose.foo.yaml  \n  compose.bar.yaml  ",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
+  });
+
+  it("should still use colon separator when no newlines present", () => {
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file": "compose.foo.yaml:compose.bar.yaml",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml",
+      "compose.bar.yaml",
+    ]);
+  });
+
+  it("should prioritize custom COMPOSE_PATH_SEPARATOR over newlines", () => {
+    vi.stubEnv("COMPOSE_PATH_SEPARATOR", ",");
+    vi.spyOn(core, "getInput").mockImplementation(
+      (name) =>
+        ({
+          "compose-file": "compose.foo.yaml\ncompose.bar.yaml,compose.baz.yaml",
+        })[name] || "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+
+    const settings = parseSettings(env);
+
+    // Should split on comma, not newline, because custom separator is set
+    expect(settings.composeFiles).toEqual([
+      "compose.foo.yaml\ncompose.bar.yaml",
+      "compose.baz.yaml",
+    ]);
+  });
+
   it("should parse variables from input", () => {
     vi.stubEnv("INPUT_VARIABLES", "VAR1=value1\nVAR2=value2");
     vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
