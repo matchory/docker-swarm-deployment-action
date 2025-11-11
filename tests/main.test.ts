@@ -16,12 +16,15 @@ vi.mock("node:fs/promises", () => ({
   readdir,
 }));
 
+// Constructible artifact client mock
 const mockUploadArtifact = vi.hoisted(() => vi.fn());
-vi.mock("@actions/artifact", () => ({
-  DefaultArtifactClient: vi.fn(() => ({
-    uploadArtifact: mockUploadArtifact,
-  })),
-}));
+vi.mock("@actions/artifact", () => {
+  class DefaultArtifactClient {
+    uploadArtifact = mockUploadArtifact;
+  }
+
+  return { DefaultArtifactClient };
+});
 
 const mockRandomUUID = vi.hoisted(() => vi.fn());
 vi.mock("node:crypto", () => ({

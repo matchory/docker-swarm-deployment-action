@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./main.js", () => ({
+vi.mock("../src/main.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("index", () => {
   it("should execute run() without error", async () => {
-    const { run } = await import("./main.js");
+    const { run } = await import("../src/main.js");
     await expect(run()).resolves.toBeUndefined();
   });
 });
