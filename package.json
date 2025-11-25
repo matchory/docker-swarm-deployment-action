@@ -59,13 +59,13 @@
     "js-yaml": "^4.1.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.4",
+    "@biomejs/biome": "2.3.7",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.19.23",
-    "@vitest/coverage-v8": "^4.0.8",
+    "@types/node": "^20.19.25",
+    "@vitest/coverage-v8": "^4.0.13",
     "globals": "^16.5.0",
     "make-coverage-badge": "^1.2.0",
-    "rollup": "^4.53.1",
+    "rollup": "^4.53.3",
     "typescript": "^5.9.3",
     "unbuild": "^3.6.1",
     "vitest": "^4.0.6"
