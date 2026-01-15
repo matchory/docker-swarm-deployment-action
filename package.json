@@ -63,7 +63,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.28",
     "@vitest/coverage-v8": "^4.0.16",
-    "globals": "^16.5.0",
+    "globals": "^17.0.0",
     "make-coverage-badge": "^1.2.0",
     "rollup": "^4.55.1",
     "typescript": "^5.9.3",
