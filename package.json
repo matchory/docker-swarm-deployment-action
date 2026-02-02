@@ -54,7 +54,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@actions/artifact": "^5.0.2",
+    "@actions/artifact": "^6.1.0",
     "@actions/core": "^2.0.2",
     "js-yaml": "^4.1.1"
   },
