@@ -3,6 +3,7 @@ import { exec } from "@actions/exec";
 import { dump, load } from "js-yaml";
 import type { ComposeSpec } from "./compose.js";
 import type { Settings } from "./settings.js";
+import type { TaskInfo } from "./types.js";
 import { mapToObject } from "./utils";
 
 /**
@@ -269,6 +270,30 @@ export async function getServiceLogs(
       });
   } catch (cause) {
     throw new Error(`Failed to get logs for service "${id}": ${cause}`, {
+      cause,
+    });
+  }
+}
+
+/**
+ * List tasks for a service
+ *
+ * This function retrieves the list of tasks for a service, which includes
+ * information about task states, errors, and failure reasons.
+ *
+ * @param serviceId The ID or name of the service
+ * @returns Array of task information objects
+ */
+export async function listServiceTasks(serviceId: string) {
+  try {
+    const output = await executeDockerCommand(
+      ["service", "ps", "--format=json", "--no-trunc", serviceId],
+      { silent: true },
+    );
+
+    return parseLineDelimitedJson<TaskInfo>(output);
+  } catch (cause) {
+    throw new Error(`Failed to list tasks for service "${serviceId}": ${cause}`, {
       cause,
     });
   }
