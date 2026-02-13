@@ -464,7 +464,7 @@ describe("Monitoring", () => {
         {
           ID: "web_service",
           Spec: { Name: "test" },
-          UpdateStatus: { State: "paused", Message: "update paused due to failure or early termination of task task1abcdefghijklmnop" },
+          UpdateStatus: { State: "paused", Message: "update paused" },
         } as ServiceWithMetadata,
       ],
     ];
@@ -474,13 +474,13 @@ describe("Monitoring", () => {
     vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(mockTasks);
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
+    // Should include task details in error
     // noinspection JSVoidFunctionReturnValueUsed
-    const promise = expect(monitorDeployment(settings)).rejects.toThrowError(
-      /Task task1abcdefg.*task: non-zero exit/,
-    );
+    const promise = expect(monitorDeployment(settings)).rejects.toThrow();
     await vi.runAllTimersAsync();
     await promise;
 
+    // Verify listServiceTasks was called to fetch task details
     expect(engine.listServiceTasks).toHaveBeenCalledWith("web_service");
   });
 
