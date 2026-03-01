@@ -65,7 +65,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "globals": "^17.3.0",
     "make-coverage-badge": "^1.2.0",
-    "rollup": "^4.57.1",
+    "rollup": "^4.59.0",
     "typescript": "^5.9.3",
     "unbuild": "^3.6.1",
     "vitest": "^4.0.6"
