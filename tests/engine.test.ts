@@ -282,7 +282,7 @@ services:
   describe("getServiceLogs", () => {
     it("should get service logs and parse them", async () => {
       const timestamp = new Date().toISOString();
-      const mockOutput = `${timestamp} com.docker.swarm.node.id=foo,com.docker.swarm.service.id=bar INFO Some log message`;
+      const mockOutput = `${timestamp} INFO Some log message`;
       mockedExec.mockImplementation(async (_0, _1, options) => {
         options?.listeners?.stdout?.(Buffer.from(mockOutput));
         return 0;
@@ -297,7 +297,6 @@ services:
           "logs",
           "--raw",
           "--no-trunc",
-          "--details",
           "--timestamps",
           "--tail=10",
           "abc",
@@ -307,10 +306,6 @@ services:
       expect(logs).toHaveLength(1);
       expect(logs[0]).toEqual({
         timestamp: new Date(timestamp),
-        metadata: {
-          "com.docker.swarm.node.id": "foo",
-          "com.docker.swarm.service.id": "bar",
-        },
         message: "INFO Some log message",
       });
     });
@@ -328,7 +323,7 @@ services:
     });
 
     it("should handle invalid timestamps in log lines", async () => {
-      const mockOutput = `invalid-timestamp foo=bar Some log message`;
+      const mockOutput = `invalid-timestamp Some log message`;
       mockedExec.mockImplementation(async (_0, _1, options) => {
         options?.listeners?.stdout?.(Buffer.from(mockOutput));
         return 0;
@@ -339,7 +334,6 @@ services:
       expect(logs).toHaveLength(1);
       expect(logs[0]).toEqual({
         timestamp: null,
-        metadata: { foo: "bar" },
         message: "Some log message",
       });
       expect(mockedCore.warning).toHaveBeenCalledWith(

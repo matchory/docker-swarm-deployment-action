@@ -26,9 +26,7 @@ export async function deployStack(
     ],
     {
       stdin: dump(spec),
-      env: {
-        ...Object.fromEntries(variables),
-      },
+      env: Object.fromEntries(variables),
     },
   );
 
@@ -49,9 +47,7 @@ export async function normalizeStackSpecification(
       skipInterpolation ? "--skip-interpolation" : "",
     ],
     {
-      env: {
-        ...Object.fromEntries(variables),
-      },
+      env: Object.fromEntries(variables),
       silent: true,
     },
   );
@@ -214,7 +210,6 @@ export async function getServiceLogs(
         "logs",
         "--raw",
         "--no-trunc",
-        "--details",
         "--timestamps",
         tail ? `--tail=${tail}` : "",
         since ? `--since=${since.toISOString()}` : "",
@@ -228,7 +223,7 @@ export async function getServiceLogs(
       .split("\n")
       .filter((line) => !!line?.trim())
       .map((line) => {
-        const [rawTimestamp, metadata, ...rest] = line.split(" ");
+        const [rawTimestamp, ...rest] = line.split(" ");
         let timestamp: Date | null;
 
         try {
@@ -244,7 +239,6 @@ export async function getServiceLogs(
 
         return {
           timestamp,
-          metadata: parseLabels(metadata),
           message: rest.join(" "),
         };
       });
