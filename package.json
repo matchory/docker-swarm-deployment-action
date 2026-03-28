@@ -27,10 +27,7 @@
   ],
   "main": "src/main.ts",
   "exports": {
-    ".": {
-      "import": "./out/index.mjs",
-      "require": "./out/index.cjs"
-    }
+    ".": "./src/main.ts"
   },
   "engines": {
     "node": ">=24"
@@ -38,7 +35,7 @@
   "packageManager": "npm@10.9.2",
   "scripts": {
     "postversion": "npm run licensed && npm run all",
-    "bundle": "npx @vercel/ncc build out/index.cjs --source-map --license licenses.txt --minify --out dist --target es2022 --no-cache",
+    "bundle": "npx @vercel/ncc build src/index.ts --source-map --license licenses.txt --minify --out dist --target es2022 --no-cache",
     "ci-test": "npx vitest",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "npx @biomejs/biome check --write --unsafe",
@@ -46,11 +43,10 @@
     "lint": "npx @biomejs/biome lint",
     "licensed": "licensed cache",
     "local-action": "npx @github/local-action . src/main.ts .env",
-    "build": "npx unbuild --config build.config.ts",
-    "package": "npm run build && npm run bundle",
-    "package:watch": "npm run package -- --watch",
+    "package": "npm run bundle",
+    "typecheck": "npx tsc --noEmit",
     "test": "npx vitest --run",
-    "all": "npm run format:write && npm run lint && npm run test && npm run coverage && npm run package"
+    "all": "npm run format:write && npm run lint && npm run typecheck && npm run test && npm run coverage && npm run package"
   },
   "license": "MIT",
   "dependencies": {
@@ -65,9 +61,7 @@
     "@vitest/coverage-v8": "^4.1.0",
     "globals": "^17.4.0",
     "make-coverage-badge": "^1.2.0",
-    "rollup": "^4.60.0",
     "typescript": "^5.9.3",
-    "unbuild": "^3.6.1",
     "vitest": "^4.0.6"
   }
 }
