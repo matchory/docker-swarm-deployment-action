@@ -1,8 +1,8 @@
 ---
-name: glob
-version: 10.5.0
+name: minimatch
+version: 5.1.9
 type: npm
-summary: the most correct and second fastest glob implementation in JavaScript
+summary: a glob matcher in javascript
 homepage:
 license: isc
 licenses:
@@ -10,7 +10,7 @@ licenses:
   text: |
     The ISC License
 
-    Copyright (c) 2009-2023 Isaac Z. Schlueter and Contributors
+    Copyright (c) 2011-2023 Isaac Z. Schlueter and Contributors
 
     Permission to use, copy, modify, and/or distribute this software for any
     purpose with or without fee is hereby granted, provided that the above
