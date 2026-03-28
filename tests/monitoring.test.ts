@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceWithMetadata } from "../src/engine.js";
 import * as engine from "../src/engine.js";
 import {
+  categorizeTaskError,
   isServiceRunning,
   isServiceUpdateComplete,
   monitorDeployment,
@@ -571,6 +572,122 @@ describe("Monitoring", () => {
           // UpdateStatus is completely missing
         }),
       ).toBe(false); // Should return false (still updating)
+    });
+  });
+
+  describe("categorizeTaskError", () => {
+    it("should categorize image pull failures", () => {
+      expect(categorizeTaskError("No such image: registry/app:v2")).toEqual({
+        category: "image_pull",
+        headline: 'Image could not be pulled: No such image: registry/app:v2',
+      });
+      expect(categorizeTaskError("manifest unknown")).toEqual({
+        category: "image_pull",
+        headline: "Image could not be pulled: manifest unknown",
+      });
+      expect(categorizeTaskError("pull access denied for registry/app")).toEqual({
+        category: "image_pull",
+        headline: "Image could not be pulled: pull access denied for registry/app",
+      });
+      expect(categorizeTaskError("unauthorized: authentication required")).toEqual({
+        category: "image_pull",
+        headline: "Image could not be pulled: unauthorized: authentication required",
+      });
+    });
+
+    it("should categorize OOM kills (exit 137) before general crashes", () => {
+      expect(categorizeTaskError("task: non-zero exit (137)")).toEqual({
+        category: "oom_kill",
+        headline: "Container killed (likely OOM): exit code 137",
+      });
+    });
+
+    it("should categorize container crashes", () => {
+      expect(categorizeTaskError("task: non-zero exit (1)")).toEqual({
+        category: "container_crash",
+        headline: "Container exited with code 1",
+      });
+      expect(categorizeTaskError("task: non-zero exit (127): exec not found")).toEqual({
+        category: "container_crash",
+        headline: "Container exited with code 127",
+      });
+    });
+
+    it("should categorize health check failures", () => {
+      expect(categorizeTaskError("dockerexec: unhealthy container")).toEqual({
+        category: "health_check",
+        headline: "Container failed health check",
+      });
+    });
+
+    it("should categorize scheduling failures", () => {
+      expect(categorizeTaskError("no suitable node (insufficient resources on 2 nodes)")).toEqual({
+        category: "scheduling",
+        headline: "No node available to run this task: no suitable node (insufficient resources on 2 nodes)",
+      });
+    });
+
+    it("should categorize container startup failures", () => {
+      expect(categorizeTaskError("starting container failed: OCI runtime create failed")).toEqual({
+        category: "startup_failure",
+        headline: "Container failed to start: starting container failed: OCI runtime create failed",
+      });
+    });
+
+    it("should categorize network errors", () => {
+      expect(categorizeTaskError("failed to allocate network IP for task")).toEqual({
+        category: "network",
+        headline: "Network allocation failed: failed to allocate network IP for task",
+      });
+    });
+
+    it("should categorize volume errors", () => {
+      expect(categorizeTaskError("invalid bind mount source, source path not found: /data")).toEqual({
+        category: "volume",
+        headline: "Volume or mount failed: invalid bind mount source, source path not found: /data",
+      });
+    });
+
+    it("should categorize secret/config errors", () => {
+      expect(categorizeTaskError("secret reference my_secret not found")).toEqual({
+        category: "config",
+        headline: "Secret or config reference invalid: secret reference my_secret not found",
+      });
+    });
+
+    it("should categorize dependency errors", () => {
+      expect(categorizeTaskError("dependency not ready")).toEqual({
+        category: "dependency",
+        headline: "Task dependencies not yet available",
+      });
+    });
+
+    it("should categorize entrypoint errors", () => {
+      expect(categorizeTaskError("OCI runtime create failed: exec format error")).toEqual({
+        category: "entrypoint",
+        headline: "Container entrypoint failed: OCI runtime create failed: exec format error",
+      });
+    });
+
+    it("should categorize port conflicts", () => {
+      expect(categorizeTaskError("host-mode port already in use on 1 node")).toEqual({
+        category: "port_conflict",
+        headline: "Host port already in use: host-mode port already in use on 1 node",
+      });
+    });
+
+    it("should fall back to unknown for unrecognized errors", () => {
+      expect(categorizeTaskError("something completely unexpected")).toEqual({
+        category: "unknown",
+        headline: "something completely unexpected",
+      });
+    });
+
+    it("should handle empty error string", () => {
+      expect(categorizeTaskError("")).toEqual({
+        category: "unknown",
+        headline: "Unknown error",
+      });
     });
   });
 });
