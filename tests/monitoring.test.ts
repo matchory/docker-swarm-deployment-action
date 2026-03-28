@@ -5,6 +5,7 @@ import {
   buildFailureReport,
   categorizeTaskError,
   isServiceRunning,
+  isServiceStuck,
   isServiceUpdateComplete,
   monitorDeployment,
 } from "../src/monitoring.js";
@@ -17,6 +18,8 @@ describe("Monitoring", () => {
     vi.useRealTimers();
     vi.resetAllMocks();
     vi.unstubAllEnvs();
+    // Default: services are not stuck (isServiceStuck returns false)
+    vi.spyOn(engine, "listServiceTasks").mockResolvedValue([]);
   });
 
   const settings = defineSettings({
@@ -299,44 +302,29 @@ describe("Monitoring", () => {
     vi.useFakeTimers();
 
     const serviceHistory = [
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "updating" },
-        } as ServiceWithMetadata,
-      ],
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "updating" },
-        } as ServiceWithMetadata,
-      ],
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "rollback_started" },
-        } as ServiceWithMetadata,
-      ],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "rollback_started" } } as ServiceWithMetadata],
     ];
-    const listServices = vi
+    const listServicesSpy = vi
       .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
-    vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
-      { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
-    ]);
+
+    const runningTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 10 seconds ago", Error: "", Ports: "" };
+    const failedTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" };
+    vi.spyOn(engine, "listServiceTasks")
+      .mockResolvedValueOnce([runningTask])   // isServiceStuck check (iteration 1)
+      .mockResolvedValueOnce([runningTask])   // isServiceStuck check (iteration 2)
+      .mockResolvedValueOnce([failedTask]);   // buildFailureReport (iteration 3, after rollback detected)
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
-    // noinspection JSVoidFunctionReturnValueUsed
     const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(listServices).toHaveBeenCalledTimes(serviceHistory.length);
+    expect(listServicesSpy).toHaveBeenCalledTimes(serviceHistory.length);
   });
 
   it("should fail if the update takes too long", async () => {
@@ -384,63 +372,34 @@ describe("Monitoring", () => {
     vi.useFakeTimers();
 
     const serviceHistory = [
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "updating" },
-        } as ServiceWithMetadata,
-      ],
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "updating" },
-        } as ServiceWithMetadata,
-      ],
-      [
-        {
-          ID: "web_service",
-          Spec: { Name: "test" },
-          UpdateStatus: { State: "rollback_started" },
-        } as ServiceWithMetadata,
-      ],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
+      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "rollback_started" } } as ServiceWithMetadata],
     ];
-    const listServices = vi
+    const listServicesSpy = vi
       .spyOn(engine, "listServices")
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
-    vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
-      { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
-    ]);
+
+    const runningTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 10 seconds ago", Error: "", Ports: "" };
+    const failedTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" };
+    vi.spyOn(engine, "listServiceTasks")
+      .mockResolvedValueOnce([runningTask])   // isServiceStuck (iteration 1)
+      .mockResolvedValueOnce([runningTask])   // isServiceStuck (iteration 2)
+      .mockResolvedValueOnce([failedTask]);   // buildFailureReport (iteration 3)
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
-      {
-        message: "Error occurred during service update",
-        timestamp: new Date(),
-        metadata: {
-          "com.docker.swarm.task": "task1",
-          "com.docker.swarm.service": "web_service",
-        },
-      },
-      {
-        message: "Service is rolling back",
-        timestamp: new Date(),
-        metadata: {
-          "com.docker.swarm.task": "task2",
-          "com.docker.swarm.service": "web_service",
-        },
-      },
+      { message: "Error occurred during service update", timestamp: new Date() },
+      { message: "Service is rolling back", timestamp: new Date() },
     ]);
 
-    // noinspection JSVoidFunctionReturnValueUsed
     const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(listServices).toHaveBeenCalledTimes(serviceHistory.length);
+    expect(listServicesSpy).toHaveBeenCalledTimes(serviceHistory.length);
     expect(engine.getServiceLogs).toHaveBeenCalledWith(
-      serviceHistory[2][0].ID,
+      "web_service",
       expect.objectContaining({ since: expect.any(Date), tail: 50 }),
     );
 
@@ -642,8 +601,8 @@ describe("Monitoring", () => {
         { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
       ]);
       vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
-        { timestamp: new Date("2026-03-28T12:00:01Z"), metadata: {}, message: "Error: Cannot connect to database" },
-        { timestamp: new Date("2026-03-28T12:00:02Z"), metadata: {}, message: "Shutting down..." },
+        { timestamp: new Date("2026-03-28T12:00:01Z"), message: "Error: Cannot connect to database" },
+        { timestamp: new Date("2026-03-28T12:00:02Z"), message: "Shutting down..." },
       ]);
 
       await buildFailureReport("svc1", "api", new Date());
@@ -663,6 +622,38 @@ describe("Monitoring", () => {
       expect(core.error).toHaveBeenCalledWith(
         expect.stringContaining("No task information available"),
       );
+    });
+  });
+
+  describe("isServiceStuck", () => {
+    it("should return true when all tasks are rejected", () => {
+      expect(isServiceStuck([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Rejected 1 minute ago", Error: "No such image: img", Ports: "" },
+        { ID: "t2", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Rejected 2 minutes ago", Error: "No such image: img", Ports: "" },
+      ])).toBe(true);
+    });
+
+    it("should return true when all tasks are failed", () => {
+      expect(isServiceStuck([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+      ])).toBe(true);
+    });
+
+    it("should return false when some tasks are running", () => {
+      expect(isServiceStuck([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+        { ID: "t2", Name: "api.2", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 30 seconds ago", Error: "", Ports: "" },
+      ])).toBe(false);
+    });
+
+    it("should return false when tasks are being prepared", () => {
+      expect(isServiceStuck([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Preparing 5 seconds ago", Error: "", Ports: "" },
+      ])).toBe(false);
+    });
+
+    it("should return false when there are no tasks", () => {
+      expect(isServiceStuck([])).toBe(false);
     });
   });
 

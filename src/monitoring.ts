@@ -34,10 +34,19 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
     settings.monitorTimeout / settings.monitorInterval,
   );
   const completedServices = new Set<string>();
-  let services: ServiceWithMetadata[];
+  let services: ServiceWithMetadata[] = [];
 
   do {
     if (--attemptsLeft <= 0) {
+      // On timeout, report diagnostics for all non-converged services
+      for (const service of services) {
+        if (completedServices.has(service.ID)) {
+          continue;
+        }
+        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        await buildFailureReport(service.ID, name, startTime);
+      }
+
       throw new Error("Deployment timed out");
     }
 
@@ -76,6 +85,18 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
           `Service "${serviceIdentifier}" has been deployed successfully`,
         );
         completedServices.add(service.ID);
+        continue;
+      }
+
+      // If the service appears to be "updating" but all tasks are in a
+      // terminal failure state, it will never recover — fail early instead
+      // of waiting for the full timeout.
+      const tasks = await fetchTasks(service.ID);
+      if (tasks && isServiceStuck(tasks)) {
+        await buildFailureReport(service.ID, serviceIdentifier, startTime, tasks);
+        throw new Error(
+          `Service "${serviceIdentifier}" failed: all tasks are in a failed state`,
+        );
       }
     }
   } while (completedServices.size < services.length);
@@ -181,6 +202,32 @@ export function isServiceRunning(
   return false;
 }
 
+async function fetchTasks(serviceId: string): Promise<TaskStatus[] | null> {
+  try {
+    return await listServiceTasks(serviceId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if all tasks are in terminal failure states.
+ *
+ * When a service has tasks but every task has failed or been rejected
+ * (and none are running, pending, or being prepared), the service will
+ * never recover on its own.
+ */
+export function isServiceStuck(tasks: TaskStatus[]): boolean {
+  if (tasks.length === 0) {
+    return false;
+  }
+
+  return tasks.every(
+    (t) => t.CurrentState.startsWith("Failed") ||
+      t.CurrentState.startsWith("Rejected"),
+  );
+}
+
 /**
  * Resolve the failure reason for a service update
  *
@@ -226,12 +273,11 @@ export async function buildFailureReport(
   serviceId: string,
   serviceName: string,
   startTime: Date,
+  prefetchedTasks?: TaskStatus[],
 ) {
-  let tasks: TaskStatus[];
+  const tasks = prefetchedTasks ?? await fetchTasks(serviceId);
 
-  try {
-    tasks = await listServiceTasks(serviceId);
-  } catch {
+  if (!tasks) {
     core.error(`Failed to fetch task details for service "${serviceName}"`);
     return;
   }
@@ -245,9 +291,11 @@ export async function buildFailureReport(
     (t) => t.Error && t.DesiredState !== "Running",
   );
   const latestFailedTask = failedTasks[0];
+  const headline = latestFailedTask
+    ? categorizeTaskError(latestFailedTask.Error).headline
+    : undefined;
 
-  if (latestFailedTask) {
-    const { headline } = categorizeTaskError(latestFailedTask.Error);
+  if (headline) {
     core.error(`Service "${serviceName}" failed to deploy: ${headline}`);
   } else {
     core.error(`Service "${serviceName}" failed to deploy (no task error details available)`);
@@ -271,25 +319,23 @@ export async function buildFailureReport(
     logs = [];
   }
 
-  if (logs.length === 0) {
+  const formattedLogs = logs.map((entry) => {
+    const ts = entry.timestamp?.toISOString() ?? "<no timestamp>";
+    return `${ts}  ${entry.message}`;
+  });
+
+  if (formattedLogs.length === 0) {
     core.error(
       `No container logs available for service "${serviceName}" (container may not have started)`,
     );
   } else {
-    const logLines = logs
-      .map((entry) => {
-        const ts = entry.timestamp?.toISOString() ?? "<no timestamp>";
-        return `  ${ts}  ${entry.message}`;
-      })
-      .join("\n");
-
-    core.error(`Container logs for service "${serviceName}":\n${logLines}`);
+    core.error(`Container logs for service "${serviceName}":\n${formattedLogs.map((l) => `  ${l}`).join("\n")}`);
   }
 
+  // Job summary
   core.summary.addHeading(`Deployment failure: ${serviceName}`, 2);
 
-  if (latestFailedTask) {
-    const { headline } = categorizeTaskError(latestFailedTask.Error);
+  if (headline) {
     core.summary.addRaw(`**Root cause:** ${headline}`, true);
   }
 
@@ -311,16 +357,9 @@ export async function buildFailureReport(
     ]),
   ]);
 
-  if (logs.length > 0) {
+  if (formattedLogs.length > 0) {
     core.summary.addHeading("Container logs", 3);
-    core.summary.addCodeBlock(
-      logs
-        .map((entry) => {
-          const ts = entry.timestamp?.toISOString() ?? "<no timestamp>";
-          return `${ts}  ${entry.message}`;
-        })
-        .join("\n"),
-    );
+    core.summary.addCodeBlock(formattedLogs.join("\n"));
   } else {
     core.summary.addRaw(
       "_No container logs available (container may not have started)_",
@@ -344,6 +383,76 @@ export type ErrorCategory =
   | "port_conflict"
   | "unknown";
 
+const errorPatterns: Array<{
+  test: (e: string) => boolean;
+  category: ErrorCategory;
+  headline: (e: string) => string;
+}> = [
+  {
+    test: (e) => /No such image|manifest unknown|manifest not found|pull access denied|unauthorized/.test(e),
+    category: "image_pull",
+    headline: (e) => `Image could not be pulled: ${e}`,
+  },
+  {
+    test: (e) => /non-zero exit \(137\)/.test(e),
+    category: "oom_kill",
+    headline: () => "Container killed (likely OOM): exit code 137",
+  },
+  {
+    test: (e) => /non-zero exit \((\d+)\)/.test(e),
+    category: "container_crash",
+    headline: (e) => {
+      const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
+      return `Container exited with code ${code}`;
+    },
+  },
+  {
+    test: (e) => /unhealthy container/.test(e),
+    category: "health_check",
+    headline: () => "Container failed health check",
+  },
+  {
+    test: (e) => /no suitable node/.test(e),
+    category: "scheduling",
+    headline: (e) => `No node available to run this task: ${e}`,
+  },
+  {
+    test: (e) => /starting container failed|OCI runtime create failed/.test(e) && !/exec format error|permission denied|no such file or directory/.test(e),
+    category: "startup_failure",
+    headline: (e) => `Container failed to start: ${e}`,
+  },
+  {
+    test: (e) => /exec format error|(?:^|\W)permission denied|no such file or directory/.test(e),
+    category: "entrypoint",
+    headline: (e) => `Container entrypoint failed: ${e}`,
+  },
+  {
+    test: (e) => /failed to allocate network IP|Address already in use|missing network attachments/.test(e),
+    category: "network",
+    headline: (e) => `Network allocation failed: ${e}`,
+  },
+  {
+    test: (e) => /invalid bind mount source|no space left on device/.test(e),
+    category: "volume",
+    headline: (e) => `Volume or mount failed: ${e}`,
+  },
+  {
+    test: (e) => /secret reference|config reference|(?:secret|config)\S*\s+not found/.test(e),
+    category: "config",
+    headline: (e) => `Secret or config reference invalid: ${e}`,
+  },
+  {
+    test: (e) => /dependency not ready/.test(e),
+    category: "dependency",
+    headline: () => "Task dependencies not yet available",
+  },
+  {
+    test: (e) => /host-mode port already in use/.test(e),
+    category: "port_conflict",
+    headline: (e) => `Host port already in use: ${e}`,
+  },
+];
+
 export function categorizeTaskError(error: string): {
   category: ErrorCategory;
   headline: string;
@@ -352,77 +461,7 @@ export function categorizeTaskError(error: string): {
     return { category: "unknown", headline: "Unknown error" };
   }
 
-  const patterns: Array<{
-    test: (e: string) => boolean;
-    category: ErrorCategory;
-    headline: (e: string) => string;
-  }> = [
-    {
-      test: (e) => /No such image|manifest unknown|manifest not found|pull access denied|unauthorized/.test(e),
-      category: "image_pull",
-      headline: (e) => `Image could not be pulled: ${e}`,
-    },
-    {
-      test: (e) => /non-zero exit \(137\)/.test(e),
-      category: "oom_kill",
-      headline: () => "Container killed (likely OOM): exit code 137",
-    },
-    {
-      test: (e) => /non-zero exit \((\d+)\)/.test(e),
-      category: "container_crash",
-      headline: (e) => {
-        const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
-        return `Container exited with code ${code}`;
-      },
-    },
-    {
-      test: (e) => /unhealthy container/.test(e),
-      category: "health_check",
-      headline: () => "Container failed health check",
-    },
-    {
-      test: (e) => /no suitable node/.test(e),
-      category: "scheduling",
-      headline: (e) => `No node available to run this task: ${e}`,
-    },
-    {
-      test: (e) => /starting container failed|OCI runtime create failed/.test(e) && !/exec format error|permission denied|no such file or directory/.test(e),
-      category: "startup_failure",
-      headline: (e) => `Container failed to start: ${e}`,
-    },
-    {
-      test: (e) => /exec format error|(?:^|\W)permission denied|no such file or directory/.test(e),
-      category: "entrypoint",
-      headline: (e) => `Container entrypoint failed: ${e}`,
-    },
-    {
-      test: (e) => /failed to allocate network IP|Address already in use|missing network attachments/.test(e),
-      category: "network",
-      headline: (e) => `Network allocation failed: ${e}`,
-    },
-    {
-      test: (e) => /invalid bind mount source|no space left on device/.test(e),
-      category: "volume",
-      headline: (e) => `Volume or mount failed: ${e}`,
-    },
-    {
-      test: (e) => /secret reference|config reference|not found/.test(e),
-      category: "config",
-      headline: (e) => `Secret or config reference invalid: ${e}`,
-    },
-    {
-      test: (e) => /dependency not ready/.test(e),
-      category: "dependency",
-      headline: () => "Task dependencies not yet available",
-    },
-    {
-      test: (e) => /host-mode port already in use/.test(e),
-      category: "port_conflict",
-      headline: (e) => `Host port already in use: ${e}`,
-    },
-  ];
-
-  for (const pattern of patterns) {
+  for (const pattern of errorPatterns) {
     if (pattern.test(error)) {
       return {
         category: pattern.category,
