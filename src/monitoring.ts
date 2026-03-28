@@ -93,7 +93,12 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       // of waiting for the full timeout.
       const tasks = await fetchTasks(service.ID);
       if (tasks && isServiceStuck(tasks)) {
-        await buildFailureReport(service.ID, serviceIdentifier, startTime, tasks);
+        await buildFailureReport(
+          service.ID,
+          serviceIdentifier,
+          startTime,
+          tasks,
+        );
         throw new Error(
           `Service "${serviceIdentifier}" failed: all tasks are in a failed state`,
         );
@@ -223,7 +228,8 @@ export function isServiceStuck(tasks: TaskStatus[]): boolean {
   }
 
   return tasks.every(
-    (t) => t.CurrentState.startsWith("Failed") ||
+    (t) =>
+      t.CurrentState.startsWith("Failed") ||
       t.CurrentState.startsWith("Rejected"),
   );
 }
@@ -275,7 +281,7 @@ export async function buildFailureReport(
   startTime: Date,
   prefetchedTasks?: TaskStatus[],
 ) {
-  const tasks = prefetchedTasks ?? await fetchTasks(serviceId);
+  const tasks = prefetchedTasks ?? (await fetchTasks(serviceId));
 
   if (!tasks) {
     core.error(`Failed to fetch task details for service "${serviceName}"`);
@@ -298,7 +304,9 @@ export async function buildFailureReport(
   if (headline) {
     core.error(`Service "${serviceName}" failed to deploy: ${headline}`);
   } else {
-    core.error(`Service "${serviceName}" failed to deploy (no task error details available)`);
+    core.error(
+      `Service "${serviceName}" failed to deploy (no task error details available)`,
+    );
   }
 
   const history = tasks
@@ -329,7 +337,9 @@ export async function buildFailureReport(
       `No container logs available for service "${serviceName}" (container may not have started)`,
     );
   } else {
-    core.error(`Container logs for service "${serviceName}":\n${formattedLogs.map((l) => `  ${l}`).join("\n")}`);
+    core.error(
+      `Container logs for service "${serviceName}":\n${formattedLogs.map((l) => `  ${l}`).join("\n")}`,
+    );
   }
 
   // Job summary
@@ -389,7 +399,10 @@ const errorPatterns: Array<{
   headline: (e: string) => string;
 }> = [
   {
-    test: (e) => /No such image|manifest unknown|manifest not found|pull access denied|unauthorized/.test(e),
+    test: (e) =>
+      /No such image|manifest unknown|manifest not found|pull access denied|unauthorized/.test(
+        e,
+      ),
     category: "image_pull",
     headline: (e) => `Image could not be pulled: ${e}`,
   },
@@ -417,17 +430,25 @@ const errorPatterns: Array<{
     headline: (e) => `No node available to run this task: ${e}`,
   },
   {
-    test: (e) => /starting container failed|OCI runtime create failed/.test(e) && !/exec format error|permission denied|no such file or directory/.test(e),
+    test: (e) =>
+      /starting container failed|OCI runtime create failed/.test(e) &&
+      !/exec format error|permission denied|no such file or directory/.test(e),
     category: "startup_failure",
     headline: (e) => `Container failed to start: ${e}`,
   },
   {
-    test: (e) => /exec format error|(?:^|\W)permission denied|no such file or directory/.test(e),
+    test: (e) =>
+      /exec format error|(?:^|\W)permission denied|no such file or directory/.test(
+        e,
+      ),
     category: "entrypoint",
     headline: (e) => `Container entrypoint failed: ${e}`,
   },
   {
-    test: (e) => /failed to allocate network IP|Address already in use|missing network attachments/.test(e),
+    test: (e) =>
+      /failed to allocate network IP|Address already in use|missing network attachments/.test(
+        e,
+      ),
     category: "network",
     headline: (e) => `Network allocation failed: ${e}`,
   },
@@ -437,7 +458,10 @@ const errorPatterns: Array<{
     headline: (e) => `Volume or mount failed: ${e}`,
   },
   {
-    test: (e) => /secret reference|config reference|(?:secret|config)\S*\s+not found/.test(e),
+    test: (e) =>
+      /secret reference|config reference|(?:secret|config)\S*\s+not found/.test(
+        e,
+      ),
     category: "config",
     headline: (e) => `Secret or config reference invalid: ${e}`,
   },

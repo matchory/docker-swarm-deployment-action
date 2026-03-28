@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as engine from "../src/engine.js";
 import type { ServiceWithMetadata, TaskStatus } from "../src/engine.js";
+import * as engine from "../src/engine.js";
 import {
   buildFailureReport,
   categorizeTaskError,
@@ -302,9 +302,27 @@ describe("Monitoring", () => {
     vi.useFakeTimers();
 
     const serviceHistory = [
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "rollback_started" } } as ServiceWithMetadata],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "updating" },
+        } as ServiceWithMetadata,
+      ],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "updating" },
+        } as ServiceWithMetadata,
+      ],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "rollback_started" },
+        } as ServiceWithMetadata,
+      ],
     ];
     const listServicesSpy = vi
       .spyOn(engine, "listServices")
@@ -312,12 +330,30 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
 
-    const runningTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 10 seconds ago", Error: "", Ports: "" };
-    const failedTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" };
+    const runningTask = {
+      ID: "t1",
+      Name: "test.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Running",
+      CurrentState: "Running 10 seconds ago",
+      Error: "",
+      Ports: "",
+    };
+    const failedTask = {
+      ID: "t1",
+      Name: "test.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Shutdown",
+      CurrentState: "Failed 1 minute ago",
+      Error: "task: non-zero exit (1)",
+      Ports: "",
+    };
     vi.spyOn(engine, "listServiceTasks")
-      .mockResolvedValueOnce([runningTask])   // isServiceStuck check (iteration 1)
-      .mockResolvedValueOnce([runningTask])   // isServiceStuck check (iteration 2)
-      .mockResolvedValueOnce([failedTask]);   // buildFailureReport (iteration 3, after rollback detected)
+      .mockResolvedValueOnce([runningTask]) // isServiceStuck check (iteration 1)
+      .mockResolvedValueOnce([runningTask]) // isServiceStuck check (iteration 2)
+      .mockResolvedValueOnce([failedTask]); // buildFailureReport (iteration 3, after rollback detected)
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
     const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
@@ -372,9 +408,27 @@ describe("Monitoring", () => {
     vi.useFakeTimers();
 
     const serviceHistory = [
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "updating" } } as ServiceWithMetadata],
-      [{ ID: "web_service", Spec: { Name: "test" }, UpdateStatus: { State: "rollback_started" } } as ServiceWithMetadata],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "updating" },
+        } as ServiceWithMetadata,
+      ],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "updating" },
+        } as ServiceWithMetadata,
+      ],
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "rollback_started" },
+        } as ServiceWithMetadata,
+      ],
     ];
     const listServicesSpy = vi
       .spyOn(engine, "listServices")
@@ -382,14 +436,35 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
 
-    const runningTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 10 seconds ago", Error: "", Ports: "" };
-    const failedTask = { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" };
+    const runningTask = {
+      ID: "t1",
+      Name: "test.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Running",
+      CurrentState: "Running 10 seconds ago",
+      Error: "",
+      Ports: "",
+    };
+    const failedTask = {
+      ID: "t1",
+      Name: "test.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Shutdown",
+      CurrentState: "Failed 1 minute ago",
+      Error: "task: non-zero exit (1)",
+      Ports: "",
+    };
     vi.spyOn(engine, "listServiceTasks")
-      .mockResolvedValueOnce([runningTask])   // isServiceStuck (iteration 1)
-      .mockResolvedValueOnce([runningTask])   // isServiceStuck (iteration 2)
-      .mockResolvedValueOnce([failedTask]);   // buildFailureReport (iteration 3)
+      .mockResolvedValueOnce([runningTask]) // isServiceStuck (iteration 1)
+      .mockResolvedValueOnce([runningTask]) // isServiceStuck (iteration 2)
+      .mockResolvedValueOnce([failedTask]); // buildFailureReport (iteration 3)
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
-      { message: "Error occurred during service update", timestamp: new Date() },
+      {
+        message: "Error occurred during service update",
+        timestamp: new Date(),
+      },
       { message: "Service is rolling back", timestamp: new Date() },
     ]);
 
@@ -549,8 +624,26 @@ describe("Monitoring", () => {
     it("should produce a headline from the most recent failed task", async () => {
       const core = await import("@actions/core");
       const tasks: TaskStatus[] = [
-        { ID: "t1", Name: "api.1", Image: "registry/api:v2", Node: "worker-1", DesiredState: "Shutdown", CurrentState: "Failed 2 minutes ago", Error: "task: non-zero exit (1)", Ports: "" },
-        { ID: "t2", Name: "api.2", Image: "registry/api:v2", Node: "worker-2", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "registry/api:v2",
+          Node: "worker-1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 2 minutes ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
+        {
+          ID: "t2",
+          Name: "api.2",
+          Image: "registry/api:v2",
+          Node: "worker-2",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
       ];
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(tasks);
       vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
@@ -565,8 +658,26 @@ describe("Monitoring", () => {
     it("should show task attempt history", async () => {
       const core = await import("@actions/core");
       const tasks: TaskStatus[] = [
-        { ID: "t1", Name: "api.1", Image: "img", Node: "worker-1", DesiredState: "Shutdown", CurrentState: "Failed 3 minutes ago", Error: "task: non-zero exit (1)", Ports: "" },
-        { ID: "t2", Name: "api.2", Image: "img", Node: "worker-1", DesiredState: "Running", CurrentState: "Running 30 seconds ago", Error: "", Ports: "" },
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "worker-1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 3 minutes ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
+        {
+          ID: "t2",
+          Name: "api.2",
+          Image: "img",
+          Node: "worker-1",
+          DesiredState: "Running",
+          CurrentState: "Running 30 seconds ago",
+          Error: "",
+          Ports: "",
+        },
       ];
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(tasks);
       vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
@@ -584,7 +695,16 @@ describe("Monitoring", () => {
     it("should show explicit message when no container logs are available", async () => {
       const core = await import("@actions/core");
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "No such image: img", Ports: "" },
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "n1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "No such image: img",
+          Ports: "",
+        },
       ]);
       vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
@@ -598,11 +718,26 @@ describe("Monitoring", () => {
     it("should show container logs when available", async () => {
       const core = await import("@actions/core");
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "n1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
       ]);
       vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
-        { timestamp: new Date("2026-03-28T12:00:01Z"), message: "Error: Cannot connect to database" },
-        { timestamp: new Date("2026-03-28T12:00:02Z"), message: "Shutting down..." },
+        {
+          timestamp: new Date("2026-03-28T12:00:01Z"),
+          message: "Error: Cannot connect to database",
+        },
+        {
+          timestamp: new Date("2026-03-28T12:00:02Z"),
+          message: "Shutting down...",
+        },
       ]);
 
       await buildFailureReport("svc1", "api", new Date());
@@ -627,29 +762,91 @@ describe("Monitoring", () => {
 
   describe("isServiceStuck", () => {
     it("should return true when all tasks are rejected", () => {
-      expect(isServiceStuck([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Rejected 1 minute ago", Error: "No such image: img", Ports: "" },
-        { ID: "t2", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Rejected 2 minutes ago", Error: "No such image: img", Ports: "" },
-      ])).toBe(true);
+      expect(
+        isServiceStuck([
+          {
+            ID: "t1",
+            Name: "api.1",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Shutdown",
+            CurrentState: "Rejected 1 minute ago",
+            Error: "No such image: img",
+            Ports: "",
+          },
+          {
+            ID: "t2",
+            Name: "api.1",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Shutdown",
+            CurrentState: "Rejected 2 minutes ago",
+            Error: "No such image: img",
+            Ports: "",
+          },
+        ]),
+      ).toBe(true);
     });
 
     it("should return true when all tasks are failed", () => {
-      expect(isServiceStuck([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
-      ])).toBe(true);
+      expect(
+        isServiceStuck([
+          {
+            ID: "t1",
+            Name: "api.1",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Shutdown",
+            CurrentState: "Failed 1 minute ago",
+            Error: "task: non-zero exit (1)",
+            Ports: "",
+          },
+        ]),
+      ).toBe(true);
     });
 
     it("should return false when some tasks are running", () => {
-      expect(isServiceStuck([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
-        { ID: "t2", Name: "api.2", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Running 30 seconds ago", Error: "", Ports: "" },
-      ])).toBe(false);
+      expect(
+        isServiceStuck([
+          {
+            ID: "t1",
+            Name: "api.1",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Shutdown",
+            CurrentState: "Failed 1 minute ago",
+            Error: "task: non-zero exit (1)",
+            Ports: "",
+          },
+          {
+            ID: "t2",
+            Name: "api.2",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Running",
+            CurrentState: "Running 30 seconds ago",
+            Error: "",
+            Ports: "",
+          },
+        ]),
+      ).toBe(false);
     });
 
     it("should return false when tasks are being prepared", () => {
-      expect(isServiceStuck([
-        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Running", CurrentState: "Preparing 5 seconds ago", Error: "", Ports: "" },
-      ])).toBe(false);
+      expect(
+        isServiceStuck([
+          {
+            ID: "t1",
+            Name: "api.1",
+            Image: "img",
+            Node: "n1",
+            DesiredState: "Running",
+            CurrentState: "Preparing 5 seconds ago",
+            Error: "",
+            Ports: "",
+          },
+        ]),
+      ).toBe(false);
     });
 
     it("should return false when there are no tasks", () => {
@@ -661,19 +858,25 @@ describe("Monitoring", () => {
     it("should categorize image pull failures", () => {
       expect(categorizeTaskError("No such image: registry/app:v2")).toEqual({
         category: "image_pull",
-        headline: 'Image could not be pulled: No such image: registry/app:v2',
+        headline: "Image could not be pulled: No such image: registry/app:v2",
       });
       expect(categorizeTaskError("manifest unknown")).toEqual({
         category: "image_pull",
         headline: "Image could not be pulled: manifest unknown",
       });
-      expect(categorizeTaskError("pull access denied for registry/app")).toEqual({
+      expect(
+        categorizeTaskError("pull access denied for registry/app"),
+      ).toEqual({
         category: "image_pull",
-        headline: "Image could not be pulled: pull access denied for registry/app",
+        headline:
+          "Image could not be pulled: pull access denied for registry/app",
       });
-      expect(categorizeTaskError("unauthorized: authentication required")).toEqual({
+      expect(
+        categorizeTaskError("unauthorized: authentication required"),
+      ).toEqual({
         category: "image_pull",
-        headline: "Image could not be pulled: unauthorized: authentication required",
+        headline:
+          "Image could not be pulled: unauthorized: authentication required",
       });
     });
 
@@ -689,7 +892,9 @@ describe("Monitoring", () => {
         category: "container_crash",
         headline: "Container exited with code 1",
       });
-      expect(categorizeTaskError("task: non-zero exit (127): exec not found")).toEqual({
+      expect(
+        categorizeTaskError("task: non-zero exit (127): exec not found"),
+      ).toEqual({
         category: "container_crash",
         headline: "Container exited with code 127",
       });
@@ -703,37 +908,58 @@ describe("Monitoring", () => {
     });
 
     it("should categorize scheduling failures", () => {
-      expect(categorizeTaskError("no suitable node (insufficient resources on 2 nodes)")).toEqual({
+      expect(
+        categorizeTaskError(
+          "no suitable node (insufficient resources on 2 nodes)",
+        ),
+      ).toEqual({
         category: "scheduling",
-        headline: "No node available to run this task: no suitable node (insufficient resources on 2 nodes)",
+        headline:
+          "No node available to run this task: no suitable node (insufficient resources on 2 nodes)",
       });
     });
 
     it("should categorize container startup failures", () => {
-      expect(categorizeTaskError("starting container failed: OCI runtime create failed")).toEqual({
+      expect(
+        categorizeTaskError(
+          "starting container failed: OCI runtime create failed",
+        ),
+      ).toEqual({
         category: "startup_failure",
-        headline: "Container failed to start: starting container failed: OCI runtime create failed",
+        headline:
+          "Container failed to start: starting container failed: OCI runtime create failed",
       });
     });
 
     it("should categorize network errors", () => {
-      expect(categorizeTaskError("failed to allocate network IP for task")).toEqual({
+      expect(
+        categorizeTaskError("failed to allocate network IP for task"),
+      ).toEqual({
         category: "network",
-        headline: "Network allocation failed: failed to allocate network IP for task",
+        headline:
+          "Network allocation failed: failed to allocate network IP for task",
       });
     });
 
     it("should categorize volume errors", () => {
-      expect(categorizeTaskError("invalid bind mount source, source path not found: /data")).toEqual({
+      expect(
+        categorizeTaskError(
+          "invalid bind mount source, source path not found: /data",
+        ),
+      ).toEqual({
         category: "volume",
-        headline: "Volume or mount failed: invalid bind mount source, source path not found: /data",
+        headline:
+          "Volume or mount failed: invalid bind mount source, source path not found: /data",
       });
     });
 
     it("should categorize secret/config errors", () => {
-      expect(categorizeTaskError("secret reference my_secret not found")).toEqual({
+      expect(
+        categorizeTaskError("secret reference my_secret not found"),
+      ).toEqual({
         category: "config",
-        headline: "Secret or config reference invalid: secret reference my_secret not found",
+        headline:
+          "Secret or config reference invalid: secret reference my_secret not found",
       });
     });
 
@@ -745,16 +971,22 @@ describe("Monitoring", () => {
     });
 
     it("should categorize entrypoint errors", () => {
-      expect(categorizeTaskError("OCI runtime create failed: exec format error")).toEqual({
+      expect(
+        categorizeTaskError("OCI runtime create failed: exec format error"),
+      ).toEqual({
         category: "entrypoint",
-        headline: "Container entrypoint failed: OCI runtime create failed: exec format error",
+        headline:
+          "Container entrypoint failed: OCI runtime create failed: exec format error",
       });
     });
 
     it("should categorize port conflicts", () => {
-      expect(categorizeTaskError("host-mode port already in use on 1 node")).toEqual({
+      expect(
+        categorizeTaskError("host-mode port already in use on 1 node"),
+      ).toEqual({
         category: "port_conflict",
-        headline: "Host port already in use: host-mode port already in use on 1 node",
+        headline:
+          "Host port already in use: host-mode port already in use on 1 node",
       });
     });
 

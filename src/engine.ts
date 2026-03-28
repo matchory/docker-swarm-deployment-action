@@ -185,7 +185,9 @@ export type TaskStatus = {
   Ports: string;
 };
 
-export async function listServiceTasks(serviceId: string): Promise<TaskStatus[]> {
+export async function listServiceTasks(
+  serviceId: string,
+): Promise<TaskStatus[]> {
   try {
     const output = await executeDockerCommand(
       ["service", "ps", "--format=json", "--no-trunc", serviceId],
@@ -195,7 +197,10 @@ export async function listServiceTasks(serviceId: string): Promise<TaskStatus[]>
     return parseLineDelimitedJson<TaskStatus>(output);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`Failed to list tasks for service "${serviceId}": ${message}`, { cause });
+    throw new Error(
+      `Failed to list tasks for service "${serviceId}": ${message}`,
+      { cause },
+    );
   }
 }
 

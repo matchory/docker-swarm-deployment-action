@@ -373,7 +373,9 @@ services:
         Ports: "",
       };
       mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(`${JSON.stringify(mockTask)}\n`));
+        options?.listeners?.stdout?.(
+          Buffer.from(`${JSON.stringify(mockTask)}\n`),
+        );
         return 0;
       });
 
@@ -388,10 +390,30 @@ services:
     });
 
     it("should return multiple tasks in order", async () => {
-      const task1 = { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 3 minutes ago", Error: "task: non-zero exit (1)", Ports: "" };
-      const task2 = { ID: "t2", Name: "api.2", Image: "img", Node: "n2", DesiredState: "Running", CurrentState: "Running 1 minute ago", Error: "", Ports: "" };
+      const task1 = {
+        ID: "t1",
+        Name: "api.1",
+        Image: "img",
+        Node: "n1",
+        DesiredState: "Shutdown",
+        CurrentState: "Failed 3 minutes ago",
+        Error: "task: non-zero exit (1)",
+        Ports: "",
+      };
+      const task2 = {
+        ID: "t2",
+        Name: "api.2",
+        Image: "img",
+        Node: "n2",
+        DesiredState: "Running",
+        CurrentState: "Running 1 minute ago",
+        Error: "",
+        Ports: "",
+      };
       mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(`${JSON.stringify(task1)}\n${JSON.stringify(task2)}\n`));
+        options?.listeners?.stdout?.(
+          Buffer.from(`${JSON.stringify(task1)}\n${JSON.stringify(task2)}\n`),
+        );
         return 0;
       });
 

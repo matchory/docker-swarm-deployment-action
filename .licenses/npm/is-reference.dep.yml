@@ -1,0 +1,11 @@
+---
+name: is-reference
+version: 1.2.1
+type: npm
+summary: Determine whether an AST node is a reference
+homepage: https://github.com/Rich-Harris/is-reference#readme
+license: mit
+licenses:
+- sources: README.md
+  text: MIT
+notices: []

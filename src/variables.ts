@@ -235,11 +235,7 @@ const decoders = {
   url: (value) => decodeURIComponent(value),
 } satisfies Record<string, (value: string) => string>;
 
-function encodeVariable(
-  content: string,
-  name: string,
-  variable: Variable,
-) {
+function encodeVariable(content: string, name: string, variable: Variable) {
   const format = variable.labels?.[
     encodeLabel
   ].toString() as keyof typeof encoders;
@@ -258,11 +254,7 @@ function encodeVariable(
   return encoders[format](content);
 }
 
-function decodeVariable(
-  content: string,
-  name: string,
-  variable: Variable,
-) {
+function decodeVariable(content: string, name: string, variable: Variable) {
   const format = variable.labels?.[
     decodeLabel
   ].toString() as keyof typeof decoders;
@@ -383,8 +375,11 @@ async function pruneStoredVariables({
 }) {
   core.debug(`Pruning ${kind}s for stack "${stack}"`);
 
-  const variableIdentifier = (v: { stack: string; name: string; hash: string }) =>
-    v.stack + v.name + v.hash;
+  const variableIdentifier = (v: {
+    stack: string;
+    name: string;
+    hash: string;
+  }) => v.stack + v.name + v.hash;
 
   const specIdentifiers = specVariables
     ? Object.values(specVariables)
