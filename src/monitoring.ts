@@ -2,10 +2,12 @@ import * as core from "@actions/core";
 import {
   getServiceLogs,
   listServices,
+  listServiceTasks,
   type Service,
   type ServiceWithMetadata,
 } from "./engine.js";
 import type { Settings } from "./settings.js";
+import type { TaskInfo } from "./types.js";
 import { sleep } from "./utils.js";
 
 /**
@@ -63,20 +65,48 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       try {
         complete = isServiceUpdateComplete(service);
       } catch (error) {
-        const logs = await getServiceLogs(service.ID, { since: startTime });
         const message = error instanceof Error ? error.message : String(error);
 
-        core.error(
-          new Error(
-            `Service "${serviceIdentifier}" failed to update: ${message}`,
-            { cause: error },
-          ),
-        );
-        core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+        // Fetch task details to get actionable error information
+        let taskFailureDetails: string | undefined;
+        try {
+          const tasks = await listServiceTasks(service.ID);
+          taskFailureDetails = await getTaskFailureDetails(tasks);
+        } catch (taskError) {
+          core.debug(
+            `Failed to fetch task details: ${taskError instanceof Error ? taskError.message : String(taskError)}`,
+          );
+        }
+
+        // Build comprehensive error message with task details
+        const errorMessage = taskFailureDetails
+          ? `Service "${serviceIdentifier}" failed to update: ${message}. ${taskFailureDetails}`
+          : `Service "${serviceIdentifier}" failed to update: ${message}`;
+
+        // Single error annotation with actionable information
+        core.error(new Error(errorMessage, { cause: error }));
+
+        // Fetch logs for summary
+        const logs = await getServiceLogs(service.ID, { since: startTime });
         core.setOutput("service-logs", logs.toString());
-        core.summary.addHeading("Service Logs", 2);
+
+        // Add detailed information to job summary (not as error annotation)
+        core.summary.addHeading("Service Update Failure Details", 2);
         core.summary.addRaw(
-          `Before the "${serviceIdentifier}" service update failed, the following logs were generated:`,
+          `Service "${serviceIdentifier}" failed to update.`,
+          true,
+        );
+
+        // Add task failure details to summary if available
+        if (taskFailureDetails) {
+          core.summary.addHeading("Task Failure Reason", 3);
+          core.summary.addRaw(taskFailureDetails, true);
+        }
+
+        // Add service logs to summary
+        core.summary.addHeading("Service Logs", 3);
+        core.summary.addRaw(
+          `Logs generated before the service update failed:`,
           true,
         );
         core.summary.addTable([
@@ -98,6 +128,10 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
               : []),
           ]),
         ]);
+
+        // Add service details to summary for debugging
+        core.summary.addHeading("Service Details (Debug)", 3);
+        core.summary.addCodeBlock(JSON.stringify(service, null, 2), "json");
 
         throw error;
       }
@@ -240,12 +274,66 @@ function resolveFailureReason(
 ) {
   const reason =
     {
-      paused: "Service is paused",
+      paused:
+        "Service update paused due to task failure (check task logs for details)",
       rollback_started: "Service failed to update and is being rolled back",
       rollback_completed: "Service failed to update and was rolled back",
-      rollback_paused: "Service is paused and is being rolled back",
+      rollback_paused:
+        "Service rollback paused due to task failure (check task logs for details)",
       unknown: `Service update status '${state}' is unknown`,
     }[state] ?? "Unknown failure reason";
 
   return reason + (message ? `: ${message}` : "");
+}
+
+/**
+ * Extract actionable error information from failed tasks
+ *
+ * This function analyzes failed tasks to provide meaningful error messages
+ * that help diagnose why a service update failed. It examines task states,
+ * error messages, and failure patterns to give actionable feedback.
+ *
+ * @param tasks Array of tasks from docker service ps
+ * @returns A string describing the task failure reason, or undefined if no clear failure
+ */
+async function getTaskFailureDetails(
+  tasks: TaskInfo[],
+): Promise<string | undefined> {
+  // Filter to only failed or rejected tasks
+  const failedTasks = tasks.filter(
+    (task) =>
+      task.Status.State === "failed" ||
+      task.Status.State === "rejected" ||
+      task.DesiredState === "shutdown",
+  );
+
+  if (failedTasks.length === 0) {
+    return undefined;
+  }
+
+  // Get the most recent failed task
+  const recentFailedTask = failedTasks.sort(
+    (a, b) =>
+      new Date(b.UpdatedAt).getTime() - new Date(a.UpdatedAt).getTime(),
+  )[0];
+
+  // Extract error information
+  const errorParts: string[] = [];
+
+  if (recentFailedTask.Status.Err) {
+    errorParts.push(recentFailedTask.Status.Err);
+  } else if (recentFailedTask.Status.Message) {
+    errorParts.push(recentFailedTask.Status.Message);
+  }
+
+  // Add context about the task state
+  if (recentFailedTask.Status.State === "rejected") {
+    errorParts.push("task was rejected by the scheduler");
+  } else if (recentFailedTask.Status.State === "failed") {
+    errorParts.push("task failed to start or run successfully");
+  }
+
+  return errorParts.length > 0
+    ? `Task ${recentFailedTask.ID.substring(0, 12)} ${errorParts.join(": ")}`
+    : undefined;
 }

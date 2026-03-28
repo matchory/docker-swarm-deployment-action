@@ -455,6 +455,67 @@ services:
     });
   });
 
+  describe("listServiceTasks", () => {
+    it("should list tasks for a service", async () => {
+      const mockTasks = [
+        {
+          ID: "task1abc",
+          ServiceID: "service123",
+          NodeID: "node1",
+          DesiredState: "running",
+          Status: { State: "running" },
+          CreatedAt: "2024-01-01T00:00:00Z",
+          UpdatedAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          ID: "task2def",
+          ServiceID: "service123",
+          NodeID: "node1",
+          DesiredState: "shutdown",
+          Status: { State: "failed", Err: "container exited with code 1" },
+          CreatedAt: "2024-01-01T00:00:00Z",
+          UpdatedAt: "2024-01-01T00:00:02Z",
+        },
+      ];
+      const mockOutput = mockTasks.map((t) => JSON.stringify(t)).join("\n");
+      
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(mockOutput));
+        return 0;
+      });
+
+      const tasks = await engine.listServiceTasks("service123");
+
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        ["service", "ps", "--format=json", "--no-trunc", "service123"],
+        expect.objectContaining({ silent: true }),
+      );
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].ID).toBe("task1abc");
+      expect(tasks[1].Status.Err).toBe("container exited with code 1");
+    });
+
+    it("should handle empty task list", async () => {
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(""));
+        return 0;
+      });
+
+      const tasks = await engine.listServiceTasks("service123");
+
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("should throw error on exec failure", async () => {
+      mockedExec.mockRejectedValue(new Error("Docker error"));
+      
+      await expect(engine.listServiceTasks("service123")).rejects.toThrowError(
+        /Failed to list tasks for service/,
+      );
+    });
+  });
+
   describe("listSecrets", () => {
     it("should list secrets and parse labels", async () => {
       const mockSecret = {

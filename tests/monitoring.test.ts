@@ -438,6 +438,81 @@ describe("Monitoring", () => {
     );
   });
 
+  it("should include task failure details in error message", async () => {
+    vi.useFakeTimers();
+
+    const mockTasks = [
+      {
+        ID: "task1abcdefghijklmnop",
+        ServiceID: "web_service",
+        NodeID: "node1",
+        DesiredState: "shutdown",
+        Labels: {},
+        Status: {
+          State: "failed",
+          Err: "task: non-zero exit (1)",
+          Message: "started",
+        },
+        Spec: {},
+        CreatedAt: "2024-01-01T00:00:00Z",
+        UpdatedAt: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const serviceHistory = [
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "paused", Message: "update paused" },
+        } as ServiceWithMetadata,
+      ],
+    ];
+
+    vi.spyOn(engine, "listServices")
+      .mockResolvedValueOnce(serviceHistory[0]);
+    vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(mockTasks);
+    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+    // Should include task details in error
+    // noinspection JSVoidFunctionReturnValueUsed
+    const promise = expect(monitorDeployment(settings)).rejects.toThrow();
+    await vi.runAllTimersAsync();
+    await promise;
+
+    // Verify listServiceTasks was called to fetch task details
+    expect(engine.listServiceTasks).toHaveBeenCalledWith("web_service");
+  });
+
+  it("should handle task fetch errors gracefully", async () => {
+    vi.useFakeTimers();
+
+    const serviceHistory = [
+      [
+        {
+          ID: "web_service",
+          Spec: { Name: "test" },
+          UpdateStatus: { State: "paused" },
+        } as ServiceWithMetadata,
+      ],
+    ];
+
+    vi.spyOn(engine, "listServices")
+      .mockResolvedValueOnce(serviceHistory[0]);
+    vi.spyOn(engine, "listServiceTasks").mockRejectedValueOnce(
+      new Error("Failed to fetch tasks"),
+    );
+    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+    // Should still throw error even if task fetch fails
+    // noinspection JSVoidFunctionReturnValueUsed
+    const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(engine.listServiceTasks).toHaveBeenCalled();
+  });
+
   it("should not monitor deployment if `monitor` is false", async () => {
     vi.spyOn(engine, "listServices");
 
