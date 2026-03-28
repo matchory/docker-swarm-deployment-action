@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ServiceWithMetadata } from "../src/engine.js";
 import * as engine from "../src/engine.js";
+import type { ServiceWithMetadata, TaskStatus } from "../src/engine.js";
 import {
+  buildFailureReport,
   categorizeTaskError,
   isServiceRunning,
   isServiceUpdateComplete,
@@ -325,6 +326,10 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
+    vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+      { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+    ]);
+    vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
 
     // noinspection JSVoidFunctionReturnValueUsed
     const promise = expect(monitorDeployment(settings)).rejects.toThrowError();
@@ -406,6 +411,9 @@ describe("Monitoring", () => {
       .mockResolvedValueOnce(serviceHistory[0])
       .mockResolvedValueOnce(serviceHistory[1])
       .mockResolvedValueOnce(serviceHistory[2]);
+    vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+      { ID: "t1", Name: "test.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+    ]);
     vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
       {
         message: "Error occurred during service update",
@@ -433,9 +441,12 @@ describe("Monitoring", () => {
     expect(listServices).toHaveBeenCalledTimes(serviceHistory.length);
     expect(engine.getServiceLogs).toHaveBeenCalledWith(
       serviceHistory[2][0].ID,
-      expect.objectContaining({
-        since: expect.any(Date),
-      }),
+      expect.objectContaining({ since: expect.any(Date), tail: 50 }),
+    );
+
+    const core = await import("@actions/core");
+    expect(core.error).toHaveBeenCalledWith(
+      expect.stringContaining("Error occurred during service update"),
     );
   });
 
@@ -572,6 +583,86 @@ describe("Monitoring", () => {
           // UpdateStatus is completely missing
         }),
       ).toBe(false); // Should return false (still updating)
+    });
+  });
+
+  describe("buildFailureReport", () => {
+    it("should produce a headline from the most recent failed task", async () => {
+      const core = await import("@actions/core");
+      const tasks: TaskStatus[] = [
+        { ID: "t1", Name: "api.1", Image: "registry/api:v2", Node: "worker-1", DesiredState: "Shutdown", CurrentState: "Failed 2 minutes ago", Error: "task: non-zero exit (1)", Ports: "" },
+        { ID: "t2", Name: "api.2", Image: "registry/api:v2", Node: "worker-2", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+      ];
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(tasks);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Container exited with code 1"),
+      );
+    });
+
+    it("should show task attempt history", async () => {
+      const core = await import("@actions/core");
+      const tasks: TaskStatus[] = [
+        { ID: "t1", Name: "api.1", Image: "img", Node: "worker-1", DesiredState: "Shutdown", CurrentState: "Failed 3 minutes ago", Error: "task: non-zero exit (1)", Ports: "" },
+        { ID: "t2", Name: "api.2", Image: "img", Node: "worker-1", DesiredState: "Running", CurrentState: "Running 30 seconds ago", Error: "", Ports: "" },
+      ];
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce(tasks);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Task history"),
+      );
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("worker-1"),
+      );
+    });
+
+    it("should show explicit message when no container logs are available", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "No such image: img", Ports: "" },
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("No container logs available"),
+      );
+    });
+
+    it("should show container logs when available", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+        { ID: "t1", Name: "api.1", Image: "img", Node: "n1", DesiredState: "Shutdown", CurrentState: "Failed 1 minute ago", Error: "task: non-zero exit (1)", Ports: "" },
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
+        { timestamp: new Date("2026-03-28T12:00:01Z"), metadata: {}, message: "Error: Cannot connect to database" },
+        { timestamp: new Date("2026-03-28T12:00:02Z"), metadata: {}, message: "Shutting down..." },
+      ]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Cannot connect to database"),
+      );
+    });
+
+    it("should handle empty task list gracefully", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("No task information available"),
+      );
     });
   });
 

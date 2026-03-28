@@ -2,8 +2,10 @@ import * as core from "@actions/core";
 import {
   getServiceLogs,
   listServices,
+  listServiceTasks,
   type Service,
   type ServiceWithMetadata,
+  type TaskStatus,
 } from "./engine.js";
 import type { Settings } from "./settings.js";
 import { sleep } from "./utils.js";
@@ -63,41 +65,8 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       try {
         complete = isServiceUpdateComplete(service);
       } catch (error) {
-        const logs = await getServiceLogs(service.ID, { since: startTime });
-        const message = error instanceof Error ? error.message : String(error);
-
-        core.error(
-          new Error(
-            `Service "${serviceIdentifier}" failed to update: ${message}`,
-            { cause: error },
-          ),
-        );
+        await buildFailureReport(service.ID, serviceIdentifier, startTime);
         core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
-        core.setOutput("service-logs", logs.toString());
-        core.summary.addHeading("Service Logs", 2);
-        core.summary.addRaw(
-          `Before the "${serviceIdentifier}" service update failed, the following logs were generated:`,
-          true,
-        );
-        core.summary.addTable([
-          [
-            { data: "timestamp", header: true },
-            { data: "message", header: true },
-            ...(logs[0]
-              ? Object.keys(logs[0].metadata).map((key) => ({
-                  data: key,
-                  header: true,
-                }))
-              : []),
-          ],
-          ...logs.map((entry) => [
-            { data: entry.timestamp?.toISOString() ?? "<no timestamp>" },
-            { data: entry.message },
-            ...(entry.metadata
-              ? Object.values(entry.metadata).map((value) => ({ data: value }))
-              : []),
-          ]),
-        ]);
 
         throw error;
       }
@@ -248,6 +217,116 @@ function resolveFailureReason(
     }[state] ?? "Unknown failure reason";
 
   return reason + (message ? `: ${message}` : "");
+}
+
+/**
+ * Build a structured diagnostic report for a failed service update.
+ */
+export async function buildFailureReport(
+  serviceId: string,
+  serviceName: string,
+  startTime: Date,
+) {
+  let tasks: TaskStatus[];
+
+  try {
+    tasks = await listServiceTasks(serviceId);
+  } catch {
+    core.error(`Failed to fetch task details for service "${serviceName}"`);
+    return;
+  }
+
+  if (tasks.length === 0) {
+    core.error(`No task information available for service "${serviceName}"`);
+    return;
+  }
+
+  const failedTasks = tasks.filter(
+    (t) => t.Error && t.DesiredState !== "Running",
+  );
+  const latestFailedTask = failedTasks[0];
+
+  if (latestFailedTask) {
+    const { headline } = categorizeTaskError(latestFailedTask.Error);
+    core.error(`Service "${serviceName}" failed to deploy: ${headline}`);
+  } else {
+    core.error(`Service "${serviceName}" failed to deploy (no task error details available)`);
+  }
+
+  const history = tasks
+    .map((t) => {
+      const error = t.Error ? ` "${t.Error}"` : "";
+      return `  ${t.Name}  ${t.DesiredState.padEnd(10)}  ${t.CurrentState}${error}  (node: ${t.Node})`;
+    })
+    .join("\n");
+
+  core.error(`Task history for service "${serviceName}":\n${history}`);
+
+  let logs: Awaited<ReturnType<typeof getServiceLogs>>;
+
+  try {
+    logs = await getServiceLogs(serviceId, { since: startTime, tail: 50 });
+  } catch {
+    core.warning(`Failed to fetch container logs for service "${serviceName}"`);
+    logs = [];
+  }
+
+  if (logs.length === 0) {
+    core.error(
+      `No container logs available for service "${serviceName}" (container may not have started)`,
+    );
+  } else {
+    const logLines = logs
+      .map((entry) => {
+        const ts = entry.timestamp?.toISOString() ?? "<no timestamp>";
+        return `  ${ts}  ${entry.message}`;
+      })
+      .join("\n");
+
+    core.error(`Container logs for service "${serviceName}":\n${logLines}`);
+  }
+
+  core.summary.addHeading(`Deployment failure: ${serviceName}`, 2);
+
+  if (latestFailedTask) {
+    const { headline } = categorizeTaskError(latestFailedTask.Error);
+    core.summary.addRaw(`**Root cause:** ${headline}`, true);
+  }
+
+  core.summary.addHeading("Task history", 3);
+  core.summary.addTable([
+    [
+      { data: "Task", header: true },
+      { data: "State", header: true },
+      { data: "Current State", header: true },
+      { data: "Error", header: true },
+      { data: "Node", header: true },
+    ],
+    ...tasks.map((t) => [
+      { data: t.Name },
+      { data: t.DesiredState },
+      { data: t.CurrentState },
+      { data: t.Error || "-" },
+      { data: t.Node },
+    ]),
+  ]);
+
+  if (logs.length > 0) {
+    core.summary.addHeading("Container logs", 3);
+    core.summary.addCodeBlock(
+      logs
+        .map((entry) => {
+          const ts = entry.timestamp?.toISOString() ?? "<no timestamp>";
+          return `${ts}  ${entry.message}`;
+        })
+        .join("\n"),
+    );
+  } else {
+    core.summary.addRaw(
+      "_No container logs available (container may not have started)_",
+      true,
+    );
+  }
 }
 
 export type ErrorCategory =
