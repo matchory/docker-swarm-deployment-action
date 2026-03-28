@@ -4,14 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-GitHub Action for deploying Docker Swarm stacks with automatic config/secret management, variable rotation, and optional post-deployment monitoring. Written in TypeScript, runs on Node 20.
+GitHub Action for deploying Docker Swarm stacks with automatic config/secret management, variable rotation, and optional post-deployment monitoring. Written in TypeScript, runs on Node 24.
 
 ## Commands
 
 | Task | Command |
 |------|---------|
-| Build (TypeScript → out/) | `npm run build` |
-| Package (build + bundle → dist/) | `npm run package` |
+| Package (TS → dist/) | `npm run package` |
 | Run tests | `npm run test` |
 | Run single test | `npx vitest run tests/compose.test.ts` |
 | Lint | `npm run lint` |
@@ -23,7 +22,7 @@ The `dist/` directory is committed — run `npm run package` after source change
 
 ## Architecture
 
-**Build chain**: `src/*.ts` → unbuild (`out/`) → @vercel/ncc (`dist/index.cjs`)
+**Build chain**: `src/*.ts` → @vercel/ncc (`dist/index.js`)
 
 **Deployment flow** (orchestrated in `deployment.ts`):
 1. `resolveComposeFiles()` — find compose file(s) with auto-detection fallback
@@ -46,5 +45,5 @@ The `dist/` directory is committed — run `npm run package` after source change
 
 - **Biome** for linting and formatting (not ESLint/Prettier)
 - **Vitest** for testing with V8 coverage
-- **unbuild** (Rollup + esbuild) for compilation, **@vercel/ncc** for final bundling
+- **@vercel/ncc** bundles TypeScript source directly into a single ESM file
 - TypeScript strict mode, ESNext target, bundler module resolution
