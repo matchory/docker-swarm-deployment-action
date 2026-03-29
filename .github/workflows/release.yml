@@ -21,9 +21,11 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           MAJOR="${TAG%%.*}"
           MINOR="${TAG%.*}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
-          echo "minor=$MINOR" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "major=$MAJOR"
+            echo "minor=$MINOR"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Update major version tag
         run: |
