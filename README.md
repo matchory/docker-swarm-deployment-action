@@ -116,8 +116,8 @@ To configure the action, you can use the following inputs:
 | `env-var-prefix`   | `DEPLOYMENT_`                         | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution).                           |
 | `manage-variables` | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
 | `strict-variables` | `false`                               | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
-| `variables`        | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.           |
-| `secrets`          | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.  |
+| `variables`        | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
+| `secrets`          | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.    |
 | `exclude-variables`| _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to all variable sources.                        |
 | `extra-variables`  | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
 | `monitor`          | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
