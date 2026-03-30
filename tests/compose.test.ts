@@ -181,6 +181,70 @@ describe("Compose", () => {
 
       expect(readdir).toHaveBeenCalledWith(".");
     });
+
+    describe("path containment", () => {
+      it("should reject paths that escape the workspace via ..", async () => {
+        vi.stubEnv("GITHUB_WORKSPACE", "/home/runner/work/repo");
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["../../etc/passwd"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).rejects.toThrow(
+          /outside the workspace/,
+        );
+      });
+
+      it("should reject absolute paths outside the workspace", async () => {
+        vi.stubEnv("GITHUB_WORKSPACE", "/home/runner/work/repo");
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["/etc/passwd"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).rejects.toThrow(
+          /outside the workspace/,
+        );
+      });
+
+      it("should accept paths within the workspace", async () => {
+        vi.stubEnv("GITHUB_WORKSPACE", process.cwd());
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["docker/compose.yaml"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).resolves.toEqual([
+          "docker/compose.yaml",
+        ]);
+      });
+
+      it("should accept paths when GITHUB_WORKSPACE is not set (falls back to cwd)", async () => {
+        delete process.env.GITHUB_WORKSPACE;
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["compose.yaml"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).resolves.toEqual([
+          "compose.yaml",
+        ]);
+      });
+
+      it("should report all offending paths in the error message", async () => {
+        vi.stubEnv("GITHUB_WORKSPACE", "/home/runner/work/repo");
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["../secret.yaml", "/tmp/other.yaml"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).rejects.toThrow(
+          /secret\.yaml.*other\.yaml|other\.yaml.*secret\.yaml/,
+        );
+      });
+    });
   });
 
   describe("Spec Loading", () => {

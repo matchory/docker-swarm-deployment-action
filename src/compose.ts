@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { debug } from "node:util";
 import * as core from "@actions/core";
 import { dump, load } from "js-yaml";
@@ -61,6 +61,21 @@ export async function resolveComposeFiles(
   // So instead, we check if the files exist and are readable, and if not, we
   // throw an error and abort the deployment.
   if (settings.composeFiles && settings.composeFiles.length > 0) {
+    // Validate that all specified paths resolve within the workspace to
+    // prevent path traversal attacks (e.g., "../../etc/passwd").
+    const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+    const resolvedWorkspace = resolve(workspace);
+    const escapedPaths = settings.composeFiles.filter(
+      (path) => !resolve(path).startsWith(resolvedWorkspace),
+    );
+
+    if (escapedPaths.length > 0) {
+      throw new Error(
+        `One or more Compose Files resolve outside the workspace ` +
+          `directory: ${escapedPaths.join(", ")}`,
+      );
+    }
+
     const files = await Promise.all(
       settings.composeFiles.map((path) => exists(path)),
     );
