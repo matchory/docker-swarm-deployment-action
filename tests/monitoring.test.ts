@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceWithMetadata, TaskStatus } from "../src/engine.js";
 import * as engine from "../src/engine.js";
-import * as utilsModule from "../src/utils.js";
 import {
   buildFailureReport,
   categorizeTaskError,
@@ -11,6 +10,7 @@ import {
   monitorDeployment,
 } from "../src/monitoring.js";
 import { defineSettings } from "../src/settings.js";
+import * as utilsModule from "../src/utils.js";
 
 vi.mock("@actions/core");
 
@@ -1189,7 +1189,11 @@ describe("Monitoring", () => {
       vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
 
       const promise = expect(
-        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+        monitorDeployment({
+          ...settings,
+          monitorTimeout: 3,
+          monitorInterval: 1,
+        }),
       ).rejects.toThrow(/1\/2 services converged/);
       await vi.runAllTimersAsync();
       await promise;
@@ -1221,7 +1225,11 @@ describe("Monitoring", () => {
       vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
 
       const promise = expect(
-        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+        monitorDeployment({
+          ...settings,
+          monitorTimeout: 3,
+          monitorInterval: 1,
+        }),
       ).rejects.toThrow();
       await vi.runAllTimersAsync();
       await promise;
@@ -1257,7 +1265,11 @@ describe("Monitoring", () => {
       vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
 
       const promise = expect(
-        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+        monitorDeployment({
+          ...settings,
+          monitorTimeout: 3,
+          monitorInterval: 1,
+        }),
       ).rejects.toThrow(/0\/1 services converged/);
       await vi.runAllTimersAsync();
       await promise;

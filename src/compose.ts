@@ -67,7 +67,7 @@ export async function resolveComposeFiles(
     const resolvedWorkspace = resolve(workspace);
     const prefix = resolvedWorkspace.endsWith("/")
       ? resolvedWorkspace
-      : resolvedWorkspace + "/";
+      : `${resolvedWorkspace}/`;
     const escapedPaths = settings.composeFiles.filter(
       (path) =>
         resolve(path) !== resolvedWorkspace &&

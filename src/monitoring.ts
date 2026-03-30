@@ -70,15 +70,11 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       ]);
 
       if (convergedNames.length > 0) {
-        core.info(
-          `Services converged: ${convergedNames.join(", ")}`,
-        );
+        core.info(`Services converged: ${convergedNames.join(", ")}`);
       }
 
       if (pendingNames.length > 0) {
-        core.error(
-          `Services not converged: ${pendingNames.join(", ")}`,
-        );
+        core.error(`Services not converged: ${pendingNames.join(", ")}`);
       }
 
       throw new Error(
