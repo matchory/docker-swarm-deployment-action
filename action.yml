@@ -100,6 +100,8 @@ outputs:
     description: "Name of the stack deployed"
   version:
     description: "Version of the stack deployed"
+  service-logs:
+    description: "Logs of a failed service after deployment"
 
 runs:
   using: node24

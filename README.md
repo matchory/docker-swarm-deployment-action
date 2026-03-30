@@ -122,7 +122,7 @@ To configure the action, you can use the following inputs:
 | `extra-variables`  | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
 | `monitor`          | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
 | `monitor-timeout`  | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
-| `monitor-interval` | `10`                                  | The interval in seconds to check the stack status.                                                                                |
+| `monitor-interval` | `5`                                   | The interval in seconds to check the stack status.                                                                                |
 
 ### Outputs
 

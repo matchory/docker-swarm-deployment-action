@@ -432,6 +432,43 @@ describe("Utilities", () => {
         const variables = new Map([["MESSAGE", "$UNDEFINED World"]]);
         expect(interpolateString("$MESSAGE", variables)).toBe(" World");
       });
+
+      it("should detect circular variable references", () => {
+        const variables = new Map([
+          ["A", "$B"],
+          ["B", "$A"],
+        ]);
+        expect(() => interpolateString("$A", variables)).toThrow(
+          "Circular variable reference detected: A → B → A",
+        );
+      });
+
+      it("should detect self-referencing variables", () => {
+        const variables = new Map([["A", "$A"]]);
+        expect(() => interpolateString("$A", variables)).toThrow(
+          "Circular variable reference detected: A → A",
+        );
+      });
+
+      it("should detect longer circular chains", () => {
+        const variables = new Map([
+          ["A", "$B"],
+          ["B", "$C"],
+          ["C", "$A"],
+        ]);
+        expect(() => interpolateString("$A", variables)).toThrow(
+          "Circular variable reference detected: A → B → C → A",
+        );
+      });
+
+      it("should not flag non-circular chains through shared dependencies", () => {
+        const variables = new Map([
+          ["A", "$C"],
+          ["B", "$C"],
+          ["C", "value"],
+        ]);
+        expect(interpolateString("$A $B", variables)).toBe("value value");
+      });
     });
 
     describe("Complex scenarios", () => {

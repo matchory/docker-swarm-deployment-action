@@ -1,5 +1,5 @@
 import { debug } from "node:util";
-import { getBooleanInput, getInput } from "@actions/core";
+import { getBooleanInput, getInput, setSecret } from "@actions/core";
 
 /**
  * Deployment settings
@@ -130,6 +130,11 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
   if (inputs.secrets) {
     const parsedSecrets = parseVariableInput(inputs.secrets);
     for (const [key, value] of parsedSecrets) {
+      // Ensure secrets are masked in output
+      if (value) {
+        setSecret(value);
+      }
+
       variables.set(key, value);
     }
   }
