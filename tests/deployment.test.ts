@@ -217,7 +217,14 @@ describe("Deployment", () => {
         },
         settings,
       );
-      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(settings);
+      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(settings, {
+        version: "3.8",
+        services: {
+          web: {
+            image: "nginx:latest",
+          },
+        },
+      });
       expect(variables.pruneVariables).toHaveBeenCalledWith(
         {
           version: "3.8",

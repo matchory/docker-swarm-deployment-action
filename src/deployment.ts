@@ -5,6 +5,7 @@ import {
   resolveComposeFiles,
 } from "./compose.js";
 import { deployStack } from "./engine.js";
+import { validateHealthChecks } from "./healthcheck.js";
 import { monitorDeployment } from "./monitoring.js";
 import type { Settings } from "./settings.js";
 import { pruneVariables } from "./variables.js";
@@ -18,10 +19,12 @@ export async function deploy(settings: Readonly<Settings>) {
   const composeSpec = await normalizeSpec(composeSpecs, settings);
   const finalSpec = interpolateSpec(composeSpec, settings);
 
+  validateHealthChecks(finalSpec, settings);
+
   await deployStack(finalSpec, settings);
 
   if (settings.monitor) {
-    await monitorDeployment(settings);
+    await monitorDeployment(settings, finalSpec);
   }
 
   await pruneVariables(finalSpec, settings);

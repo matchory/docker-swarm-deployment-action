@@ -90,6 +90,11 @@ inputs:
     description: >-
       Interval for post-deployment monitoring checks in seconds.
     default: "5"
+  health-check-warnings:
+    description: >-
+      Whether to emit warnings for missing or suspect health check
+      configurations in compose services.
+    default: "true"
 
 outputs:
   status:

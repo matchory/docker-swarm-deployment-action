@@ -193,7 +193,10 @@ describe("main", () => {
       ".",
       { retentionDays: 30 },
     );
-    expect(core.warning).not.toHaveBeenCalled();
+    // Only health check warnings (no artifact warnings)
+    for (const call of vi.mocked(core.warning).mock.calls) {
+      expect(call[0]).toMatch(/health check/i);
+    }
   });
 
   it("should warn when file writing fails but continue execution", async () => {

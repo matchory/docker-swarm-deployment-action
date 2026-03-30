@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import type { ComposeSpec } from "./compose.js";
 import {
   getServiceLogs,
   listServices,
@@ -7,6 +8,11 @@ import {
   type ServiceWithMetadata,
   type TaskStatus,
 } from "./engine.js";
+import {
+  findServiceHealthCheck,
+  formatHealthCheck,
+  type HealthCheck,
+} from "./healthcheck.js";
 import type { Settings } from "./settings.js";
 import { sleep } from "./utils.js";
 
@@ -20,7 +26,10 @@ import { sleep } from "./utils.js";
  *
  * @param settings Deployment settings
  */
-export async function monitorDeployment(settings: Readonly<Settings>) {
+export async function monitorDeployment(
+  settings: Readonly<Settings>,
+  spec?: ComposeSpec,
+) {
   if (!settings.monitor) {
     core.info("Post-Deployment Monitoring is disabled");
 
@@ -48,7 +57,14 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
           continue;
         }
         const name = service.Spec?.Name ?? service.Name ?? service.ID;
-        await buildFailureReport(service.ID, name, startTime);
+        const healthcheck = findServiceHealthCheck(spec, name);
+        await buildFailureReport(
+          service.ID,
+          name,
+          startTime,
+          undefined,
+          healthcheck,
+        );
       }
 
       const convergedNames = services
@@ -106,7 +122,14 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       try {
         complete = isServiceUpdateComplete(service);
       } catch (error) {
-        await buildFailureReport(service.ID, serviceIdentifier, startTime);
+        const healthcheck = findServiceHealthCheck(spec, serviceIdentifier);
+        await buildFailureReport(
+          service.ID,
+          serviceIdentifier,
+          startTime,
+          undefined,
+          healthcheck,
+        );
         core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
 
         throw error;
@@ -125,11 +148,13 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       // of waiting for the full timeout.
       const tasks = await fetchTasks(service.ID);
       if (tasks && isServiceStuck(tasks)) {
+        const healthcheck = findServiceHealthCheck(spec, serviceIdentifier);
         await buildFailureReport(
           service.ID,
           serviceIdentifier,
           startTime,
           tasks,
+          healthcheck,
         );
         throw new Error(
           `Service "${serviceIdentifier}" failed: all tasks are in a failed state`,
@@ -319,6 +344,7 @@ export async function buildFailureReport(
   serviceName: string,
   startTime: Date,
   prefetchedTasks?: TaskStatus[],
+  healthcheck?: HealthCheck,
 ) {
   const tasks = prefetchedTasks ?? (await fetchTasks(serviceId));
 
@@ -336,15 +362,23 @@ export async function buildFailureReport(
     (t) => t.Error && t.DesiredState !== "Running",
   );
   const latestFailedTask = failedTasks[0];
-  const headline = latestFailedTask
-    ? categorizeTaskError(latestFailedTask.Error).headline
+  const errorResult = latestFailedTask
+    ? categorizeTaskError(latestFailedTask.Error)
     : undefined;
+  const headline = errorResult?.headline;
 
   if (headline) {
     core.error(`Service "${serviceName}" failed to deploy: ${headline}`);
   } else {
     core.error(
       `Service "${serviceName}" failed to deploy (no task error details available)`,
+    );
+  }
+
+  if (errorResult?.category === "health_check" && healthcheck) {
+    core.error(
+      `Health check configuration for service "${serviceName}":\n` +
+        formatHealthCheck(healthcheck),
     );
   }
 
@@ -386,6 +420,11 @@ export async function buildFailureReport(
 
   if (headline) {
     core.summary.addRaw(`**Root cause:** ${headline}`, true);
+  }
+
+  if (errorResult?.category === "health_check" && healthcheck) {
+    core.summary.addHeading("Health check configuration", 3);
+    core.summary.addCodeBlock(formatHealthCheck(healthcheck));
   }
 
   core.summary.addHeading("Task history", 3);
