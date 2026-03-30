@@ -65,8 +65,13 @@ export async function resolveComposeFiles(
     // prevent path traversal attacks (e.g., "../../etc/passwd").
     const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
     const resolvedWorkspace = resolve(workspace);
+    const prefix = resolvedWorkspace.endsWith("/")
+      ? resolvedWorkspace
+      : resolvedWorkspace + "/";
     const escapedPaths = settings.composeFiles.filter(
-      (path) => !resolve(path).startsWith(resolvedWorkspace),
+      (path) =>
+        resolve(path) !== resolvedWorkspace &&
+        !resolve(path).startsWith(prefix),
     );
 
     if (escapedPaths.length > 0) {

@@ -233,6 +233,18 @@ describe("Compose", () => {
         ]);
       });
 
+      it("should reject paths in a sibling directory sharing the workspace prefix", async () => {
+        vi.stubEnv("GITHUB_WORKSPACE", "/home/runner/work/repo");
+        const settingsWithFiles = defineSettings({
+          ...settings,
+          composeFiles: ["/home/runner/work/repo-sibling/compose.yaml"],
+        });
+
+        await expect(resolveComposeFiles(settingsWithFiles)).rejects.toThrow(
+          /outside the workspace/,
+        );
+      });
+
       it("should report all offending paths in the error message", async () => {
         vi.stubEnv("GITHUB_WORKSPACE", "/home/runner/work/repo");
         const settingsWithFiles = defineSettings({

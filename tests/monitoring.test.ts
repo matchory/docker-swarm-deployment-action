@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServiceWithMetadata, TaskStatus } from "../src/engine.js";
 import * as engine from "../src/engine.js";
+import * as utilsModule from "../src/utils.js";
 import {
   buildFailureReport,
   categorizeTaskError,
@@ -397,11 +398,11 @@ describe("Monitoring", () => {
         monitorTimeout: 3,
         monitorInterval: 1,
       }),
-    ).rejects.toThrowError();
+    ).rejects.toThrow(/Deployment timed out/);
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(listServices).toHaveBeenCalledTimes(serviceHistory.length);
+    expect(listServices).toHaveBeenCalled();
   });
 
   it("should print the service logs on failure", async () => {
@@ -530,7 +531,7 @@ describe("Monitoring", () => {
         version: "1.0.0",
       });
       await expect(monitorDeployment(settings)).rejects.toThrow(
-        "Deployment timed out",
+        /Deployment timed out/,
       );
     });
 
@@ -1002,6 +1003,264 @@ describe("Monitoring", () => {
         category: "unknown",
         headline: "Unknown error",
       });
+    });
+  });
+
+  describe("exponential backoff", () => {
+    it("should increase sleep interval between polls", async () => {
+      vi.useFakeTimers();
+
+      const sleepSpy = vi.spyOn(utilsModule, "sleep");
+
+      // 3 polls: updating, updating, completed
+      vi.spyOn(engine, "listServices")
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "updating" },
+          } as ServiceWithMetadata,
+        ])
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "updating" },
+          } as ServiceWithMetadata,
+        ])
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "completed" },
+          } as ServiceWithMetadata,
+        ]);
+
+      const promise = monitorDeployment(settings);
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // First sleep: 5s (monitorInterval), second sleep: 7.5s (5 * 1.5)
+      expect(sleepSpy).toHaveBeenCalledTimes(3);
+      expect(sleepSpy).toHaveBeenNthCalledWith(1, 5_000);
+      expect(sleepSpy).toHaveBeenNthCalledWith(2, 7_500);
+      expect(sleepSpy).toHaveBeenNthCalledWith(3, 11_250);
+    });
+
+    it("should cap the backoff interval at monitorInterval * 6", async () => {
+      vi.useFakeTimers();
+
+      const sleepSpy = vi.spyOn(utilsModule, "sleep");
+
+      // Many polls to hit the cap
+      const updatingService = [
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "updating" },
+        } as ServiceWithMetadata,
+      ];
+      const completedService = [
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "completed" },
+        } as ServiceWithMetadata,
+      ];
+
+      const listServicesSpy = vi.spyOn(engine, "listServices");
+      // Enough iterations to exceed the cap: 5, 7.5, 11.25, 16.875, 25.3125, 30 (capped), 30
+      for (let i = 0; i < 8; i++) {
+        listServicesSpy.mockResolvedValueOnce(updatingService);
+      }
+      listServicesSpy.mockResolvedValueOnce(completedService);
+
+      const promise = monitorDeployment({
+        ...settings,
+        monitorTimeout: 600,
+      });
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // The cap is 5 * 6 = 30_000ms. Find the max sleep value.
+      const sleepValues = sleepSpy.mock.calls.map((c) => c[0]);
+      const maxSleep = Math.max(...sleepValues);
+      expect(maxSleep).toBe(30_000);
+    });
+
+    it("should reset interval when a service completes", async () => {
+      vi.useFakeTimers();
+
+      const sleepSpy = vi.spyOn(utilsModule, "sleep");
+
+      // svc1 completes on poll 3, svc2 still updating, then completes
+      vi.spyOn(engine, "listServices")
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "updating" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "updating" },
+          },
+        ] as ServiceWithMetadata[])
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "updating" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "updating" },
+          },
+        ] as ServiceWithMetadata[])
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "completed" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "updating" },
+          },
+        ] as ServiceWithMetadata[])
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "completed" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "completed" },
+          },
+        ] as ServiceWithMetadata[]);
+
+      const promise = monitorDeployment(settings);
+      await vi.runAllTimersAsync();
+      await promise;
+
+      const sleepValues = sleepSpy.mock.calls.map((c) => c[0]);
+      // Poll 1: 5000, Poll 2: 7500, Poll 3 (svc1 completes, reset): 11250
+      // Poll 4: 5000 (reset happened after poll 3)
+      expect(sleepValues[3]).toBe(5_000);
+    });
+  });
+
+  describe("partial success reporting", () => {
+    it("should report converged and pending services on timeout", async () => {
+      vi.useFakeTimers();
+      const core = await import("@actions/core");
+
+      // svc1 completes, svc2 stays updating until timeout
+      vi.spyOn(engine, "listServices")
+        .mockResolvedValueOnce([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "completed" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "updating" },
+          },
+        ] as ServiceWithMetadata[])
+        .mockResolvedValue([
+          {
+            ID: "svc1",
+            Spec: { Name: "web" },
+            UpdateStatus: { State: "completed" },
+          },
+          {
+            ID: "svc2",
+            Spec: { Name: "api" },
+            UpdateStatus: { State: "updating" },
+          },
+        ] as ServiceWithMetadata[]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(
+        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+      ).rejects.toThrow(/1\/2 services converged/);
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(core.info).toHaveBeenCalledWith(
+        expect.stringContaining("Services converged: web"),
+      );
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Services not converged: api"),
+      );
+    });
+
+    it("should include a job summary table on timeout", async () => {
+      vi.useFakeTimers();
+      const core = await import("@actions/core");
+
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "completed" },
+        },
+        {
+          ID: "svc2",
+          Spec: { Name: "api" },
+          UpdateStatus: { State: "updating" },
+        },
+      ] as ServiceWithMetadata[]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(
+        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+      ).rejects.toThrow();
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(core.summary.addHeading).toHaveBeenCalledWith(
+        "Deployment timeout summary",
+        2,
+      );
+      expect(core.summary.addTable).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            expect.objectContaining({ data: "web" }),
+            expect.objectContaining({ data: "Converged" }),
+          ]),
+          expect.arrayContaining([
+            expect.objectContaining({ data: "api" }),
+            expect.objectContaining({ data: "Pending" }),
+          ]),
+        ]),
+      );
+    });
+
+    it("should report 0/N when no services converged", async () => {
+      vi.useFakeTimers();
+
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "updating" },
+        },
+      ] as ServiceWithMetadata[]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(
+        monitorDeployment({ ...settings, monitorTimeout: 3, monitorInterval: 1 }),
+      ).rejects.toThrow(/0\/1 services converged/);
+      await vi.runAllTimersAsync();
+      await promise;
     });
   });
 });

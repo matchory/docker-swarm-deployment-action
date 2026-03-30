@@ -30,14 +30,18 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
   core.info(`Monitoring Stack "${settings.stack}" for Post-Deployment Issues`);
 
   const startTime = new Date();
-  let attemptsLeft = Math.ceil(
-    settings.monitorTimeout / settings.monitorInterval,
-  );
+  const baseInterval = settings.monitorInterval * 1_000;
+  const maxInterval = baseInterval * 6;
+  let currentInterval = baseInterval;
   const completedServices = new Set<string>();
   let services: ServiceWithMetadata[] = [];
 
   do {
-    if (--attemptsLeft <= 0) {
+    await sleep(currentInterval);
+
+    const elapsed = Date.now() - startTime.getTime();
+
+    if (elapsed >= settings.monitorTimeout * 1_000) {
       // On timeout, report diagnostics for all non-converged services
       for (const service of services) {
         if (completedServices.has(service.ID)) {
@@ -47,10 +51,40 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
         await buildFailureReport(service.ID, name, startTime);
       }
 
-      throw new Error("Deployment timed out");
-    }
+      const convergedNames = services
+        .filter((s) => completedServices.has(s.ID))
+        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
+      const pendingNames = services
+        .filter((s) => !completedServices.has(s.ID))
+        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
 
-    await sleep(settings.monitorInterval * 1_000);
+      // Job summary table for partial success
+      core.summary.addHeading("Deployment timeout summary", 2);
+      core.summary.addTable([
+        [
+          { data: "Service", header: true },
+          { data: "Status", header: true },
+        ],
+        ...convergedNames.map((n) => [{ data: n }, { data: "Converged" }]),
+        ...pendingNames.map((n) => [{ data: n }, { data: "Pending" }]),
+      ]);
+
+      if (convergedNames.length > 0) {
+        core.info(
+          `Services converged: ${convergedNames.join(", ")}`,
+        );
+      }
+
+      if (pendingNames.length > 0) {
+        core.error(
+          `Services not converged: ${pendingNames.join(", ")}`,
+        );
+      }
+
+      throw new Error(
+        `Deployment timed out: ${completedServices.size}/${services.length} services converged`,
+      );
+    }
 
     services = await listServices(
       { labels: { "com.docker.stack.namespace": settings.stack } },
@@ -61,6 +95,8 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
       `Waiting for services to finish updating: ` +
         `${completedServices.size}/${services.length}`,
     );
+
+    const previousSize = completedServices.size;
 
     for (const service of services) {
       if (completedServices.has(service.ID)) {
@@ -103,6 +139,13 @@ export async function monitorDeployment(settings: Readonly<Settings>) {
           `Service "${serviceIdentifier}" failed: all tasks are in a failed state`,
         );
       }
+    }
+
+    // Reset interval if progress was made, otherwise grow with backoff
+    if (completedServices.size > previousSize) {
+      currentInterval = baseInterval;
+    } else {
+      currentInterval = Math.min(currentInterval * 1.5, maxInterval);
     }
   } while (completedServices.size < services.length);
 
@@ -337,9 +380,9 @@ export async function buildFailureReport(
       `No container logs available for service "${serviceName}" (container may not have started)`,
     );
   } else {
-    core.error(
-      `Container logs for service "${serviceName}":\n${formattedLogs.map((l) => `  ${l}`).join("\n")}`,
-    );
+    const logOutput = formattedLogs.map((l) => `  ${l}`).join("\n");
+    core.setOutput("service-logs", logOutput);
+    core.error(`Container logs for service "${serviceName}":\n${logOutput}`);
   }
 
   // Job summary
