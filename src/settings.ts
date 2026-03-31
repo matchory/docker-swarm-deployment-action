@@ -62,7 +62,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     monitorTimeout: parseInt(getInput("monitor-timeout") || "300", 10),
     stack,
     strictVariables:
-      getBooleanInput("strict-variables", { required: false }) ?? false,
+      getBooleanInput("strict-variables", { required: false }) ?? true,
     variables,
     version,
   });

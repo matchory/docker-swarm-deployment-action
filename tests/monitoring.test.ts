@@ -1040,11 +1040,13 @@ describe("Monitoring", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      // First sleep: 5s (monitorInterval), second sleep: 7.5s (5 * 1.5)
-      expect(sleepSpy).toHaveBeenCalledTimes(3);
-      expect(sleepSpy).toHaveBeenNthCalledWith(1, 5_000);
-      expect(sleepSpy).toHaveBeenNthCalledWith(2, 7_500);
-      expect(sleepSpy).toHaveBeenNthCalledWith(3, 11_250);
+      // Sleep happens after each poll only while services are still pending.
+      // Poll 1 (updating): sleep 7500 (5000 * 1.5 after no progress)
+      // Poll 2 (updating): sleep 11250 (7500 * 1.5 after no progress)
+      // Poll 3 (completed): no sleep (all done)
+      expect(sleepSpy).toHaveBeenCalledTimes(2);
+      expect(sleepSpy).toHaveBeenNthCalledWith(1, 7_500);
+      expect(sleepSpy).toHaveBeenNthCalledWith(2, 11_250);
     });
 
     it("should cap the backoff interval at monitorInterval * 6", async () => {
@@ -1149,9 +1151,11 @@ describe("Monitoring", () => {
       await promise;
 
       const sleepValues = sleepSpy.mock.calls.map((c) => c[0]);
-      // Poll 1: 5000, Poll 2: 7500, Poll 3 (svc1 completes, reset): 11250
-      // Poll 4: 5000 (reset happened after poll 3)
-      expect(sleepValues[3]).toBe(5_000);
+      // Poll 1 (both updating, no progress): sleep 7500
+      // Poll 2 (both updating, no progress): sleep 11250
+      // Poll 3 (svc1 completes, reset): sleep 5000 (reset, svc2 still pending)
+      // Poll 4 (svc2 completes): no sleep (all done)
+      expect(sleepValues[2]).toBe(5_000);
     });
   });
 

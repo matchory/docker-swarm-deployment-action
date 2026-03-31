@@ -40,14 +40,15 @@ export async function monitorDeployment(
 
   const startTime = new Date();
   const baseInterval = settings.monitorInterval * 1_000;
-  const maxInterval = baseInterval * 6;
+  const maxInterval = Math.min(
+    baseInterval * 6,
+    settings.monitorTimeout * 1_000,
+  );
   let currentInterval = baseInterval;
   const completedServices = new Set<string>();
   let services: ServiceWithMetadata[] = [];
 
   do {
-    await sleep(currentInterval);
-
     const elapsed = Date.now() - startTime.getTime();
 
     if (elapsed >= settings.monitorTimeout * 1_000) {
@@ -218,6 +219,10 @@ export async function monitorDeployment(
       currentInterval = baseInterval;
     } else {
       currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+    }
+
+    if (completedServices.size < services.length) {
+      await sleep(currentInterval);
     }
   } while (completedServices.size < services.length);
 
