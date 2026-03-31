@@ -15,6 +15,12 @@ export const decodeLabel = "com.matchory.deployment.decode";
 export const ignoreLabel = "com.matchory.deployment.ignore";
 
 /**
+ * Maximum length for Docker Swarm secret and config names.
+ * @see https://github.com/moby/swarmkit/issues/2918
+ */
+const MAX_NAME_LENGTH = 64;
+
+/**
  * Process a variable (secret or config)
  */
 export async function processVariable(
@@ -97,9 +103,21 @@ export async function processVariable(
   const variableName =
     modifiedVariable?.name ?? variable.name ?? `${stack}-${name}`;
 
+  const finalName = `${variableName}-${hash.substring(0, 7)}`;
+
+  if (finalName.length > MAX_NAME_LENGTH) {
+    throw new Error(
+      `Variable "${name}" produces a Docker name that is ` +
+        `${finalName.length} characters long ("${finalName}"), which ` +
+        `exceeds Docker's ${MAX_NAME_LENGTH}-character limit. Use a ` +
+        `shorter stack name, variable name, or set an explicit "name" ` +
+        `property on the variable.`,
+    );
+  }
+
   return {
     ...(modifiedVariable ?? variable),
-    name: `${variableName}-${hash.substring(0, 7)}`,
+    name: finalName,
     labels: {
       ...(modifiedVariable?.labels ?? variable.labels),
       [nameLabel]: name,

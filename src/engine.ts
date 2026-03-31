@@ -380,7 +380,13 @@ async function executeDockerCommand(
   let output = "";
   let errorOutput = "";
 
-  core.startGroup(`docker ${args.join(" ")}`);
+  // Only wrap with a group for non-silent commands (user-visible operations
+  // like `stack deploy`). Silent commands are internal data fetches whose
+  // raw output doesn't need a collapsible group, and skipping the group
+  // prevents interleaving when multiple silent commands run concurrently.
+  if (!silent) {
+    core.startGroup(`docker ${args.join(" ")}`);
+  }
 
   try {
     await exec(
@@ -401,7 +407,9 @@ async function executeDockerCommand(
       },
     );
 
-    core.info(output);
+    if (!silent) {
+      core.info(output);
+    }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     core.error(`Command failed: ${message}`);
@@ -410,7 +418,9 @@ async function executeDockerCommand(
 
     throw new Error(`Failed to execute Docker Command: ${message}`, { cause });
   } finally {
-    core.endGroup();
+    if (!silent) {
+      core.endGroup();
+    }
   }
 
   return output;

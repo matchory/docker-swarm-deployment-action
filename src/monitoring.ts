@@ -51,18 +51,24 @@ export async function monitorDeployment(
     const elapsed = Date.now() - startTime.getTime();
 
     if (elapsed >= settings.monitorTimeout * 1_000) {
-      // On timeout, report diagnostics for all non-converged services
-      for (const service of services) {
-        if (completedServices.has(service.ID)) {
-          continue;
-        }
+      // On timeout, report diagnostics for all non-converged services.
+      // Prefetch tasks in parallel, then build reports sequentially to
+      // avoid interleaving job summary output.
+      const pendingOnTimeout = services.filter(
+        (s) => !completedServices.has(s.ID),
+      );
+      const prefetchedTasks = await Promise.all(
+        pendingOnTimeout.map((s) => fetchTasks(s.ID)),
+      );
+      for (let i = 0; i < pendingOnTimeout.length; i++) {
+        const service = pendingOnTimeout[i];
         const name = service.Spec?.Name ?? service.Name ?? service.ID;
         const healthcheck = findServiceHealthCheck(spec, name);
         await buildFailureReport(
           service.ID,
           name,
           startTime,
-          undefined,
+          prefetchedTasks[i] ?? undefined,
           healthcheck,
         );
       }
@@ -110,56 +116,101 @@ export async function monitorDeployment(
 
     const previousSize = completedServices.size;
 
-    for (const service of services) {
-      if (completedServices.has(service.ID)) {
-        continue;
-      }
+    type CheckResult =
+      | { kind: "complete" }
+      | { kind: "pending" }
+      | { kind: "stuck"; tasks: TaskStatus[] }
+      | { kind: "update_failed"; error: unknown };
 
-      const serviceIdentifier =
-        service.Spec?.Name ?? service.Name ?? service.ID;
-      let complete: boolean;
+    // Check all pending services in parallel: fetch tasks concurrently
+    // instead of sequentially, which matters most when many services are
+    // still updating and each `docker service ps` call takes ~100-500ms.
+    const pendingServices = services.filter(
+      (s) => !completedServices.has(s.ID),
+    );
+    const checks: Array<[ServiceWithMetadata, CheckResult]> = await Promise.all(
+      pendingServices.map(
+        async (service): Promise<[ServiceWithMetadata, CheckResult]> => {
+          let complete: boolean;
+          try {
+            complete = isServiceUpdateComplete(service);
+          } catch (error) {
+            return [service, { kind: "update_failed", error }];
+          }
 
-      try {
-        complete = isServiceUpdateComplete(service);
-      } catch (error) {
-        const healthcheck = findServiceHealthCheck(spec, serviceIdentifier);
-        await buildFailureReport(
-          service.ID,
-          serviceIdentifier,
-          startTime,
-          undefined,
-          healthcheck,
-        );
-        core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+          if (complete) {
+            return [service, { kind: "complete" }];
+          }
 
-        throw error;
-      }
+          // If the service appears to be "updating" but all tasks are in a
+          // terminal failure state, it will never recover — fail early instead
+          // of waiting for the full timeout.
+          const tasks = await fetchTasks(service.ID);
+          if (tasks && isServiceStuck(tasks)) {
+            return [service, { kind: "stuck", tasks }];
+          }
 
-      if (complete) {
-        core.info(
-          `Service "${serviceIdentifier}" has been deployed successfully`,
-        );
+          return [service, { kind: "pending" }];
+        },
+      ),
+    );
+
+    // Process completions first
+    for (const [service, result] of checks) {
+      if (result.kind === "complete") {
+        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        core.info(`Service "${name}" has been deployed successfully`);
         completedServices.add(service.ID);
-        continue;
+      }
+    }
+
+    // Build failure reports sequentially to avoid interleaving job summary
+    // output, but only after all parallel checks have finished so we can
+    // report every failing service rather than stopping at the first one.
+    type Failure = [
+      ServiceWithMetadata,
+      (
+        | { kind: "stuck"; tasks: TaskStatus[] }
+        | { kind: "update_failed"; error: unknown }
+      ),
+    ];
+    const failures = checks.filter(
+      (entry): entry is Failure =>
+        entry[1].kind === "stuck" || entry[1].kind === "update_failed",
+    );
+    if (failures.length > 0) {
+      for (const [service, result] of failures) {
+        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const healthcheck = findServiceHealthCheck(spec, name);
+        if (result.kind === "stuck") {
+          await buildFailureReport(
+            service.ID,
+            name,
+            startTime,
+            result.tasks,
+            healthcheck,
+          );
+        } else {
+          await buildFailureReport(
+            service.ID,
+            name,
+            startTime,
+            undefined,
+            healthcheck,
+          );
+          core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+        }
       }
 
-      // If the service appears to be "updating" but all tasks are in a
-      // terminal failure state, it will never recover — fail early instead
-      // of waiting for the full timeout.
-      const tasks = await fetchTasks(service.ID);
-      if (tasks && isServiceStuck(tasks)) {
-        const healthcheck = findServiceHealthCheck(spec, serviceIdentifier);
-        await buildFailureReport(
-          service.ID,
-          serviceIdentifier,
-          startTime,
-          tasks,
-          healthcheck,
-        );
+      const [firstService, firstResult] = failures[0];
+      const firstName =
+        firstService.Spec?.Name ?? firstService.Name ?? firstService.ID;
+      if (firstResult.kind === "stuck") {
         throw new Error(
-          `Service "${serviceIdentifier}" failed: all tasks are in a failed state`,
+          `Service "${firstName}" failed: all tasks are in a failed state`,
         );
       }
+      throw firstResult.error as Error;
     }
 
     // Reset interval if progress was made, otherwise grow with backoff

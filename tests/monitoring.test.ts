@@ -1275,4 +1275,87 @@ describe("Monitoring", () => {
       await promise;
     });
   });
+
+  describe("parallel service checks", () => {
+    it("should fetch tasks for all stuck services in parallel", async () => {
+      vi.useFakeTimers();
+
+      const stuckTask: TaskStatus = {
+        ID: "t1",
+        Name: "svc.1",
+        Image: "img",
+        Node: "n1",
+        DesiredState: "Shutdown",
+        CurrentState: "Failed 1 minute ago",
+        Error: "task: non-zero exit (1)",
+        Ports: "",
+      };
+
+      vi.spyOn(engine, "listServices").mockResolvedValueOnce([
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "updating" },
+        },
+        {
+          ID: "svc2",
+          Spec: { Name: "api" },
+          UpdateStatus: { State: "updating" },
+        },
+      ] as ServiceWithMetadata[]);
+
+      // Both services return stuck tasks
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValue([stuckTask]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(monitorDeployment(settings)).rejects.toThrow(
+        /failed: all tasks are in a failed state/,
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // Both services should have had their tasks fetched
+      expect(engine.listServiceTasks).toHaveBeenCalledWith("svc1");
+      expect(engine.listServiceTasks).toHaveBeenCalledWith("svc2");
+    });
+
+    it("should build failure reports for all stuck services before throwing", async () => {
+      vi.useFakeTimers();
+      const core = await import("@actions/core");
+
+      const stuckTask: TaskStatus = {
+        ID: "t1",
+        Name: "svc.1",
+        Image: "img",
+        Node: "n1",
+        DesiredState: "Shutdown",
+        CurrentState: "Failed 1 minute ago",
+        Error: "No such image: img",
+        Ports: "",
+      };
+
+      vi.spyOn(engine, "listServices").mockResolvedValueOnce([
+        {
+          ID: "svc1",
+          Spec: { Name: "web" },
+          UpdateStatus: { State: "updating" },
+        },
+        {
+          ID: "svc2",
+          Spec: { Name: "api" },
+          UpdateStatus: { State: "updating" },
+        },
+      ] as ServiceWithMetadata[]);
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValue([stuckTask]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(monitorDeployment(settings)).rejects.toThrow();
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // Both services should have failure reports built
+      expect(core.error).toHaveBeenCalledWith(expect.stringContaining('"web"'));
+      expect(core.error).toHaveBeenCalledWith(expect.stringContaining('"api"'));
+    });
+  });
 });

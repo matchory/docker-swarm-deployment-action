@@ -203,6 +203,31 @@ describe("Variables", () => {
       });
     });
 
+    it("should reject variable names that exceed Docker's 64-character limit", async () => {
+      const longName = "a".repeat(57); // stack "test" + "-" + 57 + "-" + 7 = 70 > 64
+      const variable = defineVariable({ content: "secret" });
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      await expect(
+        processVariable(longName, variable, settings),
+      ).rejects.toThrow(/exceeds Docker's 64-character limit/);
+    });
+
+    it("should accept variable names at exactly the 64-character limit", async () => {
+      // final name: "test-" + name + "-" + 7 = 64
+      // so name length = 64 - 5 - 8 = 51
+      const name = "a".repeat(51);
+      const variable = defineVariable({ content: "secret" });
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      const result = await processVariable(name, variable, settings);
+      expect(result.name).toHaveLength(64);
+    });
+
     describe("Environment Source", () => {
       it("should process variables with an environment variable source", async () => {
         const variable = defineVariable({
