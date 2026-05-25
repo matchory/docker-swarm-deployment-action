@@ -59,7 +59,7 @@
     "@biomejs/biome": "2.4.15",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.12.4",
-    "@vitest/coverage-v8": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.7",
     "globals": "^17.6.0",
     "make-coverage-badge": "^1.2.0",
     "typescript": "^5.9.3",
