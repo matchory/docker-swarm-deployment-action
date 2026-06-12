@@ -56,10 +56,10 @@
     "js-yaml": "^4.1.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.4.16",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.12.4",
-    "@vitest/coverage-v8": "^4.1.6",
+    "@types/node": "^24.13.1",
+    "@vitest/coverage-v8": "^4.1.8",
     "globals": "^17.6.0",
     "make-coverage-badge": "^1.2.0",
     "typescript": "^6.0.3",
