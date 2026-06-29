@@ -139,7 +139,7 @@ export function findServiceHealthCheck(
 /**
  * Parse a Docker duration string (e.g., "30s", "1m30s", "100ms") to
  * nanoseconds, matching Docker's Go `time.Duration` parsing.
- * Returns null if the string is undefined or unparseable.
+ * Returns null if the string is undefined or unparsable.
  */
 function parseDuration(duration: string | undefined): number | null {
   if (!duration) {
