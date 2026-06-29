@@ -1,6 +1,6 @@
 ---
 name: bare-path
-version: 3.0.0
+version: 3.0.1
 type: npm
 summary: Path manipulation library for JavaScript
 homepage: https://github.com/holepunchto/bare-path#readme

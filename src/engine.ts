@@ -66,7 +66,6 @@ export async function normalizeStackSpecification(
     spec = load(content, {
       filename: "docker-compose.yaml",
       json: true,
-      onWarning: (error) => core.warning(error),
     }) as ComposeSpec;
   } catch (cause) {
     throw new Error(
