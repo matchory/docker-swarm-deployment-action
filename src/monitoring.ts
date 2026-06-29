@@ -304,9 +304,19 @@ export function isServiceRunning(
   core.debug(`Checking if service "${name}" is currently running`);
 
   if (service.Replicas) {
-    const [running = 0, desired = 0] = service.Replicas.split("/", 2);
+    // The Replicas field is formatted as "running/desired", but Docker appends
+    // a human-readable suffix such as "1/1 (max 1 per node)" when
+    // deploy.placement.max_replicas_per_node is set. Parse the leading integer
+    // from each side so the suffix doesn't break the comparison (see #137).
+    const [runningStr, desiredStr] = service.Replicas.split("/", 2);
+    const running = Number.parseInt(runningStr ?? "", 10);
+    const desired = Number.parseInt(desiredStr ?? "", 10);
 
-    if (running === desired) {
+    if (
+      !Number.isNaN(running) &&
+      !Number.isNaN(desired) &&
+      running === desired
+    ) {
       core.debug(
         `Service "${name}" is running (${running}/${desired} replicas)`,
       );
