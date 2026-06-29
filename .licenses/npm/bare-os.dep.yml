@@ -1,8 +1,8 @@
 ---
 name: bare-os
-version: 3.8.0
+version: 3.9.3
 type: npm
-summary: Operating system utilities for Javascript
+summary: Operating system utilities for Bare
 homepage: https://github.com/holepunchto/bare-os#readme
 license: apache-2.0
 licenses:

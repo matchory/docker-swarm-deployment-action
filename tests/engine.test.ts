@@ -143,9 +143,9 @@ services:
     });
 
     it("should throw error on invalid YAML", async () => {
-      // js-yaml load returns undefined for empty or invalid yaml like just ':'
+      // An unclosed flow mapping is invalid YAML and makes js-yaml throw
       mockedExec.mockImplementationOnce(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(":"));
+        options?.listeners?.stdout?.(Buffer.from("{ a: b"));
 
         return 0;
       });

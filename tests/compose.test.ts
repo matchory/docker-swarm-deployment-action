@@ -528,7 +528,6 @@ describe("Compose", () => {
       expect(yaml.load).toHaveBeenCalledWith("output that can be parsed", {
         filename: "docker-compose.yaml",
         json: true,
-        onWarning: expect.toSatisfy((warning) => typeof warning === "function"),
       });
     });
 

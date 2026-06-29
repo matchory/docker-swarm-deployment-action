@@ -1,8 +1,8 @@
 ---
 name: bare-fs
-version: 4.5.6
+version: 4.7.2
 type: npm
-summary: Native file system operations for Javascript
+summary: Native file system operations for Bare
 homepage: https://github.com/holepunchto/bare-fs#readme
 license: apache-2.0
 licenses:

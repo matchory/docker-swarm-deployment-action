@@ -34,6 +34,10 @@ jobs:
         id: npm-ci
         run: npm ci
 
+      - name: Typecheck
+        id: npm-typecheck
+        run: npm run typecheck
+
       - name: Test
         id: npm-ci-test
         run: npm run ci-test

@@ -1,9 +1,9 @@
 ---
 name: "@bufbuild/protoplugin"
-version: 2.11.0
+version: 2.12.1
 type: npm
 summary: Helps to create your own Protocol Buffers code generators.
-homepage:
+homepage: https://protobufes.com/
 license: apache-2.0
 licenses:
 - sources: Auto-generated Apache-2.0 license text

@@ -1,6 +1,6 @@
 ---
 name: bare-stream
-version: 2.11.0
+version: 2.13.3
 type: npm
 summary: Streaming data for JavaScript
 homepage: https://github.com/holepunchto/bare-stream#readme
