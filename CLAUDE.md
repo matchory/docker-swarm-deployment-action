@@ -83,7 +83,7 @@ Super-linter excludes `dist/`, `docs/superpowers/`, and
 `.github/linters/.markdown-lint.yml` (80 char line length, tables
 exempt).
 
-`release.yml` triggers on semver tags (`v*.*.*`), updates rolling
+`release.yml` triggers on SemVer tags (`v*.*.*`), updates rolling
 `vN` and `vN.N` tags, and creates a GitHub release.
 
 ## Tooling

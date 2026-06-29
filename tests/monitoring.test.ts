@@ -578,6 +578,28 @@ describe("Monitoring", () => {
       ).toBe(true);
     });
 
+    it("should return true when converged with max_replicas_per_node suffix", () => {
+      // Docker appends "(max N per node)" when
+      // deploy.placement.max_replicas_per_node is set (issue #137).
+      expect(
+        isServiceRunning({
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          Replicas: "1/1 (max 1 per node)",
+        }),
+      ).toBe(true);
+    });
+
+    it("should return false when partially running with max_replicas_per_node suffix", () => {
+      expect(
+        isServiceRunning({
+          ID: "svc1",
+          Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
+          Replicas: "1/3 (max 1 per node)",
+        }),
+      ).toBe(false);
+    });
+
     it("should treat missing UpdateStatus.State as 'updating'", () => {
       // Test case for the issue: when UpdateStatus exists but State is missing
       expect(
