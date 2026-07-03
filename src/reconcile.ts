@@ -102,6 +102,44 @@ function translateResources(
   }
 }
 
+function restartCondition(restart: string): string {
+  if (restart === "no") return "none";
+  if (restart === "always" || restart === "unless-stopped") return "any";
+  return "on-failure"; // covers "on-failure" and "on-failure:N"
+}
+
+function translateRestart(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): void {
+  if (!("restart" in service)) {
+    return;
+  }
+  const restart = String(service.restart);
+  delete service.restart;
+  const deploy = ensurePath(service, ["deploy"]);
+  if ("restart_policy" in deploy) {
+    diagnostics.warn(
+      `Service "${name}" sets both "restart" and deploy.restart_policy; ` +
+        `keeping deploy.restart_policy and dropping "restart".`,
+    );
+    return;
+  }
+  if (restart === "unless-stopped") {
+    diagnostics.warn(
+      `Service "${name}": "restart: unless-stopped" has no swarm equivalent; ` +
+        `translated to restart_policy condition "any".`,
+    );
+  } else {
+    diagnostics.note(
+      `Service "${name}": translated "restart: ${restart}" to ` +
+        `deploy.restart_policy.condition "${restartCondition(restart)}".`,
+    );
+  }
+  deploy.restart_policy = { condition: restartCondition(restart) };
+}
+
 /**
  * Reconcile modern Compose Specification constructs into a form
  * `docker stack deploy` accepts. Translates what has a faithful swarm
@@ -117,6 +155,7 @@ export async function reconcileSwarmCompatibility(
   for (const [name, service] of Object.entries(spec.services)) {
     const entry = service as Record<string, unknown>;
     translateResources(name, entry, diagnostics);
+    translateRestart(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
   }
 

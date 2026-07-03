@@ -83,4 +83,47 @@ describe("reconcileSwarmCompatibility", () => {
       );
     });
   });
+
+  describe("translate restart", () => {
+    it.each([
+      ["no", "none"],
+      ["always", "any"],
+      ["on-failure", "on-failure"],
+      ["on-failure:5", "on-failure"],
+    ])("maps restart '%s' to condition '%s'", async (restart, condition) => {
+      const s = spec({ api: { image: "nginx", restart } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        deploy: { restart_policy: { condition } },
+      });
+    });
+
+    it("maps unless-stopped to any with a warning", async () => {
+      const s = spec({ api: { image: "nginx", restart: "unless-stopped" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        deploy: { restart_policy: { condition: "any" } },
+      });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("unless-stopped"),
+      );
+    });
+
+    it("drops restart and warns when restart_policy already exists", async () => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          restart: "always",
+          deploy: { restart_policy: { condition: "none" } },
+        },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect((s.services.api as { deploy: unknown }).deploy).toEqual({
+        restart_policy: { condition: "none" },
+      });
+      expect(s.services.api).not.toHaveProperty("restart");
+    });
+  });
 });
