@@ -493,6 +493,22 @@ describe("Compose", () => {
         },
       });
     });
+
+    it("throws a clear error when reconciliation removes all services", async () => {
+      const composeSpec = defineComposeSpec({
+        services: {
+          ai: { provider: { type: "model-runner" } },
+        },
+      });
+
+      await expect(
+        reconcileSpec(composeSpec, {
+          ...settings,
+          manageVariables: false,
+          strictCompatibility: false,
+        }),
+      ).rejects.toThrow(/All services were removed during reconciliation/);
+    });
   });
 
   describe("Spec Normalization and Merging", () => {

@@ -230,19 +230,28 @@ the moment it sees them. Before validation, the action reconciles your
 Compose Spec into a form Swarm understands: supported shorthands are
 translated automatically, unsupported features are stripped with a
 warning, and unknown or misspelled keys are flagged with a "did you
-mean?" hint. Set `strict-compatibility: true` to turn every warning into
-a hard failure instead of a warning.
+mean?" hint.
+
+Set `strict-compatibility: true` to fail the deploy when a feature had
+to be **stripped** (e.g. `develop`, `profiles`, `provider`) or a
+translation **conflicted** with an existing `deploy.*` value.
+Kept-but-ignored keys (`build`, `container_name`) and heuristic
+unknown-key hints stay advisory and never fail the build — `docker
+stack config` remains the authoritative validator.
 
 Translated resource (`mem_limit`, `mem_reservation`, `cpus`) and
 `restart` values are non-clobbering: if the equivalent `deploy.*` value
 is already set explicitly, it always wins over the shorthand.
+`label_file` paths resolve relative to the compose file's own directory
+and are confined to the workspace; an unreadable file is warned about,
+not fatal.
 
 | Compose key | Handling | Swarm result |
 | --- | --- | --- |
 | `mem_limit` | Translated | `deploy.resources.limits.memory` |
 | `mem_reservation` | Translated | `deploy.resources.reservations.memory` |
 | `cpus` | Translated | `deploy.resources.limits.cpus` |
-| `restart` | Translated | `deploy.restart_policy.condition` (`no`→`none`, `always`/`unless-stopped`→`any`, `on-failure[:N]`→`on-failure`) |
+| `restart` | Translated | `deploy.restart_policy` (`no`→`none`, `always`/`unless-stopped`→`any`, `on-failure`→`on-failure`; `on-failure:N` also sets `max_attempts: N`) |
 | `depends_on` (map/conditions) | Translated | converted to list form; conditions dropped (swarm has no ordering) |
 | `label_file` | Translated | contents merged into `labels` (explicit labels win) |
 | `container_name` | Kept + warned | ignored by swarm (tasks are named automatically) |

@@ -168,7 +168,21 @@ const KNOWN_SERVICE_KEYS = new Set([
   "device_cgroup_rules",
   "scale",
   "uts",
+  "tmpfs",
+  "pids_limit",
+  "mem_swappiness",
+  "cpu_period",
+  "cpu_rt_period",
+  "cpu_rt_runtime",
+  "userns_mode",
+  "models",
 ]);
+
+// NOTE: this list is a best-effort typo catcher, not a schema. `docker stack
+// config` (run downstream in normalizeSpec) is the authoritative validator, so
+// unknown-key findings are advisory only and never fail the deploy on their
+// own — a newly added Compose key we haven't listed yet produces at most a
+// spurious warning, not a hard error.
 
 const RESOURCE_TRANSLATIONS: Array<{
   key: string;
@@ -225,9 +239,23 @@ function suggestion(key: string, known: Set<string>): string {
 class Diagnostics {
   private readonly violations: string[] = [];
 
+  /**
+   * Record a swarm-incompatible feature that was removed, or a conflict we had
+   * to resolve. Surfaced as a warning and counted as a strict-compatibility
+   * violation (fails the deploy when `strict-compatibility` is enabled).
+   */
   warn(message: string): void {
     core.warning(message);
     this.violations.push(message);
+  }
+
+  /**
+   * Surface an advisory warning that must NOT fail strict mode: a kept-but-
+   * ignored key (`build`, `container_name`) or a heuristic unknown-key guess.
+   * `docker stack config` remains the authoritative validator for these.
+   */
+  advise(message: string): void {
+    core.warning(message);
   }
 
   note(message: string): void {
@@ -286,10 +314,20 @@ function translateResources(
   }
 }
 
-function restartCondition(restart: string): string {
-  if (restart === "no") return "none";
-  if (restart === "always" || restart === "unless-stopped") return "any";
-  return "on-failure"; // covers "on-failure" and "on-failure:N"
+function restartPolicy(restart: string): {
+  condition: string;
+  max_attempts?: number;
+} {
+  if (restart === "no") return { condition: "none" };
+  if (restart === "always" || restart === "unless-stopped") {
+    return { condition: "any" };
+  }
+  // "on-failure" or "on-failure:N" — preserve the max-attempts count.
+  const match = restart.match(/^on-failure(?::(\d+))?$/);
+  if (match?.[1]) {
+    return { condition: "on-failure", max_attempts: Number(match[1]) };
+  }
+  return { condition: "on-failure" };
 }
 
 function translateRestart(
@@ -310,6 +348,7 @@ function translateRestart(
     );
     return;
   }
+  const policy = restartPolicy(restart);
   if (restart === "unless-stopped") {
     diagnostics.warn(
       `Service "${name}": "restart: unless-stopped" has no swarm equivalent; ` +
@@ -318,10 +357,10 @@ function translateRestart(
   } else {
     diagnostics.note(
       `Service "${name}": translated "restart: ${restart}" to ` +
-        `deploy.restart_policy.condition "${restartCondition(restart)}".`,
+        `deploy.restart_policy.condition "${policy.condition}".`,
     );
   }
-  deploy.restart_policy = { condition: restartCondition(restart) };
+  deploy.restart_policy = policy;
 }
 
 function translateDependsOn(
@@ -345,10 +384,13 @@ function translateDependsOn(
   );
 }
 
-function withinWorkspace(path: string): string | null {
+// Resolve a label_file path relative to the compose file's own directory
+// (matching Docker's compose-file-relative resolution), then confine it to the
+// workspace so a malicious compose file can't read arbitrary host files.
+function withinWorkspace(path: string, baseDir: string): string | null {
   const workspace = resolve(process.env.GITHUB_WORKSPACE || process.cwd());
   const prefix = workspace.endsWith("/") ? workspace : `${workspace}/`;
-  const resolved = resolve(workspace, path);
+  const resolved = resolve(baseDir, path);
   return resolved === workspace || resolved.startsWith(prefix)
     ? resolved
     : null;
@@ -383,7 +425,7 @@ function validateServiceKeys(
     ) {
       continue;
     }
-    diagnostics.warn(
+    diagnostics.advise(
       `Unknown property "${key}" on service "${name}"` +
         suggestion(key, KNOWN_SERVICE_KEYS) +
         ".",
@@ -399,7 +441,7 @@ function validateTopLevelKeys(
     if (key.startsWith("x-") || KNOWN_TOP_LEVEL_KEYS.has(key)) {
       continue;
     }
-    diagnostics.warn(
+    diagnostics.advise(
       `Unknown top-level property "${key}"` +
         suggestion(key, KNOWN_TOP_LEVEL_KEYS) +
         ".",
@@ -431,6 +473,7 @@ async function translateLabelFile(
   name: string,
   service: Record<string, unknown>,
   diagnostics: Diagnostics,
+  baseDir: string,
 ): Promise<void> {
   if (!("label_file" in service)) {
     return;
@@ -441,7 +484,7 @@ async function translateLabelFile(
 
   const fromFiles: Record<string, string> = {};
   for (const path of paths) {
-    const resolved = withinWorkspace(path);
+    const resolved = withinWorkspace(path, baseDir);
     if (!resolved) {
       diagnostics.warn(
         `Service "${name}": label_file "${path}" resolves outside the ` +
@@ -449,12 +492,30 @@ async function translateLabelFile(
       );
       continue;
     }
-    Object.assign(fromFiles, parseEnvFile(await readFile(resolved, "utf8")));
+    try {
+      Object.assign(fromFiles, parseEnvFile(await readFile(resolved, "utf8")));
+    } catch (error) {
+      // Never abort the whole deploy over an unreadable label_file (missing
+      // file, permissions, or an un-interpolated ${VAR} in the path — this runs
+      // before interpolation). Warn and continue; strict mode fails cleanly.
+      diagnostics.warn(
+        `Service "${name}": could not read label_file "${path}" ` +
+          `(${(error as Error).message}); skipping its labels.`,
+      );
+    }
   }
 
-  const existing = labelsToMap(service.labels);
-  service.labels = { ...fromFiles, ...existing };
-  diagnostics.note(`Service "${name}": merged label_file entries into labels.`);
+  // Only touch `labels` when there is something to merge, so an all-skipped
+  // label_file doesn't leave a spurious empty labels map behind.
+  const merged = { ...fromFiles, ...labelsToMap(service.labels) };
+  if (Object.keys(merged).length > 0) {
+    service.labels = merged;
+  }
+  if (Object.keys(fromFiles).length > 0) {
+    diagnostics.note(
+      `Service "${name}": merged label_file entries into labels.`,
+    );
+  }
 }
 
 function applyStrips(
@@ -508,8 +569,10 @@ function applyTopLevelStrips(
 export async function reconcileSwarmCompatibility(
   spec: ComposeSpec,
   settings: Pick<Readonly<Settings>, "strictCompatibility">,
+  baseDir: string = process.cwd(),
 ): Promise<void> {
   const diagnostics = new Diagnostics();
+  const droppedServices: string[] = [];
 
   applyTopLevelStrips(spec, diagnostics);
 
@@ -522,19 +585,58 @@ export async function reconcileSwarmCompatibility(
     }
     const entry = service as Record<string, unknown>;
     if (applyProvider(name, spec.services, entry, diagnostics)) {
+      droppedServices.push(name);
       continue;
     }
     translateResources(name, entry, diagnostics);
     translateRestart(name, entry, diagnostics);
     translateDependsOn(name, entry, diagnostics);
-    await translateLabelFile(name, entry, diagnostics);
+    await translateLabelFile(name, entry, diagnostics, baseDir);
     applyStrips(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
     validateServiceKeys(name, entry, diagnostics);
   }
 
+  // Removing provider services can leave siblings depending on names that no
+  // longer exist; strip those references so `docker stack config` doesn't
+  // reject the stack. depends_on is an array by now (translateDependsOn ran).
+  stripDroppedDependencies(spec.services, droppedServices, diagnostics);
+
   validateTopLevelKeys(spec, diagnostics);
   diagnostics.finish(settings.strictCompatibility);
+}
+
+function stripDroppedDependencies(
+  services: Record<string, unknown>,
+  dropped: string[],
+  diagnostics: Diagnostics,
+): void {
+  if (dropped.length === 0) {
+    return;
+  }
+  const droppedSet = new Set(dropped);
+  for (const [name, service] of Object.entries(services)) {
+    if (typeof service !== "object" || service === null) {
+      continue;
+    }
+    const entry = service as Record<string, unknown>;
+    if (!Array.isArray(entry.depends_on)) {
+      continue;
+    }
+    const kept = entry.depends_on.filter((dep) => !droppedSet.has(String(dep)));
+    if (kept.length === entry.depends_on.length) {
+      continue;
+    }
+    if (kept.length === 0) {
+      delete entry.depends_on;
+    } else {
+      entry.depends_on = kept;
+    }
+    diagnostics.advise(
+      `Service "${name}": dropped depends_on reference(s) to removed ` +
+        `provider service(s).`,
+    );
+  }
 }
 
 function applyWarnOnly(
@@ -544,7 +646,7 @@ function applyWarnOnly(
 ): void {
   for (const { key, reason } of WARN_ONLY) {
     if (key in service) {
-      diagnostics.warn(
+      diagnostics.advise(
         `Service "${name}" sets "${key}", which Docker Swarm ignores; ${reason}.`,
       );
     }

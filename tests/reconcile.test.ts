@@ -13,7 +13,10 @@ function spec(services: Record<string, unknown>): ComposeSpec {
 }
 
 describe("reconcileSwarmCompatibility", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.unstubAllEnvs();
+  });
 
   describe("warn-only rules", () => {
     it("warns about container_name but leaves it in place", async () => {
@@ -34,11 +37,23 @@ describe("reconcileSwarmCompatibility", () => {
       expect(s.services.api).toHaveProperty("build");
     });
 
-    it("aggregates diagnostics into a thrown error in strict mode", async () => {
-      const s = spec({ api: { image: "nginx", container_name: "api" } });
+    it("aggregates removed features into a thrown error in strict mode", async () => {
+      const s = spec({ api: { image: "nginx", develop: { watch: [] } } });
       await expect(
         reconcileSwarmCompatibility(s, { strictCompatibility: true }),
-      ).rejects.toThrow(/container_name/);
+      ).rejects.toThrow(/develop/);
+    });
+
+    it("does not fail strict mode on warn-only keys (build, container_name)", async () => {
+      const s = spec({
+        api: { image: "nginx", build: { context: "." }, container_name: "api" },
+      });
+      await expect(
+        reconcileSwarmCompatibility(s, { strictCompatibility: true }),
+      ).resolves.toBeUndefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("build"),
+      );
     });
 
     it("does not throw in strict mode when there are no issues", async () => {
@@ -92,13 +107,23 @@ describe("reconcileSwarmCompatibility", () => {
       ["no", "none"],
       ["always", "any"],
       ["on-failure", "on-failure"],
-      ["on-failure:5", "on-failure"],
     ])("maps restart '%s' to condition '%s'", async (restart, condition) => {
       const s = spec({ api: { image: "nginx", restart } });
       await reconcileSwarmCompatibility(s, { strictCompatibility: false });
       expect(s.services.api).toEqual({
         image: "nginx",
         deploy: { restart_policy: { condition } },
+      });
+    });
+
+    it("preserves the max-attempts count from on-failure:N", async () => {
+      const s = spec({ api: { image: "nginx", restart: "on-failure:3" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        deploy: {
+          restart_policy: { condition: "on-failure", max_attempts: 3 },
+        },
       });
     });
 
@@ -221,6 +246,28 @@ describe("reconcileSwarmCompatibility", () => {
       expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("ai"));
     });
 
+    it("strips depends_on references to a dropped provider service", async () => {
+      const s = spec({
+        db: { provider: { type: "awesome" } },
+        api: { image: "nginx", depends_on: ["db", "cache"] },
+        cache: { image: "redis" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services).not.toHaveProperty("db");
+      expect((s.services.api as { depends_on: unknown }).depends_on).toEqual([
+        "cache",
+      ]);
+    });
+
+    it("removes depends_on entirely when its only target was dropped", async () => {
+      const s = spec({
+        db: { provider: { type: "awesome" } },
+        api: { image: "nginx", depends_on: ["db"] },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).not.toHaveProperty("depends_on");
+    });
+
     it("strips top-level models and warns", async () => {
       const s = {
         services: { api: { image: "nginx" } },
@@ -285,6 +332,35 @@ describe("reconcileSwarmCompatibility", () => {
         },
       });
     });
+
+    it("warns and continues (no crash) when the label_file cannot be read", async () => {
+      readFile.mockRejectedValue(new Error("ENOENT: no such file"));
+      const s = spec({ api: { image: "nginx", label_file: "./missing.env" } });
+      await expect(
+        reconcileSwarmCompatibility(s, { strictCompatibility: false }),
+      ).resolves.toBeUndefined();
+      // Never leaves the forbidden key behind, never fabricates an empty map.
+      expect(s.services.api).toEqual({ image: "nginx" });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("could not read label_file"),
+      );
+    });
+
+    it("resolves label_file relative to the compose file's directory", async () => {
+      vi.stubEnv("GITHUB_WORKSPACE", "/work");
+      readFile.mockResolvedValue("team=platform\n");
+      const s = spec({ api: { image: "nginx", label_file: "./labels.env" } });
+      await reconcileSwarmCompatibility(
+        s,
+        { strictCompatibility: false },
+        "/work/deploy",
+      );
+      expect(readFile).toHaveBeenCalledWith("/work/deploy/labels.env", "utf8");
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        labels: { team: "platform" },
+      });
+    });
   });
 
   describe("unknown-key validation", () => {
@@ -313,6 +389,24 @@ describe("reconcileSwarmCompatibility", () => {
       await reconcileSwarmCompatibility(s, { strictCompatibility: false });
       expect(core.warning).toHaveBeenCalledWith(
         expect.stringContaining("servics"),
+      );
+    });
+
+    it("does not flag valid but less-common service keys", async () => {
+      const s = spec({
+        api: { image: "nginx", tmpfs: "/tmp", pids_limit: 100 },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("does not fail strict mode on an unknown key (advisory only)", async () => {
+      const s = spec({ api: { image: "nginx", totallyunknownkey: 1 } });
+      await expect(
+        reconcileSwarmCompatibility(s, { strictCompatibility: true }),
+      ).resolves.toBeUndefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("totallyunknownkey"),
       );
     });
   });
