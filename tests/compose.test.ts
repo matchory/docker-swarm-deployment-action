@@ -466,6 +466,33 @@ describe("Compose", () => {
 
       expect(processVariable).not.toHaveBeenCalled();
     });
+
+    it("reconciles modern compose keys into swarm-compatible form", async () => {
+      const composeSpec = defineComposeSpec({
+        services: {
+          api: {
+            image: "nginx",
+            mem_limit: "512m",
+            restart: "always",
+            develop: { watch: [] },
+          },
+        },
+      });
+
+      const result = await reconcileSpec(composeSpec, {
+        ...settings,
+        manageVariables: false,
+        strictCompatibility: false,
+      });
+
+      expect(result.services.api).toEqual({
+        image: "nginx",
+        deploy: {
+          resources: { limits: { memory: "512m" } },
+          restart_policy: { condition: "any" },
+        },
+      });
+    });
   });
 
   describe("Spec Normalization and Merging", () => {

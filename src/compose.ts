@@ -5,6 +5,7 @@ import { debug } from "node:util";
 import * as core from "@actions/core";
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { normalizeStackSpecification } from "./engine";
+import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
@@ -193,6 +194,8 @@ export async function reconcileSpec(
   if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
     throw new Error("Invalid stack specification: Missing services section");
   }
+
+  await reconcileSwarmCompatibility(composeSpec, settings);
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
