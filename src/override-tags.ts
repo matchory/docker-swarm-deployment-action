@@ -4,7 +4,6 @@ import {
   defineSequenceTag,
   type TagDefinition,
 } from "js-yaml";
-import { deployFoldingKeys, reconciledServiceKeys } from "./reconcile.js";
 
 /** In-memory carrier for a `!reset` / `!override`-tagged YAML node, preserved
  * through the action's transform and re-emitted on dump. */
@@ -76,55 +75,4 @@ export function containsOverrideTag(value: unknown): boolean {
     );
   }
   return false;
-}
-
-/**
- * Reject `!reset` / `!override` tags placed on keys the action rewrites for
- * Swarm. Those tags apply to mergeable collections (ports, volumes,
- * environment, …), not scalar runtime knobs — using them there is a mistake we
- * surface instead of silently mis-transforming. The sensitive-key lists come
- * from `reconcile.ts` so they can't drift from the transforms they guard.
- */
-export function assertMergeableTagUsage(spec: {
-  services?: Record<string, unknown>;
-}): void {
-  for (const [name, service] of Object.entries(spec.services ?? {})) {
-    if (!service || typeof service !== "object") {
-      continue;
-    }
-    const entry = service as Record<string, unknown>;
-    for (const key of reconciledServiceKeys) {
-      if (entry[key] instanceof Tagged) {
-        throw new Error(
-          `Service "${name}" applies the "${(entry[key] as Tagged).tag}" ` +
-            `merge tag to "${key}", which the action rewrites for Swarm ` +
-            `compatibility. The "!reset"/"!override" tags apply to mergeable ` +
-            `collections (e.g. ports, volumes, environment), not "${key}".`,
-        );
-      }
-    }
-
-    const deploy = entry.deploy;
-    if (
-      deploy instanceof Tagged &&
-      deployFoldingKeys.some((key) => key in entry)
-    ) {
-      throw new Error(
-        `Service "${name}" applies the "${deploy.tag}" merge tag to ` +
-          `"deploy" while also setting a short-form key (restart / mem_limit / ` +
-          `cpus / mem_reservation) that the action folds into "deploy". The ` +
-          `translated value would be lost during the merge — move the setting ` +
-          `into the overriding "deploy" block, or remove the tag.`,
-      );
-    }
-    const labels = entry.labels;
-    if (labels instanceof Tagged && "label_file" in entry) {
-      throw new Error(
-        `Service "${name}" applies the "${labels.tag}" merge tag to ` +
-          `"labels" while also using "label_file". Merging the label file into ` +
-          `a tagged labels block would corrupt it — inline the label_file ` +
-          `entries into the "labels" block, or remove the tag.`,
-      );
-    }
-  }
 }

@@ -208,29 +208,6 @@ const resourceTranslations: Array<{
   },
 ];
 
-/**
- * Service keys `reconcileSwarmCompatibility` reads or rewrites (rather than
- * leaving intact). Derived from the transforms above so it can't drift: the
- * override-tag guard rejects merge tags on these keys because a `Tagged`
- * carrier here would be mis-transformed.
- */
-export const reconciledServiceKeys: readonly string[] = [
-  ...resourceTranslations.map((rule) => rule.key),
-  "restart",
-  "depends_on",
-  "label_file",
-];
-
-/**
- * The subset of {@link reconciledServiceKeys} folded into the service `deploy`
- * block. A `!override`/`!reset` tag on `deploy` conflicts with these, because
- * their translated values land in `deploy` and would be lost on merge.
- */
-export const deployFoldingKeys: readonly string[] = [
-  ...resourceTranslations.map((rule) => rule.key),
-  "restart",
-];
-
 function closestKey(key: string, known: Set<string>): string | null {
   let best: string | null = null;
 
