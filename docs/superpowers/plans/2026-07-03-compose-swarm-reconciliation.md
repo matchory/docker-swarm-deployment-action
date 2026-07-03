@@ -1115,9 +1115,36 @@ git commit -m "feat: apply swarm reconciliation during compose reconcile"
 - Modify: `README.md` (the "How Compose Files Are Processed" section, ~lines 206-224)
 - Regenerated: `dist/` (via `npm run package`)
 
-- [ ] **Step 1: Document the behavior**
+- [ ] **Step 1: Document the behavior + feature matrix**
 
-In `README.md`, under "How Compose Files Are Processed", add a short subsection describing that the action now translates modern compose keys (resource limits, `restart`, `depends_on`, `label_file`) to their swarm equivalents, strips unsupported keys (`develop`, `profiles`, `provider`, `models`, lifecycle hooks, `gpus`) with a warning, and that `strict-compatibility: true` turns those warnings into a hard failure. Keep to the file's 80-char line width (tables exempt).
+In `README.md`, under "How Compose Files Are Processed", add a short subsection (prose ≤ 80 chars/line; the markdown table is exempt from the width rule per `.github/linters/.markdown-lint.yml`).
+
+Prose: explain that the action reconciles modern Compose Specification constructs into `docker stack deploy`-compatible form *before* validation, because `docker stack config` otherwise hard-fails on them; translations happen automatically, unsupported features are stripped with a warning, and `strict-compatibility: true` turns every warning into a hard failure. Mention the new `strict-compatibility` input.
+
+Then add this **Compose → Swarm feature matrix** table (verbatim — it is the source of truth for what the code does; keep it in sync with `src/reconcile.ts`):
+
+```markdown
+| Compose key | Handling | Swarm result |
+| --- | --- | --- |
+| `mem_limit` | Translated | `deploy.resources.limits.memory` |
+| `mem_reservation` | Translated | `deploy.resources.reservations.memory` |
+| `cpus` | Translated | `deploy.resources.limits.cpus` |
+| `restart` | Translated | `deploy.restart_policy.condition` (`no`→`none`, `always`/`unless-stopped`→`any`, `on-failure[:N]`→`on-failure`) |
+| `depends_on` (map/conditions) | Translated | converted to list form; conditions dropped (swarm has no ordering) |
+| `label_file` | Translated | contents merged into `labels` (explicit labels win) |
+| `container_name` | Kept + warned | ignored by swarm (tasks are named automatically) |
+| `build` | Kept + warned | ignored by swarm (provide a pre-built `image`) |
+| `develop` | Stripped + warned | no swarm equivalent (dev-only watch config) |
+| `post_start` / `pre_stop` | Stripped + warned | lifecycle hooks unsupported by swarm |
+| `profiles` | Stripped + warned | unsupported; all services are always deployed |
+| `memswap_limit` | Stripped + warned | no swarm swap-limit control |
+| `gpus` | Stripped + warned | use `deploy.resources.reservations.generic_resources` + node labels |
+| `provider` | Service dropped + warned | provider services cannot run on swarm |
+| `models` (top-level) | Stripped + warned | model runner unsupported by swarm |
+| Unknown/misspelled keys | Warned (with a "did you mean?" hint) | left untouched; may still fail `docker stack config` |
+```
+
+Note in the prose that translated resource/`restart` keys are **non-clobbering** — an explicit `deploy.*` value always wins over the shorthand.
 
 - [ ] **Step 2: Run the full pipeline**
 
