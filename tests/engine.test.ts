@@ -574,6 +574,51 @@ services:
     });
   });
 
+  describe("isComposePluginAvailable", () => {
+    it("returns true when `docker compose version` succeeds", async () => {
+      mockedExec.mockResolvedValue(0);
+      await expect(engine.isComposePluginAvailable()).resolves.toBe(true);
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        ["compose", "version"],
+        expect.any(Object),
+      );
+    });
+
+    it("returns false when the command errors", async () => {
+      mockedExec.mockRejectedValue(new Error("unknown command"));
+      await expect(engine.isComposePluginAvailable()).resolves.toBe(false);
+    });
+  });
+
+  describe("mergeComposeFiles", () => {
+    it("runs `docker compose … config --no-interpolate` and returns stdout", async () => {
+      const merged = "services:\n  web:\n    image: nginx\n";
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(merged));
+        return 0;
+      });
+
+      await expect(
+        engine.mergeComposeFiles(["base.yaml", "override.yaml"]),
+      ).resolves.toBe(merged);
+
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        [
+          "compose",
+          "--file",
+          "base.yaml",
+          "--file",
+          "override.yaml",
+          "config",
+          "--no-interpolate",
+        ],
+        expect.any(Object),
+      );
+    });
+  });
+
   describe("error handling and edge cases", () => {
     it("should throw error if docker command fails", async () => {
       mockedExec.mockImplementationOnce(async () => {
