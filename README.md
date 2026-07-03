@@ -221,6 +221,40 @@ This ensures that regardless of the exact format you use (even mixing them), the
 final configuration passed to `docker stack deploy` is valid and correctly
 interpreted by Docker Swarm.
 
+#### Compose → Swarm reconciliation
+
+Modern Compose Specification constructs (like `develop`, `gpus`, or
+`label_file`) aren't understood by `docker stack config`, which hard-fails
+the moment it sees them. Before validation, the action reconciles your
+Compose Spec into a form Swarm understands: supported shorthands are
+translated automatically, unsupported features are stripped with a
+warning, and unknown or misspelled keys are flagged with a "did you
+mean?" hint. Set `strict-compatibility: true` to turn every warning into
+a hard failure instead of a warning.
+
+Translated resource (`mem_limit`, `mem_reservation`, `cpus`) and
+`restart` values are non-clobbering: if the equivalent `deploy.*` value
+is already set explicitly, it always wins over the shorthand.
+
+| Compose key | Handling | Swarm result |
+| --- | --- | --- |
+| `mem_limit` | Translated | `deploy.resources.limits.memory` |
+| `mem_reservation` | Translated | `deploy.resources.reservations.memory` |
+| `cpus` | Translated | `deploy.resources.limits.cpus` |
+| `restart` | Translated | `deploy.restart_policy.condition` (`no`→`none`, `always`/`unless-stopped`→`any`, `on-failure[:N]`→`on-failure`) |
+| `depends_on` (map/conditions) | Translated | converted to list form; conditions dropped (swarm has no ordering) |
+| `label_file` | Translated | contents merged into `labels` (explicit labels win) |
+| `container_name` | Kept + warned | ignored by swarm (tasks are named automatically) |
+| `build` | Kept + warned | ignored by swarm (provide a pre-built `image`) |
+| `develop` | Stripped + warned | no swarm equivalent (dev-only watch config) |
+| `post_start` / `pre_stop` | Stripped + warned | lifecycle hooks unsupported by swarm |
+| `profiles` | Stripped + warned | unsupported; all services are always deployed |
+| `memswap_limit` | Stripped + warned | no swarm swap-limit control |
+| `gpus` | Stripped + warned | use `deploy.resources.reservations.generic_resources` + node labels |
+| `provider` | Service dropped + warned | provider services cannot run on swarm |
+| `models` (top-level) | Stripped + warned | model runner unsupported by swarm |
+| Unknown/misspelled keys | Warned (with a "did you mean?" hint) | left untouched; may still fail `docker stack config` |
+
 #### Variable interpolation
 
 All environment variables inside the Compose Spec(s) will be interpolated
