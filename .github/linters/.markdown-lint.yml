@@ -4,8 +4,9 @@
 MD004:
   style: dash
 
-# Disable line length for tables
+# Line length: 120 for prose, disabled for tables
 MD013:
+  line_length: 120
   tables: false
 
 # Ordered list item prefix
