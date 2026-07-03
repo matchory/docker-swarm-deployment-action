@@ -4,6 +4,7 @@ import {
   defineSequenceTag,
   type TagDefinition,
 } from "js-yaml";
+import { deployFoldingKeys, reconciledServiceKeys } from "./reconcile.js";
 
 /** In-memory carrier for a `!reset` / `!override`-tagged YAML node, preserved
  * through the action's transform and re-emitted on dump. */
@@ -77,22 +78,12 @@ export function containsOverrideTag(value: unknown): boolean {
   return false;
 }
 
-/** Service keys reconciliation reads or rewrites; a merge tag on any of them
- * would be mis-transformed, so we reject it up front. */
-export const tagSensitiveServiceKeys = [
-  "mem_limit",
-  "mem_reservation",
-  "cpus",
-  "restart",
-  "depends_on",
-  "label_file",
-] as const;
-
 /**
  * Reject `!reset` / `!override` tags placed on keys the action rewrites for
  * Swarm. Those tags apply to mergeable collections (ports, volumes,
  * environment, …), not scalar runtime knobs — using them there is a mistake we
- * surface instead of silently mis-transforming.
+ * surface instead of silently mis-transforming. The sensitive-key lists come
+ * from `reconcile.ts` so they can't drift from the transforms they guard.
  */
 export function assertMergeableTagUsage(spec: {
   services?: Record<string, unknown>;
@@ -102,7 +93,7 @@ export function assertMergeableTagUsage(spec: {
       continue;
     }
     const entry = service as Record<string, unknown>;
-    for (const key of tagSensitiveServiceKeys) {
+    for (const key of reconciledServiceKeys) {
       if (entry[key] instanceof Tagged) {
         throw new Error(
           `Service "${name}" applies the "${(entry[key] as Tagged).tag}" ` +
@@ -113,11 +104,10 @@ export function assertMergeableTagUsage(spec: {
       }
     }
 
-    const foldsIntoDeploy = ["mem_limit", "mem_reservation", "cpus", "restart"];
     const deploy = entry.deploy;
     if (
       deploy instanceof Tagged &&
-      foldsIntoDeploy.some((key) => key in entry)
+      deployFoldingKeys.some((key) => key in entry)
     ) {
       throw new Error(
         `Service "${name}" applies the "${deploy.tag}" merge tag to ` +
