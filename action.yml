@@ -81,6 +81,13 @@ inputs:
       is useful for ensuring that the action fails if a file variable source is
       not found.
     default: "true"
+  strict-compatibility:
+    description: >-
+      Whether to fail the deployment when the Compose Specification contains
+      features that Docker Swarm does not support and cannot be translated
+      (e.g. develop, profiles, provider). When false (the default), such
+      features are stripped or translated with a warning instead of failing.
+    default: "false"
   key-interpolation:
     description: >-
       Whether to enable interpolation of environment variables within keys in

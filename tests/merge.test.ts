@@ -46,12 +46,12 @@ services:
     const [spec] = await loadComposeSpecs(["compose.yaml"], settings);
 
     expect(spec.services.api).toEqual({
-      restart: "unless-stopped",
+      deploy: { restart_policy: { condition: "any" } },
       networks: ["web"],
       image: "api:latest",
     });
     expect(spec.services.worker).toEqual({
-      restart: "unless-stopped",
+      deploy: { restart_policy: { condition: "any" } },
       networks: ["web"],
       image: "worker:latest",
     });

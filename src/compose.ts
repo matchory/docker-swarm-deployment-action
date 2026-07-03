@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { readFile, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { debug } from "node:util";
 import * as core from "@actions/core";
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { normalizeStackSpecification } from "./engine";
+import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
@@ -161,7 +162,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  return reconcileSpec(parsedContent, settings);
+  return reconcileSpec(parsedContent, settings, filename);
 }
 
 /**
@@ -181,6 +182,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function reconcileSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
+  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -192,6 +194,20 @@ export async function reconcileSpec(
 
   if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
     throw new Error("Invalid stack specification: Missing services section");
+  }
+
+  await reconcileSwarmCompatibility(
+    composeSpec,
+    settings,
+    filename ? dirname(filename) : undefined,
+  );
+
+  if (Object.keys(composeSpec.services).length === 0) {
+    throw new Error(
+      "All services were removed during reconciliation because they use " +
+        "features Docker Swarm cannot run (e.g. provider services); " +
+        "nothing to deploy.",
+    );
   }
 
   if (settings.manageVariables) {
