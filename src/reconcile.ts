@@ -140,6 +140,27 @@ function translateRestart(
   deploy.restart_policy = { condition: restartCondition(restart) };
 }
 
+function translateDependsOn(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): void {
+  const dependsOn = service.depends_on;
+  if (
+    typeof dependsOn !== "object" ||
+    dependsOn === null ||
+    Array.isArray(dependsOn)
+  ) {
+    return;
+  }
+  service.depends_on = Object.keys(dependsOn);
+  diagnostics.warn(
+    `Service "${name}" uses the long "depends_on" syntax; Docker Swarm has ` +
+      `no startup ordering, so conditions are dropped and only the ` +
+      `dependency list is kept.`,
+  );
+}
+
 /**
  * Reconcile modern Compose Specification constructs into a form
  * `docker stack deploy` accepts. Translates what has a faithful swarm
@@ -156,6 +177,7 @@ export async function reconcileSwarmCompatibility(
     const entry = service as Record<string, unknown>;
     translateResources(name, entry, diagnostics);
     translateRestart(name, entry, diagnostics);
+    translateDependsOn(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
   }
 

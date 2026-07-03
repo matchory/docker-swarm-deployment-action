@@ -126,4 +126,40 @@ describe("reconcileSwarmCompatibility", () => {
       expect(s.services.api).not.toHaveProperty("restart");
     });
   });
+
+  describe("translate depends_on", () => {
+    it("converts map form to a list and warns conditions are dropped", async () => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          depends_on: {
+            db: { condition: "service_healthy" },
+            cache: { condition: "service_started" },
+          },
+        },
+        db: { image: "postgres" },
+        cache: { image: "redis" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect((s.services.api as { depends_on: unknown }).depends_on).toEqual([
+        "db",
+        "cache",
+      ]);
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("depends_on"),
+      );
+    });
+
+    it("leaves list form unchanged and does not warn", async () => {
+      const s = spec({
+        api: { image: "nginx", depends_on: ["db"] },
+        db: { image: "postgres" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect((s.services.api as { depends_on: unknown }).depends_on).toEqual([
+        "db",
+      ]);
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+  });
 });
