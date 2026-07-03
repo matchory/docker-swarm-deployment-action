@@ -45,4 +45,42 @@ describe("reconcileSwarmCompatibility", () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe("translate resources", () => {
+    it("moves mem_limit and cpus into deploy.resources.limits", async () => {
+      const s = spec({ api: { image: "nginx", mem_limit: "512m", cpus: 1.5 } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        deploy: { resources: { limits: { memory: "512m", cpus: "1.5" } } },
+      });
+    });
+
+    it("moves mem_reservation into deploy.resources.reservations", async () => {
+      const s = spec({ api: { image: "nginx", mem_reservation: "128m" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        deploy: { resources: { reservations: { memory: "128m" } } },
+      });
+    });
+
+    it("does not overwrite an existing limit but still removes the source", async () => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          mem_limit: "512m",
+          deploy: { resources: { limits: { memory: "1g" } } },
+        },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect((s.services.api as { deploy: unknown }).deploy).toEqual({
+        resources: { limits: { memory: "1g" } },
+      });
+      expect(s.services.api).not.toHaveProperty("mem_limit");
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("mem_limit"),
+      );
+    });
+  });
 });

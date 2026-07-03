@@ -20,6 +20,24 @@ const WARN_ONLY: Array<{ key: string; message: (service: string) => string }> =
     },
   ];
 
+const RESOURCE_TRANSLATIONS: Array<{
+  key: string;
+  path: string[];
+  target: string;
+}> = [
+  {
+    key: "mem_limit",
+    path: ["deploy", "resources", "limits"],
+    target: "memory",
+  },
+  { key: "cpus", path: ["deploy", "resources", "limits"], target: "cpus" },
+  {
+    key: "mem_reservation",
+    path: ["deploy", "resources", "reservations"],
+    target: "memory",
+  },
+];
+
 class Diagnostics {
   private readonly violations: string[] = [];
 
@@ -43,6 +61,47 @@ class Diagnostics {
   }
 }
 
+function ensurePath(
+  root: Record<string, unknown>,
+  path: string[],
+): Record<string, unknown> {
+  let node = root;
+  for (const key of path) {
+    if (typeof node[key] !== "object" || node[key] === null) {
+      node[key] = {};
+    }
+    node = node[key] as Record<string, unknown>;
+  }
+  return node;
+}
+
+function translateResources(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): void {
+  for (const { key, path, target } of RESOURCE_TRANSLATIONS) {
+    if (!(key in service)) {
+      continue;
+    }
+    const value = String(service[key]);
+    delete service[key];
+    const node = ensurePath(service, path);
+    if (target in node) {
+      diagnostics.warn(
+        `Service "${name}" sets both "${key}" and deploy.resources.` +
+          `${path[2]}.${target}; keeping the deploy value and dropping "${key}".`,
+      );
+      continue;
+    }
+    node[target] = value;
+    diagnostics.note(
+      `Service "${name}": translated "${key}" to deploy.resources.` +
+        `${path[2]}.${target}.`,
+    );
+  }
+}
+
 /**
  * Reconcile modern Compose Specification constructs into a form
  * `docker stack deploy` accepts. Translates what has a faithful swarm
@@ -57,6 +116,7 @@ export async function reconcileSwarmCompatibility(
 
   for (const [name, service] of Object.entries(spec.services)) {
     const entry = service as Record<string, unknown>;
+    translateResources(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
   }
 
