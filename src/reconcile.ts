@@ -6,21 +6,18 @@ import type { Settings } from "./settings.js";
 
 /** Service-level keys that pass `docker stack config` but are ignored by
  * swarm at deploy time. We leave them in place and warn. */
-const WARN_ONLY: Array<{ key: string; message: (service: string) => string }> =
-  [
-    {
-      key: "container_name",
-      message: (s) =>
-        `Service "${s}" sets "container_name", which Docker Swarm ignores; ` +
-        `swarm names tasks itself.`,
-    },
-    {
-      key: "build",
-      message: (s) =>
-        `Service "${s}" defines "build", which Docker Swarm ignores; ` +
-        `provide a pre-built "image" and push it to a registry.`,
-    },
-  ];
+const WARN_ONLY: Array<{ key: string; reason: string }> = [
+  { key: "container_name", reason: "swarm names tasks itself" },
+  {
+    key: "build",
+    reason: 'provide a pre-built "image" and push it to a registry',
+  },
+];
+
+/** Keys handled by WARN_ONLY are valid Compose syntax we deliberately keep,
+ * so unknown-key validation must never flag them. Derived from the table so a
+ * new warn-only rule can't fall out of sync with KNOWN_SERVICE_KEYS. */
+const WARN_ONLY_KEYS = new Set(WARN_ONLY.map((rule) => rule.key));
 
 const STRIP_KEYS: Array<{ key: string; reason: string }> = [
   {
@@ -276,15 +273,15 @@ function translateResources(
     const node = ensurePath(service, path);
     if (target in node) {
       diagnostics.warn(
-        `Service "${name}" sets both "${key}" and deploy.resources.` +
-          `${path[2]}.${target}; keeping the deploy value and dropping "${key}".`,
+        `Service "${name}" sets both "${key}" and ` +
+          `${path.join(".")}.${target}; keeping the deploy value and ` +
+          `dropping "${key}".`,
       );
       continue;
     }
     node[target] = value;
     diagnostics.note(
-      `Service "${name}": translated "${key}" to deploy.resources.` +
-        `${path[2]}.${target}.`,
+      `Service "${name}": translated "${key}" to ${path.join(".")}.${target}.`,
     );
   }
 }
@@ -379,7 +376,11 @@ function validateServiceKeys(
   diagnostics: Diagnostics,
 ): void {
   for (const key of Object.keys(service)) {
-    if (key.startsWith("x-") || KNOWN_SERVICE_KEYS.has(key)) {
+    if (
+      key.startsWith("x-") ||
+      KNOWN_SERVICE_KEYS.has(key) ||
+      WARN_ONLY_KEYS.has(key)
+    ) {
       continue;
     }
     diagnostics.warn(
@@ -471,14 +472,14 @@ function applyStrips(
 
 function applyProvider(
   name: string,
-  spec: ComposeSpec,
+  services: Record<string, unknown>,
+  service: Record<string, unknown>,
   diagnostics: Diagnostics,
 ): boolean {
-  const service = spec.services[name] as Record<string, unknown>;
   if (!("provider" in service)) {
     return false;
   }
-  delete spec.services[name];
+  delete services[name];
   diagnostics.warn(
     `Service "${name}" is a provider service, which Docker Swarm cannot run; ` +
       `the service has been removed from the stack.`,
@@ -519,10 +520,10 @@ export async function reconcileSwarmCompatibility(
       );
       continue;
     }
-    if (applyProvider(name, spec, diagnostics)) {
+    const entry = service as Record<string, unknown>;
+    if (applyProvider(name, spec.services, entry, diagnostics)) {
       continue;
     }
-    const entry = service as Record<string, unknown>;
     translateResources(name, entry, diagnostics);
     translateRestart(name, entry, diagnostics);
     translateDependsOn(name, entry, diagnostics);
@@ -541,9 +542,11 @@ function applyWarnOnly(
   service: Record<string, unknown>,
   diagnostics: Diagnostics,
 ): void {
-  for (const rule of WARN_ONLY) {
-    if (rule.key in service) {
-      diagnostics.warn(rule.message(name));
+  for (const { key, reason } of WARN_ONLY) {
+    if (key in service) {
+      diagnostics.warn(
+        `Service "${name}" sets "${key}", which Docker Swarm ignores; ${reason}.`,
+      );
     }
   }
 }
