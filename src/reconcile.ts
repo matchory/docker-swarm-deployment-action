@@ -43,6 +43,102 @@ const STRIP_KEYS: Array<{ key: string; reason: string }> = [
   },
 ];
 
+const KNOWN_TOP_LEVEL_KEYS = new Set([
+  "version",
+  "name",
+  "services",
+  "networks",
+  "volumes",
+  "configs",
+  "secrets",
+  "include",
+]);
+
+const KNOWN_SERVICE_KEYS = new Set([
+  "image",
+  "build",
+  "command",
+  "entrypoint",
+  "environment",
+  "env_file",
+  "ports",
+  "expose",
+  "volumes",
+  "volumes_from",
+  "networks",
+  "network_mode",
+  "depends_on",
+  "restart",
+  "deploy",
+  "healthcheck",
+  "labels",
+  "label_file",
+  "container_name",
+  "hostname",
+  "domainname",
+  "dns",
+  "dns_search",
+  "dns_opt",
+  "extra_hosts",
+  "cap_add",
+  "cap_drop",
+  "devices",
+  "security_opt",
+  "sysctls",
+  "ulimits",
+  "user",
+  "working_dir",
+  "stop_grace_period",
+  "stop_signal",
+  "tty",
+  "stdin_open",
+  "init",
+  "read_only",
+  "privileged",
+  "shm_size",
+  "pid",
+  "ipc",
+  "cgroup",
+  "cgroup_parent",
+  "configs",
+  "secrets",
+  "logging",
+  "mem_limit",
+  "mem_reservation",
+  "memswap_limit",
+  "cpus",
+  "cpu_shares",
+  "cpu_quota",
+  "cpu_count",
+  "cpu_percent",
+  "cpuset",
+  "profiles",
+  "develop",
+  "post_start",
+  "pre_stop",
+  "provider",
+  "gpus",
+  "extends",
+  "mac_address",
+  "platform",
+  "pull_policy",
+  "isolation",
+  "runtime",
+  "group_add",
+  "oom_score_adj",
+  "oom_kill_disable",
+  "links",
+  "external_links",
+  "blkio_config",
+  "storage_opt",
+  "annotations",
+  "attach",
+  "credential_spec",
+  "device_cgroup_rules",
+  "scale",
+  "uts",
+]);
+
 const RESOURCE_TRANSLATIONS: Array<{
   key: string;
   path: string[];
@@ -60,6 +156,40 @@ const RESOURCE_TRANSLATIONS: Array<{
     target: "memory",
   },
 ];
+
+function levenshtein(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+function closestKey(key: string, known: Set<string>): string | null {
+  let best: string | null = null;
+  let bestDistance = 3; // require distance <= 2
+  for (const candidate of known) {
+    const distance = levenshtein(key, candidate);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function suggestion(key: string, known: Set<string>): string {
+  const closest = closestKey(key, known);
+  return closest ? ` — did you mean "${closest}"?` : "";
+}
 
 class Diagnostics {
   private readonly violations: string[] = [];
@@ -209,6 +339,39 @@ function parseEnvFile(content: string): Record<string, string> {
   return labels;
 }
 
+function validateServiceKeys(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): void {
+  for (const key of Object.keys(service)) {
+    if (key.startsWith("x-") || KNOWN_SERVICE_KEYS.has(key)) {
+      continue;
+    }
+    diagnostics.warn(
+      `Unknown property "${key}" on service "${name}"` +
+        suggestion(key, KNOWN_SERVICE_KEYS) +
+        ".",
+    );
+  }
+}
+
+function validateTopLevelKeys(
+  spec: ComposeSpec,
+  diagnostics: Diagnostics,
+): void {
+  for (const key of Object.keys(spec)) {
+    if (key.startsWith("x-") || KNOWN_TOP_LEVEL_KEYS.has(key)) {
+      continue;
+    }
+    diagnostics.warn(
+      `Unknown top-level property "${key}"` +
+        suggestion(key, KNOWN_TOP_LEVEL_KEYS) +
+        ".",
+    );
+  }
+}
+
 async function translateLabelFile(
   name: string,
   service: Record<string, unknown>,
@@ -306,8 +469,10 @@ export async function reconcileSwarmCompatibility(
     await translateLabelFile(name, entry, diagnostics);
     applyStrips(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
+    validateServiceKeys(name, entry, diagnostics);
   }
 
+  validateTopLevelKeys(spec, diagnostics);
   diagnostics.finish(settings.strictCompatibility);
 }
 

@@ -238,4 +238,34 @@ describe("reconcileSwarmCompatibility", () => {
       );
     });
   });
+
+  describe("unknown-key validation", () => {
+    it("warns on an unknown service key with a did-you-mean suggestion", async () => {
+      const s = spec({ api: { image: "nginx", imagee: "typo" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining('did you mean "image"'),
+      );
+    });
+
+    it("does not flag x- extension keys", async () => {
+      const s = {
+        services: { api: { image: "nginx", "x-custom": 1 } },
+        "x-top": 2,
+      } as ComposeSpec;
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("warns on an unknown top-level key", async () => {
+      const s = {
+        services: { api: { image: "nginx" } },
+        servics: {},
+      } as ComposeSpec;
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("servics"),
+      );
+    });
+  });
 });
