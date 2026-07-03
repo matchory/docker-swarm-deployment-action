@@ -3,13 +3,26 @@ import { readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { debug } from "node:util";
 import * as core from "@actions/core";
-import { dump, load } from "js-yaml";
+import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { normalizeStackSpecification } from "./engine";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";
+
+/**
+ * YAML schema used to parse Compose files.
+ *
+ * js-yaml v5 dropped merge keys (`<<:`) from its default CORE_SCHEMA because
+ * they were removed from the YAML spec back in 2009. Compose files rely on
+ * them heavily to share fragments between services via anchors/aliases, so we
+ * re-enable the tag here. Without it, `<<` is parsed as a literal map key and
+ * the anchored fragment is silently nested instead of merged.
+ *
+ * @see https://github.com/nodeca/js-yaml/issues/646
+ */
+const composeSchema = CORE_SCHEMA.withTags(mergeTag);
 
 export const defaultVariants = [
   "compose.production.yaml",
@@ -143,7 +156,10 @@ export async function loadComposeSpecs(
 
 async function loadComposeSpec(filename: string, settings: Settings) {
   const content = await readFile(filename, "utf8");
-  const parsedContent = load(content, { filename }) as ComposeSpec;
+  const parsedContent = load(content, {
+    filename,
+    schema: composeSchema,
+  }) as ComposeSpec;
 
   return reconcileSpec(parsedContent, settings);
 }
