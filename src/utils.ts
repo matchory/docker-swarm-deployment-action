@@ -27,35 +27,35 @@ export async function findFirstExistingFile(
   paths: readonly string[],
 ): Promise<string | null> {
   // Group paths by their directory to minimize directory reads
-  const pathsByDir = new Map<string, string[]>();
+  const pathsByDirectory = new Map<string, string[]>();
 
   for (const path of paths) {
-    const dir = dirname(path);
+    const directory = dirname(path);
 
-    if (!pathsByDir.has(dir)) {
-      pathsByDir.set(dir, []);
+    if (!pathsByDirectory.has(directory)) {
+      pathsByDirectory.set(directory, []);
     }
-    pathsByDir.get(dir)?.push(path);
+    pathsByDirectory.get(directory)?.push(path);
   }
 
   // Read each directory once and cache the results
   const filesByDir = new Map<string, Set<string>>();
 
-  for (const [dir] of pathsByDir) {
+  for (const [directory] of pathsByDirectory) {
     try {
-      const files = await readdir(dir);
-      filesByDir.set(dir, new Set(files));
+      const files = await readdir(directory);
+      filesByDir.set(directory, new Set(files));
     } catch {
       // Directory doesn't exist or isn't readable
-      filesByDir.set(dir, new Set());
+      filesByDir.set(directory, new Set());
     }
   }
 
   // Now check paths in priority order against cached directory contents
   for (const path of paths) {
-    const dir = dirname(path);
+    const directory = dirname(path);
     const fileName = basename(path);
-    const filesInDir = filesByDir.get(dir);
+    const filesInDir = filesByDir.get(directory);
 
     if (filesInDir?.has(fileName)) {
       return path;
@@ -72,16 +72,16 @@ export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const VAR_REF_PATTERN =
+const variableRefPattern =
   /\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)[^{}]*)?})/gi;
 
 /**
  * Extract all variable names referenced in a string.
  */
-function extractVariableRefs(str: string): string[] {
+function extractVariableRefs(value: string): string[] {
   const refs: string[] = [];
 
-  for (const match of str.matchAll(VAR_REF_PATTERN)) {
+  for (const match of value.matchAll(variableRefPattern)) {
     refs.push(match[1] || match[2]);
   }
 
@@ -246,4 +246,32 @@ export function interpolateString(
   str = str.replace(new RegExp(placeholder, "g"), "$");
 
   return str;
+}
+
+/**
+ * Calculate the Levenshtein distance between two strings.
+ *
+ * @param a
+ * @param b
+ */
+export function levenshtein(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+
+  for (let j = 1; j <= b.length; j++) {
+    rows[0][j] = j;
+  }
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return rows[a.length][b.length];
 }
