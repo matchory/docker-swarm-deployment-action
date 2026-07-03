@@ -41,6 +41,40 @@ const STRIP_KEYS: Array<{ key: string; reason: string }> = [
       "GPU shorthand is not supported by swarm; use " +
       "deploy.resources.reservations.generic_resources with node labels",
   },
+  {
+    key: "cpu_shares",
+    reason:
+      "CPU shares are not supported by swarm; use deploy.resources.limits.cpus",
+  },
+  {
+    key: "cpu_quota",
+    reason:
+      "CPU quota is not supported by swarm; use deploy.resources.limits.cpus",
+  },
+  { key: "cpuset", reason: "cpuset pinning is not supported by swarm" },
+  {
+    key: "cpu_count",
+    reason:
+      "cpu_count is not supported by swarm; use deploy.resources.limits.cpus",
+  },
+  { key: "cpu_percent", reason: "cpu_percent is not supported by swarm" },
+  {
+    key: "blkio_config",
+    reason: "block IO configuration is not supported by swarm",
+  },
+  { key: "storage_opt", reason: "storage options are not supported by swarm" },
+  {
+    key: "runtime",
+    reason: "container runtime selection is not supported by swarm",
+  },
+  {
+    key: "oom_kill_disable",
+    reason: "oom_kill_disable is not supported by swarm",
+  },
+  {
+    key: "scale",
+    reason: "scale is not supported by swarm; use deploy.replicas",
+  },
 ];
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([
@@ -372,6 +406,26 @@ function validateTopLevelKeys(
   }
 }
 
+function labelsToMap(labels: unknown): Record<string, string> {
+  if (Array.isArray(labels)) {
+    const map: Record<string, string> = {};
+    for (const item of labels) {
+      const str = String(item);
+      const eq = str.indexOf("=");
+      if (eq === -1) {
+        map[str] = "";
+      } else {
+        map[str.slice(0, eq)] = str.slice(eq + 1);
+      }
+    }
+    return map;
+  }
+  if (typeof labels === "object" && labels !== null) {
+    return labels as Record<string, string>;
+  }
+  return {};
+}
+
 async function translateLabelFile(
   name: string,
   service: Record<string, unknown>,
@@ -397,7 +451,7 @@ async function translateLabelFile(
     Object.assign(fromFiles, parseEnvFile(await readFile(resolved, "utf8")));
   }
 
-  const existing = (service.labels as Record<string, string>) ?? {};
+  const existing = labelsToMap(service.labels);
   service.labels = { ...fromFiles, ...existing };
   diagnostics.note(`Service "${name}": merged label_file entries into labels.`);
 }
@@ -459,6 +513,12 @@ export async function reconcileSwarmCompatibility(
   applyTopLevelStrips(spec, diagnostics);
 
   for (const [name, service] of Object.entries(spec.services)) {
+    if (typeof service !== "object" || service === null) {
+      diagnostics.warn(
+        `Service "${name}" is not a valid mapping; skipping reconciliation.`,
+      );
+      continue;
+    }
     if (applyProvider(name, spec, diagnostics)) {
       continue;
     }

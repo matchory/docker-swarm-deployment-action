@@ -174,11 +174,40 @@ describe("reconcileSwarmCompatibility", () => {
       "profiles",
       "memswap_limit",
       "gpus",
+      "cpu_shares",
+      "cpu_quota",
+      "cpuset",
+      "cpu_count",
+      "cpu_percent",
+      "blkio_config",
+      "storage_opt",
+      "runtime",
+      "oom_kill_disable",
+      "scale",
     ])("strips %s and warns", async (key) => {
       const s = spec({ api: { image: "nginx", [key]: "x" } });
       await reconcileSwarmCompatibility(s, { strictCompatibility: false });
       expect(s.services.api).not.toHaveProperty(key);
       expect(core.warning).toHaveBeenCalledWith(expect.stringContaining(key));
+    });
+
+    it("does not throw in strict mode for clean, fully-translatable specs", async () => {
+      const s = spec({
+        api: { image: "nginx", mem_limit: "512m", restart: "always" },
+      });
+      await expect(
+        reconcileSwarmCompatibility(s, { strictCompatibility: true }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("skips a null service and warns instead of throwing", async () => {
+      const s = spec({ api: null });
+      await expect(
+        reconcileSwarmCompatibility(s, { strictCompatibility: false }),
+      ).resolves.toBeUndefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("not a valid mapping"),
+      );
     });
 
     it("drops a provider service entirely and warns", async () => {
@@ -236,6 +265,25 @@ describe("reconcileSwarmCompatibility", () => {
       expect(core.warning).toHaveBeenCalledWith(
         expect.stringContaining("outside the workspace"),
       );
+    });
+
+    it("normalizes list-form labels to a map instead of corrupting them", async () => {
+      readFile.mockResolvedValue("team=platform\n");
+      const s = spec({
+        api: {
+          image: "nginx",
+          label_file: "./labels.env",
+          labels: ["com.example.env=prod"],
+        },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        labels: {
+          "com.example.env": "prod",
+          team: "platform",
+        },
+      });
     });
   });
 
