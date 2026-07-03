@@ -20,6 +20,27 @@ const WARN_ONLY: Array<{ key: string; message: (service: string) => string }> =
     },
   ];
 
+const STRIP_KEYS: Array<{ key: string; reason: string }> = [
+  {
+    key: "develop",
+    reason: "development watch config is not supported by swarm",
+  },
+  { key: "post_start", reason: "lifecycle hooks are not supported by swarm" },
+  { key: "pre_stop", reason: "lifecycle hooks are not supported by swarm" },
+  {
+    key: "profiles",
+    reason:
+      "profiles are not supported by swarm; all services are always deployed",
+  },
+  { key: "memswap_limit", reason: "swarm has no swap-limit control" },
+  {
+    key: "gpus",
+    reason:
+      "GPU shorthand is not supported by swarm; use " +
+      "deploy.resources.reservations.generic_resources with node labels",
+  },
+];
+
 const RESOURCE_TRANSLATIONS: Array<{
   key: string;
   path: string[];
@@ -161,6 +182,48 @@ function translateDependsOn(
   );
 }
 
+function applyStrips(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): void {
+  for (const { key, reason } of STRIP_KEYS) {
+    if (key in service) {
+      delete service[key];
+      diagnostics.warn(`Service "${name}": removed "${key}" — ${reason}.`);
+    }
+  }
+}
+
+function applyProvider(
+  name: string,
+  spec: ComposeSpec,
+  diagnostics: Diagnostics,
+): boolean {
+  const service = spec.services[name] as Record<string, unknown>;
+  if (!("provider" in service)) {
+    return false;
+  }
+  delete spec.services[name];
+  diagnostics.warn(
+    `Service "${name}" is a provider service, which Docker Swarm cannot run; ` +
+      `the service has been removed from the stack.`,
+  );
+  return true;
+}
+
+function applyTopLevelStrips(
+  spec: ComposeSpec,
+  diagnostics: Diagnostics,
+): void {
+  if ("models" in spec) {
+    delete spec.models;
+    diagnostics.warn(
+      `Removed top-level "models" — the model runner is not supported by swarm.`,
+    );
+  }
+}
+
 /**
  * Reconcile modern Compose Specification constructs into a form
  * `docker stack deploy` accepts. Translates what has a faithful swarm
@@ -173,11 +236,17 @@ export async function reconcileSwarmCompatibility(
 ): Promise<void> {
   const diagnostics = new Diagnostics();
 
+  applyTopLevelStrips(spec, diagnostics);
+
   for (const [name, service] of Object.entries(spec.services)) {
+    if (applyProvider(name, spec, diagnostics)) {
+      continue;
+    }
     const entry = service as Record<string, unknown>;
     translateResources(name, entry, diagnostics);
     translateRestart(name, entry, diagnostics);
     translateDependsOn(name, entry, diagnostics);
+    applyStrips(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
   }
 

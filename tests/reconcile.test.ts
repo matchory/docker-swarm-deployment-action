@@ -162,4 +162,43 @@ describe("reconcileSwarmCompatibility", () => {
       expect(core.warning).not.toHaveBeenCalled();
     });
   });
+
+  describe("strip-and-warn rules", () => {
+    it.each([
+      "develop",
+      "post_start",
+      "pre_stop",
+      "profiles",
+      "memswap_limit",
+      "gpus",
+    ])("strips %s and warns", async (key) => {
+      const s = spec({ api: { image: "nginx", [key]: "x" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).not.toHaveProperty(key);
+      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining(key));
+    });
+
+    it("drops a provider service entirely and warns", async () => {
+      const s = spec({
+        api: { image: "nginx" },
+        ai: { provider: { type: "model" } },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services).not.toHaveProperty("ai");
+      expect(s.services).toHaveProperty("api");
+      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("ai"));
+    });
+
+    it("strips top-level models and warns", async () => {
+      const s = {
+        services: { api: { image: "nginx" } },
+        models: { chat: {} },
+      } as ComposeSpec;
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s).not.toHaveProperty("models");
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("models"),
+      );
+    });
+  });
 });
