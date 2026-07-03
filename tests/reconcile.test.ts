@@ -5,6 +5,9 @@ import { reconcileSwarmCompatibility } from "../src/reconcile.js";
 
 vi.mock("@actions/core");
 
+const readFile = vi.hoisted(() => vi.fn());
+vi.mock("node:fs/promises", () => ({ readFile }));
+
 function spec(services: Record<string, unknown>): ComposeSpec {
   return { services } as ComposeSpec;
 }
@@ -198,6 +201,40 @@ describe("reconcileSwarmCompatibility", () => {
       expect(s).not.toHaveProperty("models");
       expect(core.warning).toHaveBeenCalledWith(
         expect.stringContaining("models"),
+      );
+    });
+  });
+
+  describe("translate label_file", () => {
+    it("merges label file entries into labels, existing labels winning", async () => {
+      readFile.mockResolvedValue(
+        "com.example.team=platform\ncom.example.env=prod\n",
+      );
+      const s = spec({
+        api: {
+          image: "nginx",
+          label_file: "./labels.env",
+          labels: { "com.example.env": "staging" },
+        },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        labels: {
+          "com.example.env": "staging",
+          "com.example.team": "platform",
+        },
+      });
+    });
+
+    it("rejects a label_file path that escapes the workspace", async () => {
+      vi.stubEnv("GITHUB_WORKSPACE", "/work");
+      const s = spec({ api: { image: "nginx", label_file: "../secrets.env" } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(readFile).not.toHaveBeenCalled();
+      expect(s.services.api).not.toHaveProperty("label_file");
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("outside the workspace"),
       );
     });
   });

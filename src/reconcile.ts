@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import type { Settings } from "./settings.js";
@@ -182,6 +184,61 @@ function translateDependsOn(
   );
 }
 
+function withinWorkspace(path: string): string | null {
+  const workspace = resolve(process.env.GITHUB_WORKSPACE || process.cwd());
+  const prefix = workspace.endsWith("/") ? workspace : `${workspace}/`;
+  const resolved = resolve(workspace, path);
+  return resolved === workspace || resolved.startsWith(prefix)
+    ? resolved
+    : null;
+}
+
+function parseEnvFile(content: string): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) {
+      continue;
+    }
+    labels[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+  }
+  return labels;
+}
+
+async function translateLabelFile(
+  name: string,
+  service: Record<string, unknown>,
+  diagnostics: Diagnostics,
+): Promise<void> {
+  if (!("label_file" in service)) {
+    return;
+  }
+  const raw = service.label_file;
+  delete service.label_file;
+  const paths = Array.isArray(raw) ? raw.map(String) : [String(raw)];
+
+  const fromFiles: Record<string, string> = {};
+  for (const path of paths) {
+    const resolved = withinWorkspace(path);
+    if (!resolved) {
+      diagnostics.warn(
+        `Service "${name}": label_file "${path}" resolves outside the ` +
+          `workspace and was skipped.`,
+      );
+      continue;
+    }
+    Object.assign(fromFiles, parseEnvFile(await readFile(resolved, "utf8")));
+  }
+
+  const existing = (service.labels as Record<string, string>) ?? {};
+  service.labels = { ...fromFiles, ...existing };
+  diagnostics.note(`Service "${name}": merged label_file entries into labels.`);
+}
+
 function applyStrips(
   name: string,
   service: Record<string, unknown>,
@@ -246,6 +303,7 @@ export async function reconcileSwarmCompatibility(
     translateResources(name, entry, diagnostics);
     translateRestart(name, entry, diagnostics);
     translateDependsOn(name, entry, diagnostics);
+    await translateLabelFile(name, entry, diagnostics);
     applyStrips(name, entry, diagnostics);
     applyWarnOnly(name, entry, diagnostics);
   }
