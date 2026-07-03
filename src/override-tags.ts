@@ -41,6 +41,7 @@ function overrideTag(tag: string): TagDefinition[] {
       create: () => new Tagged(tag, "mapping", new Map<unknown, unknown>()),
       addPair: (carrier, key, val) => {
         ((carrier as Tagged).value as Map<unknown, unknown>).set(key, val);
+        return ""; // js-yaml: empty string signals a successful pair add
       },
       has: (carrier, key) =>
         ((carrier as Tagged).value as Map<unknown, unknown>).has(key),
