@@ -249,12 +249,14 @@ file is warned about, not fatal.
 
 Compose files may use the standard `!reset` and `!override` merge tags to
 control how base and override files combine. When present, the action
-merges the files with `docker compose config` (which honors the tags)
-before normalizing for Swarm — after its own transforms run, so
-content-based secrets and reconciliation are unaffected. This requires
-the Docker Compose v2 plugin on the runner (included on GitHub-hosted
-runners); if it is missing and these tags are used, the action fails with
-a clear error rather than merging incorrectly.
+merges the files with `docker compose config` (which honors the tags),
+then reconciles the tag-free merged result for Swarm — so these tags work
+even on keys the action rewrites (`restart`, `mem_limit`, `depends_on`,
+`label_file`, and `deploy`). Only the secret/config `content:` transform
+runs before the merge. This requires the Docker Compose v2 plugin on the
+runner (included on GitHub-hosted runners); if it is missing and these
+tags are used, the action fails with a clear error rather than merging
+incorrectly.
 
 #### Variable interpolation
 
