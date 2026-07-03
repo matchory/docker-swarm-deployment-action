@@ -43,7 +43,7 @@ services:
     image: worker:latest
 `);
 
-    const [spec] = await loadComposeSpecs(["compose.yaml"], settings);
+    const [{ spec }] = await loadComposeSpecs(["compose.yaml"], settings);
 
     expect(spec.services.api).toEqual({
       deploy: { restart_policy: { condition: "any" } },

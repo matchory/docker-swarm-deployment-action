@@ -53,12 +53,15 @@ describe("Deployment", () => {
       ]);
       vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
         {
-          name: "foo",
-          services: {
-            web: {
-              image: "nginx:latest",
+          spec: {
+            name: "foo",
+            services: {
+              web: {
+                image: "nginx:latest",
+              },
             },
           },
+          baseDir: ".",
         },
       ]);
       vi.spyOn(compose, "normalizeSpec").mockResolvedValue({
@@ -90,12 +93,15 @@ describe("Deployment", () => {
       expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [
           {
-            name: "foo",
-            services: {
-              web: {
-                image: "nginx:latest",
+            spec: {
+              name: "foo",
+              services: {
+                web: {
+                  image: "nginx:latest",
+                },
               },
             },
+            baseDir: ".",
           },
         ],
         settings,
@@ -166,12 +172,15 @@ describe("Deployment", () => {
       ]);
       vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
         {
-          name: "foo",
-          services: {
-            web: {
-              image: "nginx:latest",
+          spec: {
+            name: "foo",
+            services: {
+              web: {
+                image: "nginx:latest",
+              },
             },
           },
+          baseDir: ".",
         },
       ]);
       vi.spyOn(compose, "normalizeSpec").mockResolvedValue({
@@ -196,12 +205,15 @@ describe("Deployment", () => {
       expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [
           {
-            name: "foo",
-            services: {
-              web: {
-                image: "nginx:latest",
+            spec: {
+              name: "foo",
+              services: {
+                web: {
+                  image: "nginx:latest",
+                },
               },
             },
+            baseDir: ".",
           },
         ],
         settings,

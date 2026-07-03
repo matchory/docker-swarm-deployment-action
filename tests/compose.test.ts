@@ -281,7 +281,7 @@ describe("Compose", () => {
 
       await expect(
         loadComposeSpecs(["docker-compose.yaml"], settings),
-      ).resolves.toEqual([composeSpec]);
+      ).resolves.toEqual([{ spec: composeSpec, baseDir: "." }]);
     });
 
     it("should throw an error if the compose file does not have a services section", async () => {
@@ -535,20 +535,15 @@ describe("Compose", () => {
     it("should normalize and merge the spec", async () => {
       const inputSpecs = [
         {
-          version: "3.8",
-          services: {
-            web: {
-              image: "nginx:latest",
-            },
+          spec: {
+            version: "3.8",
+            services: { web: { image: "nginx:latest" } },
           },
+          baseDir: ".",
         },
         {
-          version: "3.8",
-          services: {
-            db: {
-              image: "mysql:latest",
-            },
-          },
+          spec: { version: "3.8", services: { db: { image: "mysql:latest" } } },
+          baseDir: ".",
         },
       ];
       const outputSpec = {
@@ -644,12 +639,15 @@ describe("Compose", () => {
 
       const specs = [
         {
-          services: {
-            web: {
-              image: "nginx",
-              ports: new Tagged("!override", "sequence", []),
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
             },
           },
+          baseDir: ".",
         },
       ] as unknown as Parameters<typeof normalizeSpec>[0];
 
@@ -673,7 +671,12 @@ describe("Compose", () => {
       const merge = vi.spyOn(engine, "mergeComposeFiles");
       const specs = [
         {
-          services: { web: { ports: new Tagged("!override", "sequence", []) } },
+          spec: {
+            services: {
+              web: { ports: new Tagged("!override", "sequence", []) },
+            },
+          },
+          baseDir: ".",
         },
       ] as unknown as Parameters<typeof normalizeSpec>[0];
 
@@ -690,7 +693,7 @@ describe("Compose", () => {
       });
 
       const specs = [
-        { services: { web: { image: "nginx" } } },
+        { spec: { services: { web: { image: "nginx" } } }, baseDir: "." },
       ] as unknown as Parameters<typeof normalizeSpec>[0];
       await normalizeSpec(specs, settings);
 

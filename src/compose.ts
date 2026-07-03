@@ -174,7 +174,9 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  return reconcileSpec(parsedContent, settings, filename);
+  const spec = await reconcileSpec(parsedContent, settings, filename);
+
+  return { spec, baseDir: dirname(filename) };
 }
 
 /**
@@ -271,17 +273,18 @@ export async function reconcileSpec(
  * not be compatible with the stack specification—while still being able
  * to deploy them to Swarm.
  *
- * @param composeSpecs The Compose specifications to normalize
+ * @param prepared The Compose specifications to normalize, each paired with
+ *   the base directory it was loaded from
  * @param settings The settings to use for the deployment
  */
 export async function normalizeSpec(
-  composeSpecs: ComposeSpec[],
+  prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
 ) {
   // Serialize each (possibly transformed) spec so Docker can merge them. Use
   // the tag-aware schema so any !reset/!override carriers re-emit faithfully.
   const generated = await Promise.all(
-    composeSpecs.map(async (spec) => {
+    prepared.map(async ({ spec }) => {
       const file = `docker-compose.generated.${randomUUID()}.yaml`;
       await writeFile(file, dump(spec, { schema: composeSchema }));
       return file;
@@ -295,7 +298,7 @@ export async function normalizeSpec(
 
     // Merge tags are only honored by `docker compose config`; `docker stack
     // config` ignores them. Route through Compose only when tags are present.
-    if (composeSpecs.some(containsOverrideTag)) {
+    if (prepared.some((item) => containsOverrideTag(item.spec))) {
       if (!(await isComposePluginAvailable())) {
         throw new Error(
           'Compose file uses the "!reset"/"!override" merge tags, which ' +
