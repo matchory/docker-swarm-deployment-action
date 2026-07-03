@@ -12,6 +12,7 @@ import {
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
+import * as engine from "../src/engine";
 import { deployStack } from "../src/engine";
 import { Tagged } from "../src/override-tags.js";
 import { defineSettings } from "../src/settings.js";
@@ -628,6 +629,69 @@ describe("Compose", () => {
       });
 
       await expect(normalizeSpec([], settings)).rejects.toThrowError();
+    });
+  });
+
+  describe("normalizeSpec override-tag merge", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("merges via docker compose then normalizes when tags are present", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("merged: true\n");
+      const normalize = vi
+        .spyOn(engine, "normalizeStackSpecification")
+        .mockResolvedValue({ services: { web: { image: "nginx" } } });
+
+      const specs = [
+        {
+          services: {
+            web: {
+              image: "nginx",
+              ports: new Tagged("!override", "sequence", []),
+            },
+          },
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      expect(engine.mergeComposeFiles).toHaveBeenCalled();
+      // normalize runs on a single merged file
+      expect(normalize).toHaveBeenCalledWith(
+        [expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/)],
+        settings,
+        true,
+      );
+    });
+
+    it("throws when tags are present but the compose plugin is missing", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(false);
+      const merge = vi.spyOn(engine, "mergeComposeFiles");
+      const specs = [
+        {
+          services: { web: { ports: new Tagged("!override", "sequence", []) } },
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(normalizeSpec(specs, settings)).rejects.toThrow(
+        /Docker Compose v2 plugin/,
+      );
+      expect(merge).not.toHaveBeenCalled();
+    });
+
+    it("uses docker stack config directly when no tags are present", async () => {
+      const merge = vi.spyOn(engine, "mergeComposeFiles");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        { services: { web: { image: "nginx" } } },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(merge).not.toHaveBeenCalled();
+      expect(engine.normalizeStackSpecification).toHaveBeenCalled();
     });
   });
 

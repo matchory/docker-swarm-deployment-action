@@ -4,9 +4,14 @@ import { dirname, join, resolve } from "node:path";
 import { debug } from "node:util";
 import * as core from "@actions/core";
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
-import { normalizeStackSpecification } from "./engine";
+import {
+  isComposePluginAvailable,
+  mergeComposeFiles,
+  normalizeStackSpecification,
+} from "./engine";
 import {
   assertMergeableTagUsage,
+  containsOverrideTag,
   overrideTagDefinitions,
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
@@ -273,32 +278,54 @@ export async function normalizeSpec(
   composeSpecs: ComposeSpec[],
   settings: Readonly<Settings>,
 ) {
-  // As we possibly have modified the Compose specs read from the input files,
-  // we need to write them out to temporary files, so we can rely on the docker
-  // stack config command to merge them correctly.
-  const composeFiles = await Promise.all(
+  // Serialize each (possibly transformed) spec so Docker can merge them. Use
+  // the tag-aware schema so any !reset/!override carriers re-emit faithfully.
+  const generated = await Promise.all(
     composeSpecs.map(async (spec) => {
       const file = `docker-compose.generated.${randomUUID()}.yaml`;
-      await writeFile(file, dump(spec));
-
+      await writeFile(file, dump(spec, { schema: composeSchema }));
       return file;
     }),
   );
 
-  let spec: Awaited<ComposeSpec>;
+  const tempFiles = [...generated];
 
   try {
-    spec = await normalizeStackSpecification(composeFiles, settings, true);
+    let filesToNormalize = generated;
+
+    // Merge tags are only honored by `docker compose config`; `docker stack
+    // config` ignores them. Route through Compose only when tags are present.
+    if (composeSpecs.some(containsOverrideTag)) {
+      if (!(await isComposePluginAvailable())) {
+        throw new Error(
+          'Compose file uses the "!reset"/"!override" merge tags, which ' +
+            "require the Docker Compose v2 plugin ('docker compose') on the " +
+            "runner. Install it (it ships with GitHub-hosted runners) or " +
+            "inline the override.",
+        );
+      }
+
+      const merged = await mergeComposeFiles(generated);
+      const mergedFile = `docker-compose.merged.${randomUUID()}.yaml`;
+      await writeFile(mergedFile, merged);
+      tempFiles.push(mergedFile);
+      filesToNormalize = [mergedFile];
+    }
+
+    const spec = await normalizeStackSpecification(
+      filesToNormalize,
+      settings,
+      true,
+    );
+
+    if (!spec?.services || Object.keys(spec.services).length === 0) {
+      throw new Error("Invalid stack specification: Missing services section");
+    }
+
+    return spec;
   } finally {
-    // Remove the temporary files again, regardless of the exit code.
-    await Promise.all(composeFiles.map((path) => unlink(path)));
+    await Promise.all(tempFiles.map((path) => unlink(path)));
   }
-
-  if (!spec?.services || Object.keys(spec.services).length === 0) {
-    throw new Error("Invalid stack specification: Missing services section");
-  }
-
-  return spec;
 }
 
 /**
