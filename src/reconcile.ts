@@ -4,20 +4,21 @@ import type { Settings } from "./settings.js";
 
 /** Service-level keys that pass `docker stack config` but are ignored by
  * swarm at deploy time. We leave them in place and warn. */
-const WARN_ONLY: Array<{ key: string; message: (service: string) => string }> = [
-  {
-    key: "container_name",
-    message: (s) =>
-      `Service "${s}" sets "container_name", which Docker Swarm ignores; ` +
-      `swarm names tasks itself.`,
-  },
-  {
-    key: "build",
-    message: (s) =>
-      `Service "${s}" defines "build", which Docker Swarm ignores; ` +
-      `provide a pre-built "image" and push it to a registry.`,
-  },
-];
+const WARN_ONLY: Array<{ key: string; message: (service: string) => string }> =
+  [
+    {
+      key: "container_name",
+      message: (s) =>
+        `Service "${s}" sets "container_name", which Docker Swarm ignores; ` +
+        `swarm names tasks itself.`,
+    },
+    {
+      key: "build",
+      message: (s) =>
+        `Service "${s}" defines "build", which Docker Swarm ignores; ` +
+        `provide a pre-built "image" and push it to a registry.`,
+    },
+  ];
 
 class Diagnostics {
   private readonly violations: string[] = [];

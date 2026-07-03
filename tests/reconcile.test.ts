@@ -25,7 +25,9 @@ describe("reconcileSwarmCompatibility", () => {
     it("warns about build but leaves it in place", async () => {
       const s = spec({ api: { image: "nginx", build: { context: "." } } });
       await reconcileSwarmCompatibility(s, { strictCompatibility: false });
-      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("build"));
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("build"),
+      );
       expect(s.services.api).toHaveProperty("build");
     });
 
