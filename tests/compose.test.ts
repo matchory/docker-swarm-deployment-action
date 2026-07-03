@@ -662,6 +662,10 @@ describe("Compose", () => {
         settings,
         true,
       );
+      // the temp merged file is cleaned up afterwards
+      expect(unlink).toHaveBeenCalledWith(
+        expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/),
+      );
     });
 
     it("throws when tags are present but the compose plugin is missing", async () => {

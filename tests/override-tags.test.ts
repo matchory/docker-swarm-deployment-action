@@ -35,6 +35,7 @@ describe("override tag round-trip", () => {
     expect(out).toContain("ports: !override");
     expect(out).toContain("environment: !reset null");
     expect(out).toContain("labels: !override");
+    expect(out).toContain("com.x: y");
   });
 });
 
@@ -51,11 +52,18 @@ describe("containsOverrideTag", () => {
       false,
     );
   });
+
+  it("detects a Tagged carrier nested inside a plain array", () => {
+    const spec = { a: [1, new Tagged("!override", "sequence", [])] };
+    expect(containsOverrideTag(spec)).toBe(true);
+  });
 });
 
 describe("assertMergeableTagUsage", () => {
   it.each([
     "mem_limit",
+    "mem_reservation",
+    "cpus",
     "restart",
     "depends_on",
     "label_file",
@@ -72,6 +80,52 @@ describe("assertMergeableTagUsage", () => {
         web: {
           ports: new Tagged("!override", "sequence", []),
           environment: new Tagged("!reset", "scalar", "null"),
+        },
+      },
+    };
+    expect(() => assertMergeableTagUsage(spec)).not.toThrow();
+  });
+
+  it("throws when a tagged deploy is combined with a short-form key folded into it", () => {
+    const spec = {
+      services: {
+        web: {
+          deploy: new Tagged("!override", "mapping", new Map()),
+          restart: "always",
+        },
+      },
+    };
+    expect(() => assertMergeableTagUsage(spec)).toThrow(/deploy/);
+  });
+
+  it("allows a tagged deploy without a conflicting short-form key", () => {
+    const spec = {
+      services: {
+        web: {
+          deploy: new Tagged("!override", "mapping", new Map()),
+        },
+      },
+    };
+    expect(() => assertMergeableTagUsage(spec)).not.toThrow();
+  });
+
+  it("throws when tagged labels are combined with label_file", () => {
+    const spec = {
+      services: {
+        web: {
+          labels: new Tagged("!override", "mapping", new Map()),
+          label_file: "./x.env",
+        },
+      },
+    };
+    expect(() => assertMergeableTagUsage(spec)).toThrow(/labels/);
+  });
+
+  it("allows tagged labels without label_file", () => {
+    const spec = {
+      services: {
+        web: {
+          labels: new Tagged("!override", "mapping", new Map()),
         },
       },
     };

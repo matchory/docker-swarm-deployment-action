@@ -112,5 +112,29 @@ export function assertMergeableTagUsage(spec: {
         );
       }
     }
+
+    const foldsIntoDeploy = ["mem_limit", "mem_reservation", "cpus", "restart"];
+    const deploy = entry.deploy;
+    if (
+      deploy instanceof Tagged &&
+      foldsIntoDeploy.some((key) => key in entry)
+    ) {
+      throw new Error(
+        `Service "${name}" applies the "${deploy.tag}" merge tag to ` +
+          `"deploy" while also setting a short-form key (restart / mem_limit / ` +
+          `cpus / mem_reservation) that the action folds into "deploy". The ` +
+          `translated value would be lost during the merge — move the setting ` +
+          `into the overriding "deploy" block, or remove the tag.`,
+      );
+    }
+    const labels = entry.labels;
+    if (labels instanceof Tagged && "label_file" in entry) {
+      throw new Error(
+        `Service "${name}" applies the "${labels.tag}" merge tag to ` +
+          `"labels" while also using "label_file". Merging the label file into ` +
+          `a tagged labels block would corrupt it — inline the label_file ` +
+          `entries into the "labels" block, or remove the tag.`,
+      );
+    }
   }
 }
