@@ -1,5 +1,6 @@
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { composeSchema } from "../src/compose.js";
 import {
   assertMergeableTagUsage,
   containsOverrideTag,
@@ -75,5 +76,12 @@ describe("assertMergeableTagUsage", () => {
       },
     };
     expect(() => assertMergeableTagUsage(spec)).not.toThrow();
+  });
+});
+
+describe("composeSchema", () => {
+  it("parses a spec using !override without throwing", () => {
+    const yaml = 'services:\n  web:\n    ports: !override ["80:80"]\n';
+    expect(() => load(yaml, { schema: composeSchema })).not.toThrow();
   });
 });

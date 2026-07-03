@@ -5,6 +5,10 @@ import { debug } from "node:util";
 import * as core from "@actions/core";
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { normalizeStackSpecification } from "./engine";
+import {
+  assertMergeableTagUsage,
+  overrideTagDefinitions,
+} from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
@@ -23,7 +27,10 @@ export const schemaVersion = "3.9";
  *
  * @see https://github.com/nodeca/js-yaml/issues/646
  */
-const composeSchema = CORE_SCHEMA.withTags(mergeTag);
+export const composeSchema = CORE_SCHEMA.withTags(
+  mergeTag,
+  ...overrideTagDefinitions,
+);
 
 export const defaultVariants = [
   "compose.production.yaml",
@@ -195,6 +202,8 @@ export async function reconcileSpec(
   if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
     throw new Error("Invalid stack specification: Missing services section");
   }
+
+  assertMergeableTagUsage(composeSpec);
 
   await reconcileSwarmCompatibility(
     composeSpec,

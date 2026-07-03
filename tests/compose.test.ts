@@ -13,6 +13,7 @@ import {
   schemaVersion,
 } from "../src/compose.js";
 import { deployStack } from "../src/engine";
+import { Tagged } from "../src/override-tags.js";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
 import { processVariable } from "../src/variables.js";
@@ -366,6 +367,24 @@ describe("Compose", () => {
           settings,
         ),
       ).rejects.toThrowError();
+    });
+
+    it("rejects a merge tag placed on a reconciled key", async () => {
+      const composeSpec = defineComposeSpec({
+        services: {
+          web: {
+            image: "nginx",
+            restart: new Tagged("!override", "scalar", "always"),
+          },
+        },
+      });
+      await expect(
+        reconcileSpec(composeSpec, {
+          ...settings,
+          manageVariables: false,
+          strictCompatibility: false,
+        }),
+      ).rejects.toThrow(/merge tag/);
     });
 
     it("should process secrets and configs in the compose specification", async () => {
