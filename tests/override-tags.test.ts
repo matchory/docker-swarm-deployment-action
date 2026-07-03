@@ -1,6 +1,7 @@
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import {
+  assertMergeableTagUsage,
   containsOverrideTag,
   overrideTagDefinitions,
   Tagged,
@@ -48,5 +49,31 @@ describe("containsOverrideTag", () => {
     expect(containsOverrideTag({ services: { web: { image: "nginx" } } })).toBe(
       false,
     );
+  });
+});
+
+describe("assertMergeableTagUsage", () => {
+  it.each([
+    "mem_limit",
+    "restart",
+    "depends_on",
+    "label_file",
+  ])("throws for a tag on the reconciled key %s", (key) => {
+    const spec = {
+      services: { web: { [key]: new Tagged("!override", "scalar", "x") } },
+    };
+    expect(() => assertMergeableTagUsage(spec)).toThrow(/merge tag/);
+  });
+
+  it("allows tags on mergeable collections like ports and environment", () => {
+    const spec = {
+      services: {
+        web: {
+          ports: new Tagged("!override", "sequence", []),
+          environment: new Tagged("!reset", "scalar", "null"),
+        },
+      },
+    };
+    expect(() => assertMergeableTagUsage(spec)).not.toThrow();
   });
 });

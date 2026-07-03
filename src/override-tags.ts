@@ -76,3 +76,41 @@ export function containsOverrideTag(value: unknown): boolean {
   }
   return false;
 }
+
+/** Service keys reconciliation reads or rewrites; a merge tag on any of them
+ * would be mis-transformed, so we reject it up front. */
+export const tagSensitiveServiceKeys = [
+  "mem_limit",
+  "mem_reservation",
+  "cpus",
+  "restart",
+  "depends_on",
+  "label_file",
+] as const;
+
+/**
+ * Reject `!reset` / `!override` tags placed on keys the action rewrites for
+ * Swarm. Those tags apply to mergeable collections (ports, volumes,
+ * environment, …), not scalar runtime knobs — using them there is a mistake we
+ * surface instead of silently mis-transforming.
+ */
+export function assertMergeableTagUsage(spec: {
+  services?: Record<string, unknown>;
+}): void {
+  for (const [name, service] of Object.entries(spec.services ?? {})) {
+    if (!service || typeof service !== "object") {
+      continue;
+    }
+    const entry = service as Record<string, unknown>;
+    for (const key of tagSensitiveServiceKeys) {
+      if (entry[key] instanceof Tagged) {
+        throw new Error(
+          `Service "${name}" applies the "${(entry[key] as Tagged).tag}" ` +
+            `merge tag to "${key}", which the action rewrites for Swarm ` +
+            `compatibility. The "!reset"/"!override" tags apply to mergeable ` +
+            `collections (e.g. ports, volumes, environment), not "${key}".`,
+        );
+      }
+    }
+  }
+}
