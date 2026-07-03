@@ -14,6 +14,7 @@ export interface Settings {
   monitorInterval: number;
   monitorTimeout: number;
   stack: string;
+  strictCompatibility: boolean;
   strictVariables: boolean;
   variables: Map<string, string>;
   version: string;
@@ -61,6 +62,8 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     monitorInterval: parseInt(getInput("monitor-interval") || "5", 10),
     monitorTimeout: parseInt(getInput("monitor-timeout") || "300", 10),
     stack,
+    strictCompatibility:
+      getBooleanInput("strict-compatibility", { required: false }) ?? false,
     strictVariables:
       getBooleanInput("strict-variables", { required: false }) ?? true,
     variables,
