@@ -8,13 +8,14 @@ import {
   interpolateSpec,
   loadComposeSpecs,
   normalizeSpec,
-  reconcileSpec,
+  prepareSpec,
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
 import * as engine from "../src/engine";
 import { deployStack } from "../src/engine";
 import { Tagged } from "../src/override-tags.js";
+import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
 import { processVariable } from "../src/variables.js";
@@ -306,7 +307,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: schemaVersion,
         services: {
           web: {
@@ -325,7 +326,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: schemaVersion,
         services: {
           web: {
@@ -345,7 +346,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: "42",
         services: {
           web: {
@@ -357,35 +358,14 @@ describe("Compose", () => {
 
     it("should throw an error if the compose file does not have a services section", async () => {
       await expect(
-        reconcileSpec({ version: "3.8" } as ComposeSpec, settings),
+        prepareSpec({ version: "3.8" } as ComposeSpec, settings),
       ).rejects.toThrowError();
     });
 
     it("should throw an error if the compose file has an empty services section", async () => {
       await expect(
-        reconcileSpec(
-          { version: "3.8", services: {} } as ComposeSpec,
-          settings,
-        ),
+        prepareSpec({ version: "3.8", services: {} } as ComposeSpec, settings),
       ).rejects.toThrowError();
-    });
-
-    it("rejects a merge tag placed on a reconciled key", async () => {
-      const composeSpec = defineComposeSpec({
-        services: {
-          web: {
-            image: "nginx",
-            restart: new Tagged("!override", "scalar", "always"),
-          },
-        },
-      });
-      await expect(
-        reconcileSpec(composeSpec, {
-          ...settings,
-          manageVariables: false,
-          strictCompatibility: false,
-        }),
-      ).rejects.toThrow(/merge tag/);
     });
 
     it("should process secrets and configs in the compose specification", async () => {
@@ -418,7 +398,7 @@ describe("Compose", () => {
           file: "processed-config1.txt",
         });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: "3.8",
         services: {
           web: {
@@ -461,7 +441,7 @@ describe("Compose", () => {
       });
 
       await expect(
-        reconcileSpec(composeSpec, {
+        prepareSpec(composeSpec, {
           ...settings,
           manageVariables: false,
         }),
@@ -487,46 +467,19 @@ describe("Compose", () => {
       expect(processVariable).not.toHaveBeenCalled();
     });
 
-    it("reconciles modern compose keys into swarm-compatible form", async () => {
-      const composeSpec = defineComposeSpec({
-        services: {
-          api: {
-            image: "nginx",
-            mem_limit: "512m",
-            restart: "always",
-            develop: { watch: [] },
-          },
-        },
-      });
-
-      const result = await reconcileSpec(composeSpec, {
-        ...settings,
-        manageVariables: false,
-        strictCompatibility: false,
-      });
-
-      expect(result.services.api).toEqual({
-        image: "nginx",
-        deploy: {
-          resources: { limits: { memory: "512m" } },
-          restart_policy: { condition: "any" },
-        },
-      });
-    });
-
-    it("throws a clear error when reconciliation removes all services", async () => {
-      const composeSpec = defineComposeSpec({
-        services: {
-          ai: { provider: { type: "model-runner" } },
-        },
-      });
-
+    it("throws when reconciliation removes all services (non-tag path)", async () => {
       await expect(
-        reconcileSpec(composeSpec, {
-          ...settings,
-          manageVariables: false,
-          strictCompatibility: false,
-        }),
+        normalizeSpec(
+          [
+            {
+              spec: defineComposeSpec({
+                services: { ai: { provider: { type: "model-runner" } } },
+              }),
+              baseDir: ".",
+            },
+          ],
+          { ...settings, manageVariables: false, strictCompatibility: false },
+        ),
       ).rejects.toThrow(/All services were removed during reconciliation/);
     });
   });
@@ -630,9 +583,16 @@ describe("Compose", () => {
   describe("normalizeSpec override-tag merge", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("merges via docker compose then normalizes when tags are present", async () => {
+    it("merges via docker compose then reconciles + normalizes when tags are present", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
-      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("merged: true\n");
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  web:\n    image: nginx\n    restart: always\n",
+      );
+      // The merged, tag-free spec that `docker compose config` produced.
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", restart: "always" } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
       const normalize = vi
         .spyOn(engine, "normalizeStackSpecification")
         .mockResolvedValue({ services: { web: { image: "nginx" } } });
@@ -654,13 +614,24 @@ describe("Compose", () => {
       await normalizeSpec(specs, settings);
 
       expect(engine.mergeComposeFiles).toHaveBeenCalled();
-      // normalize runs on a single merged file
+      // reconcile runs on the tag-free merged spec, translating restart.
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        {
+          services: {
+            web: {
+              image: "nginx",
+              deploy: { restart_policy: { condition: "any" } },
+            },
+          },
+        },
+        settings,
+      );
+      // normalize runs on a single merged file.
       expect(normalize).toHaveBeenCalledWith(
         [expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/)],
         settings,
         true,
       );
-      // the temp merged file is cleaned up afterwards
       expect(unlink).toHaveBeenCalledWith(
         expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/),
       );
