@@ -79,8 +79,10 @@ export async function processVariable(
 
   if (!content) {
     core.warning(
-      `Variable "${name}" is defined with an empty value. This is ` +
-        `not recommended, as it may lead to unexpected behavior.`,
+      `Variable "${name}" resolved to an empty value; the secret or config ` +
+        `will be created empty. If that is not intended, check the source ` +
+        `it is read from (its "file"/"environment"/"content" property, a ` +
+        `"${name}.secret" file, or a matching environment variable).`,
     );
   }
 
@@ -457,7 +459,9 @@ async function pruneStoredVariables({
 
     if (checkRotation && shouldRotate(new Date(CreatedAt ?? 0))) {
       core.warning(
-        `Secret "${name}" has been in use for too long and should be rotated!`,
+        `Secret "${name}" is over a year old and should be rotated. Update ` +
+          `its value at the source it is read from and redeploy to roll it ` +
+          `over to a fresh secret.`,
       );
     }
   }

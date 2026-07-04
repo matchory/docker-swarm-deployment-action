@@ -12,6 +12,7 @@ import {
 import {
   containsOverrideTag,
   overrideTagDefinitions,
+  Tagged,
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
@@ -141,7 +142,13 @@ export async function resolveComposeFiles(
 
   // We couldn't find any Compose Files, so we throw an error and abort the
   // deployment early.
-  throw new Error("Could not find suitable Compose File");
+  throw new Error(
+    `Could not find a Compose file to deploy. The "compose-file" input was ` +
+      `not set, and none of the default locations contain one (e.g. ` +
+      `compose.yaml, docker-compose.yaml, .docker/compose.yaml, ` +
+      `docker/compose.yaml). Add a Compose file at one of those paths, or ` +
+      `set the "compose-file" input to its path.`,
+  );
 }
 
 /**
@@ -173,7 +180,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  const spec = await prepareSpec(parsedContent, settings);
+  const spec = await prepareSpec(parsedContent, settings, filename);
 
   return { spec, baseDir: dirname(filename) };
 }
@@ -187,6 +194,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
+  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -197,11 +205,19 @@ export async function prepareSpec(
   }
 
   if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
-    throw new Error("Invalid stack specification: Missing services section");
+    const where = filename ? `Compose file "${filename}"` : "The Compose file";
+
+    throw new Error(
+      `${where} has no services to deploy: its "services:" section is ` +
+        `missing or empty. A stack needs at least one service. Add a ` +
+        `"services:" block, or point the "compose-file" input at the ` +
+        `correct file.`,
+    );
   }
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
+      assertNoMergeTags("secret", "secrets", composeSpec.secrets);
       core.startGroup("Processing secrets");
 
       for (const [name, entry] of Object.entries(composeSpec.secrets)) {
@@ -216,6 +232,7 @@ export async function prepareSpec(
     }
 
     if (composeSpec.configs) {
+      assertNoMergeTags("config", "configs", composeSpec.configs);
       core.startGroup("Processing configs");
 
       for (const [name, entry] of Object.entries(composeSpec.configs)) {
@@ -231,6 +248,46 @@ export async function prepareSpec(
   }
 
   return composeSpec;
+}
+
+// A `!reset`/`!override` merge tag on a top-level secret/config carrier reaches
+// here as a `Tagged` value. `processVariable` can't interpret it and would fail
+// with a misleading "not defined in the environment" error, so we detect it
+// first and explain the real cause: managed variables are resolved before
+// Docker merges the files, leaving no merged value for the tag to apply to.
+function assertNoMergeTags(
+  kind: "secret" | "config",
+  section: "secrets" | "configs",
+  entries: Record<string, Variable>,
+): void {
+  // Tag on the entire `secrets:` / `configs:` mapping.
+  if (entries instanceof Tagged) {
+    throwMergeTagError(kind, `The "${section}:" section`, entries.tag);
+  }
+
+  // Tag on an individual entry.
+  for (const [name, entry] of Object.entries(entries)) {
+    if (entry instanceof Tagged) {
+      const label = kind === "secret" ? "Secret" : "Config";
+      throwMergeTagError(kind, `${label} "${name}"`, entry.tag);
+    }
+  }
+}
+
+function throwMergeTagError(
+  kind: "secret" | "config",
+  subject: string,
+  tag: string,
+): never {
+  throw new Error(
+    `${subject} uses the "${tag}" merge tag, but merge tags are not ` +
+      `supported on ${kind}s while variable management is enabled ` +
+      `(manage-variables: true). The action resolves each ${kind}'s value ` +
+      `before Docker merges the Compose files, so there is no merged value ` +
+      `for the tag to apply to. Remove the "${tag}" tag from this ${kind}, ` +
+      `or set "manage-variables: false" to let Docker apply the merge tags ` +
+      `itself.`,
+  );
 }
 
 /**
@@ -260,7 +317,11 @@ export async function normalizeSpec(
     : await reconcileThenMerge(prepared, settings);
 
   if (!spec?.services || Object.keys(spec.services).length === 0) {
-    throw new Error("Invalid stack specification: Missing services section");
+    throw new Error(
+      `The merged Compose specification contains no services to deploy. ` +
+        `Ensure your Compose file(s) define at least one service under ` +
+        `"services:".`,
+    );
   }
 
   return spec;

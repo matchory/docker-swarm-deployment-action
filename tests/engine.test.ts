@@ -274,7 +274,17 @@ services:
         return 0;
       });
       await expect(engine.inspectService("abc")).rejects.toThrowError(
-        /Failed to parse JSON output/,
+        /could not be parsed as JSON/,
+      );
+    });
+
+    it("should report a not-found error (not a parse bug) for an empty result", async () => {
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+        return 0;
+      });
+      await expect(engine.inspectService("abc")).rejects.toThrowError(
+        /Service "abc" was not found on the Swarm/,
       );
     });
   });

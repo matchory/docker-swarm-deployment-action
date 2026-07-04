@@ -60,8 +60,16 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     manageVariables:
       getBooleanInput("manage-variables", { required: false }) ?? true,
     monitor: getBooleanInput("monitor", { required: false }) ?? false,
-    monitorInterval: parseInt(getInput("monitor-interval") || "5", 10),
-    monitorTimeout: parseInt(getInput("monitor-timeout") || "300", 10),
+    monitorInterval: parsePositiveSeconds(
+      getInput("monitor-interval"),
+      "monitor-interval",
+      5,
+    ),
+    monitorTimeout: parsePositiveSeconds(
+      getInput("monitor-timeout"),
+      "monitor-timeout",
+      300,
+    ),
     stack,
     strictCompatibility:
       getBooleanInput("strict-compatibility", { required: false }) ?? false,
@@ -72,6 +80,31 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     variables,
     version,
   });
+}
+
+// Parse a whole-second duration input. An unset input falls back to the
+// default; a non-numeric or non-positive value is rejected up front, because a
+// NaN interval/timeout would otherwise make the monitor loop hang silently
+// (`elapsed >= NaN` is always false) with no indication of why.
+function parsePositiveSeconds(
+  raw: string,
+  input: string,
+  fallback: number,
+): number {
+  if (!raw) {
+    return fallback;
+  }
+
+  const value = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `The "${input}" input must be a positive whole number of seconds, ` +
+        `but received "${raw}".`,
+    );
+  }
+
+  return value;
 }
 
 function inferStackName(name: string | undefined, env: NodeJS.ProcessEnv) {
