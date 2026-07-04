@@ -420,6 +420,34 @@ describe("Compose", () => {
       });
     });
 
+    it("should reject a merge tag on a managed secret entry with a clear error", async () => {
+      const composeSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+        secrets: {
+          secret1: new Tagged("!reset", "scalar", null),
+        },
+      } as unknown as ComposeSpec;
+
+      await expect(prepareSpec(composeSpec, settings)).rejects.toThrow(
+        /"!reset" merge tag.*not supported on secrets/s,
+      );
+      // The misleading env-var pipeline must never run for a tagged entry.
+      expect(processVariable).not.toHaveBeenCalled();
+    });
+
+    it("should reject a merge tag on the whole configs section", async () => {
+      const composeSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+        configs: new Tagged("!override", "mapping", new Map()),
+      } as unknown as ComposeSpec;
+
+      await expect(prepareSpec(composeSpec, settings)).rejects.toThrow(
+        /"configs:" section uses the "!override" merge tag/,
+      );
+    });
+
     it("should not process secrets and configs if variable management is disabled", async () => {
       const composeSpec = defineComposeSpec({
         version: "3.8",

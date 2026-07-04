@@ -176,26 +176,31 @@ export async function inspectService(id: string) {
     { silent: true },
   );
 
+  let result: Service | Service[];
+
   try {
-    const result = JSON.parse(output) as Service | Service[];
-
-    if (Array.isArray(result)) {
-      if (result.length === 0) {
-        throw new Error(`Service "${id}" not found`);
-      }
-
-      return result[0];
-    }
-
-    return result;
+    result = JSON.parse(output) as Service | Service[];
   } catch (cause) {
     throw new Error(
-      `Failed to inspect service ${id}: Failed to parse JSON output. ` +
-        "This is most likely a bug in the deployment action. Please report " +
-        "it to the action issues.",
+      `Failed to inspect service "${id}": Docker returned output that could ` +
+        "not be parsed as JSON. This is most likely a bug in the deployment " +
+        "action. Please report it to the action issues.",
       { cause },
     );
   }
+
+  if (Array.isArray(result)) {
+    if (result.length === 0) {
+      throw new Error(
+        `Service "${id}" was not found on the Swarm. It may have been ` +
+          "removed, or the deployment may not have created it.",
+      );
+    }
+
+    return result[0];
+  }
+
+  return result;
 }
 
 export type TaskStatus = {

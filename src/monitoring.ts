@@ -101,7 +101,11 @@ export async function monitorDeployment(
       }
 
       throw new Error(
-        `Deployment timed out: ${completedServices.size}/${services.length} services converged`,
+        `Deployment timed out after ${settings.monitorTimeout}s: ` +
+          `${completedServices.size}/${services.length} services converged. ` +
+          `See the per-service failure reports above for why the remaining ` +
+          `services did not become healthy, or raise the "monitor-timeout" ` +
+          `input if they simply need more time.`,
       );
     }
 
