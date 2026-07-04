@@ -4,7 +4,15 @@ import { dirname, join, resolve } from "node:path";
 import { debug } from "node:util";
 import * as core from "@actions/core";
 import { CORE_SCHEMA, dump, load, mergeTag } from "js-yaml";
-import { normalizeStackSpecification } from "./engine";
+import {
+  isComposePluginAvailable,
+  mergeComposeFiles,
+  normalizeStackSpecification,
+} from "./engine";
+import {
+  containsOverrideTag,
+  overrideTagDefinitions,
+} from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
 import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
@@ -23,7 +31,10 @@ export const schemaVersion = "3.9";
  *
  * @see https://github.com/nodeca/js-yaml/issues/646
  */
-const composeSchema = CORE_SCHEMA.withTags(mergeTag);
+export const composeSchema = CORE_SCHEMA.withTags(
+  mergeTag,
+  ...overrideTagDefinitions,
+);
 
 export const defaultVariants = [
   "compose.production.yaml",
@@ -162,27 +173,20 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  return reconcileSpec(parsedContent, settings, filename);
+  const spec = await prepareSpec(parsedContent, settings);
+
+  return { spec, baseDir: dirname(filename) };
 }
 
 /**
- * Adapt a Compose specification to Compose File version 3
- *
- * The docker stack deploy command uses the legacy [Compose File version
- * 3](https://docs.docker.com/reference/compose-file/legacy-versions/) format,
- * used by Compose V1. The latest format, defined by the
- * [Compose specification](https://docs.docker.com/reference/compose-file/)
- * isn't compatible with the docker stack deploy command.
- *
- * @param composeSpec The Compose specification to adapt
- * @param settings The settings to use for the deployment
- * @see https://docs.docker.com/engine/swarm/stack-deploy/
- * @see https://docs.docker.com/compose/intro/history/
+ * Prepare a parsed Compose spec for merging: normalize top-level shape and
+ * convert `content:`/`environment:` secrets and configs to files. This is the
+ * only transform that must run before either Docker merge tool sees the spec.
+ * Swarm reconciliation runs later, in `normalizeSpec`, on the merged output.
  */
-export async function reconcileSpec(
+export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
-  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -194,20 +198,6 @@ export async function reconcileSpec(
 
   if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
     throw new Error("Invalid stack specification: Missing services section");
-  }
-
-  await reconcileSwarmCompatibility(
-    composeSpec,
-    settings,
-    filename ? dirname(filename) : undefined,
-  );
-
-  if (Object.keys(composeSpec.services).length === 0) {
-    throw new Error(
-      "All services were removed during reconciliation because they use " +
-        "features Docker Swarm cannot run (e.g. provider services); " +
-        "nothing to deploy.",
-    );
   }
 
   if (settings.manageVariables) {
@@ -257,39 +247,118 @@ export async function reconcileSpec(
  * not be compatible with the stack specification—while still being able
  * to deploy them to Swarm.
  *
- * @param composeSpecs The Compose specifications to normalize
+ * @param prepared The Compose specifications to normalize, each paired with
+ *   the base directory it was loaded from
  * @param settings The settings to use for the deployment
  */
 export async function normalizeSpec(
-  composeSpecs: ComposeSpec[],
+  prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
 ) {
-  // As we possibly have modified the Compose specs read from the input files,
-  // we need to write them out to temporary files, so we can rely on the docker
-  // stack config command to merge them correctly.
-  const composeFiles = await Promise.all(
-    composeSpecs.map(async (spec) => {
-      const file = `docker-compose.generated.${randomUUID()}.yaml`;
-      await writeFile(file, dump(spec));
-
-      return file;
-    }),
-  );
-
-  let spec: Awaited<ComposeSpec>;
-
-  try {
-    spec = await normalizeStackSpecification(composeFiles, settings, true);
-  } finally {
-    // Remove the temporary files again, regardless of the exit code.
-    await Promise.all(composeFiles.map((path) => unlink(path)));
-  }
+  const spec = prepared.some((item) => containsOverrideTag(item.spec))
+    ? await mergeThenReconcile(prepared, settings)
+    : await reconcileThenMerge(prepared, settings);
 
   if (!spec?.services || Object.keys(spec.services).length === 0) {
     throw new Error("Invalid stack specification: Missing services section");
   }
 
   return spec;
+}
+
+// Write a spec to a uniquely-named temp file in `dir`, so the docker merge tool
+// that reads it resolves the spec's relative paths against that directory.
+async function writeSpecFile(spec: ComposeSpec, dir: string): Promise<string> {
+  const file = join(dir, `docker-compose.generated.${randomUUID()}.yaml`);
+  await writeFile(file, dump(spec, { schema: composeSchema }));
+  return file;
+}
+
+// Non-tag path: reconcile each spec (with its own base directory), then let
+// `docker stack config` merge and normalize them — the pre-rework flow.
+async function reconcileThenMerge(
+  prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
+  settings: Readonly<Settings>,
+) {
+  for (const { spec, baseDir } of prepared) {
+    await reconcileSwarmCompatibility(spec, settings, baseDir);
+    assertServicesRemain(spec);
+  }
+
+  // Write to the working directory (not baseDir) to preserve the released
+  // behavior: `docker stack config` resolves any remaining relative paths
+  // (env_file, secrets `file:`) against the generated file's location, and
+  // reconcile has already inlined label_file with the correct baseDir above.
+  const files = await Promise.all(
+    prepared.map(({ spec }) => writeSpecFile(spec, ".")),
+  );
+
+  try {
+    return await normalizeStackSpecification(files, settings, true);
+  } finally {
+    await Promise.all(files.map((path) => unlink(path)));
+  }
+}
+
+// Tag path: merge with `docker compose config` (which honors the
+// !reset/!override tags and emits a tag-free spec), reconcile the merged
+// spec for Swarm, then normalize via `docker stack config`.
+async function mergeThenReconcile(
+  prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
+  settings: Readonly<Settings>,
+) {
+  if (!(await isComposePluginAvailable())) {
+    throw new Error(
+      'Compose file uses the "!reset"/"!override" merge tags, which ' +
+        "require the Docker Compose v2 plugin ('docker compose') on the " +
+        "runner. Install it (it ships with GitHub-hosted runners) or " +
+        "inline the override.",
+    );
+  }
+
+  // Write each spec beside the compose file it came from so `docker compose
+  // config` resolves its relative paths (env_file, label_file) against the
+  // right directory. Unlike the non-tag path, reconcile has not run yet, so
+  // label_file is still relative here and must resolve during the merge.
+  const tempFiles = await Promise.all(
+    prepared.map(({ spec, baseDir }) => writeSpecFile(spec, baseDir)),
+  );
+
+  try {
+    const merged = await mergeComposeFiles(tempFiles);
+    const mergedSpec = load(merged, {
+      filename: "docker-compose.merged.yaml",
+      json: true,
+    }) as ComposeSpec;
+
+    // `docker compose config` stamps a project name derived from the working
+    // directory; drop it to match the tag-free path, where prepareSpec removes
+    // the name from every input before merging.
+    delete mergedSpec.name;
+
+    await reconcileSwarmCompatibility(mergedSpec, settings);
+    assertServicesRemain(mergedSpec);
+
+    // The merged spec carries only absolute paths, so its directory no longer
+    // matters; write it in the working directory.
+    const mergedFile = `docker-compose.merged.${randomUUID()}.yaml`;
+    await writeFile(mergedFile, dump(mergedSpec, { schema: composeSchema }));
+    tempFiles.push(mergedFile);
+
+    return await normalizeStackSpecification([mergedFile], settings, true);
+  } finally {
+    await Promise.all(tempFiles.map((path) => unlink(path)));
+  }
+}
+
+function assertServicesRemain(spec: ComposeSpec) {
+  if (Object.keys(spec.services).length === 0) {
+    throw new Error(
+      "All services were removed during reconciliation because they use " +
+        "features Docker Swarm cannot run (e.g. provider services); " +
+        "nothing to deploy.",
+    );
+  }
 }
 
 /**

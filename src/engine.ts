@@ -87,6 +87,31 @@ export async function normalizeStackSpecification(
   return spec;
 }
 
+/**
+ * Check whether the Docker Compose v2 plugin (`docker compose`) is available.
+ */
+export async function isComposePluginAvailable(): Promise<boolean> {
+  try {
+    await executeDockerCommand(["compose", "version"], { silent: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Merge compose files with `docker compose config`, which honors the
+ * `!reset` / `!override` merge tags that `docker stack config` ignores.
+ * `--no-interpolate` preserves `${VAR}` for the action's own interpolation.
+ */
+export async function mergeComposeFiles(files: string[]): Promise<string> {
+  const fileFlags = files.flatMap((file) => ["--file", file]);
+  return executeDockerCommand(
+    ["compose", ...fileFlags, "config", "--no-interpolate"],
+    { silent: true },
+  );
+}
+
 type ServiceFilters = {
   id?: ValueFilter;
   labels?: KeyValueFilter;

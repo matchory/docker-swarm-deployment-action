@@ -8,11 +8,14 @@ import {
   interpolateSpec,
   loadComposeSpecs,
   normalizeSpec,
-  reconcileSpec,
+  prepareSpec,
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
+import * as engine from "../src/engine";
 import { deployStack } from "../src/engine";
+import { Tagged } from "../src/override-tags.js";
+import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
 import { processVariable } from "../src/variables.js";
@@ -279,7 +282,7 @@ describe("Compose", () => {
 
       await expect(
         loadComposeSpecs(["docker-compose.yaml"], settings),
-      ).resolves.toEqual([composeSpec]);
+      ).resolves.toEqual([{ spec: composeSpec, baseDir: "." }]);
     });
 
     it("should throw an error if the compose file does not have a services section", async () => {
@@ -304,7 +307,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: schemaVersion,
         services: {
           web: {
@@ -323,7 +326,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: schemaVersion,
         services: {
           web: {
@@ -343,7 +346,7 @@ describe("Compose", () => {
         },
       });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: "42",
         services: {
           web: {
@@ -355,16 +358,13 @@ describe("Compose", () => {
 
     it("should throw an error if the compose file does not have a services section", async () => {
       await expect(
-        reconcileSpec({ version: "3.8" } as ComposeSpec, settings),
+        prepareSpec({ version: "3.8" } as ComposeSpec, settings),
       ).rejects.toThrowError();
     });
 
     it("should throw an error if the compose file has an empty services section", async () => {
       await expect(
-        reconcileSpec(
-          { version: "3.8", services: {} } as ComposeSpec,
-          settings,
-        ),
+        prepareSpec({ version: "3.8", services: {} } as ComposeSpec, settings),
       ).rejects.toThrowError();
     });
 
@@ -398,7 +398,7 @@ describe("Compose", () => {
           file: "processed-config1.txt",
         });
 
-      await expect(reconcileSpec(composeSpec, settings)).resolves.toEqual({
+      await expect(prepareSpec(composeSpec, settings)).resolves.toEqual({
         version: "3.8",
         services: {
           web: {
@@ -441,7 +441,7 @@ describe("Compose", () => {
       });
 
       await expect(
-        reconcileSpec(composeSpec, {
+        prepareSpec(composeSpec, {
           ...settings,
           manageVariables: false,
         }),
@@ -467,46 +467,19 @@ describe("Compose", () => {
       expect(processVariable).not.toHaveBeenCalled();
     });
 
-    it("reconciles modern compose keys into swarm-compatible form", async () => {
-      const composeSpec = defineComposeSpec({
-        services: {
-          api: {
-            image: "nginx",
-            mem_limit: "512m",
-            restart: "always",
-            develop: { watch: [] },
-          },
-        },
-      });
-
-      const result = await reconcileSpec(composeSpec, {
-        ...settings,
-        manageVariables: false,
-        strictCompatibility: false,
-      });
-
-      expect(result.services.api).toEqual({
-        image: "nginx",
-        deploy: {
-          resources: { limits: { memory: "512m" } },
-          restart_policy: { condition: "any" },
-        },
-      });
-    });
-
-    it("throws a clear error when reconciliation removes all services", async () => {
-      const composeSpec = defineComposeSpec({
-        services: {
-          ai: { provider: { type: "model-runner" } },
-        },
-      });
-
+    it("throws when reconciliation removes all services (non-tag path)", async () => {
       await expect(
-        reconcileSpec(composeSpec, {
-          ...settings,
-          manageVariables: false,
-          strictCompatibility: false,
-        }),
+        normalizeSpec(
+          [
+            {
+              spec: defineComposeSpec({
+                services: { ai: { provider: { type: "model-runner" } } },
+              }),
+              baseDir: ".",
+            },
+          ],
+          { ...settings, manageVariables: false, strictCompatibility: false },
+        ),
       ).rejects.toThrow(/All services were removed during reconciliation/);
     });
   });
@@ -515,20 +488,15 @@ describe("Compose", () => {
     it("should normalize and merge the spec", async () => {
       const inputSpecs = [
         {
-          version: "3.8",
-          services: {
-            web: {
-              image: "nginx:latest",
-            },
+          spec: {
+            version: "3.8",
+            services: { web: { image: "nginx:latest" } },
           },
+          baseDir: ".",
         },
         {
-          version: "3.8",
-          services: {
-            db: {
-              image: "mysql:latest",
-            },
-          },
+          spec: { version: "3.8", services: { db: { image: "mysql:latest" } } },
+          baseDir: ".",
         },
       ];
       const outputSpec = {
@@ -574,6 +542,37 @@ describe("Compose", () => {
       });
     });
 
+    it("writes generated files in the working directory (non-tag path)", async () => {
+      vi.spyOn(crypto, "randomUUID").mockReturnValue(
+        "10000000-0000-4000-0000-000000000000",
+      );
+      vi.spyOn(yaml, "load").mockReturnValue({
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+      });
+      vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
+
+        return 0;
+      });
+
+      await normalizeSpec(
+        [
+          {
+            spec: { version: "3.8", services: { web: { image: "nginx" } } },
+            baseDir: "docker",
+          },
+        ],
+        settings,
+      );
+
+      // The non-tag path must keep writing to the working directory regardless
+      // of baseDir, preserving the released path-resolution behavior.
+      expect(writeFile.mock.calls.map(([path]) => path)).toContain(
+        "docker-compose.generated.10000000-0000-4000-0000-000000000000.yaml",
+      );
+    });
+
     it("should throw an error if the docker stack config command fails", async () => {
       vi.mocked(exec).mockResolvedValue(1);
 
@@ -609,6 +608,258 @@ describe("Compose", () => {
       });
 
       await expect(normalizeSpec([], settings)).rejects.toThrowError();
+    });
+  });
+
+  describe("normalizeSpec override-tag merge", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("merges via docker compose then reconciles + normalizes when tags are present", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  web:\n    image: nginx\n    restart: always\n",
+      );
+      // The merged, tag-free spec that `docker compose config` produced.
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", restart: "always" } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      const normalize = vi
+        .spyOn(engine, "normalizeStackSpecification")
+        .mockResolvedValue({ services: { web: { image: "nginx" } } });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      expect(engine.mergeComposeFiles).toHaveBeenCalled();
+      // reconcile runs on the tag-free merged spec, translating restart.
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        {
+          services: {
+            web: {
+              image: "nginx",
+              deploy: { restart_policy: { condition: "any" } },
+            },
+          },
+        },
+        settings,
+      );
+      // normalize runs on a single merged file.
+      expect(normalize).toHaveBeenCalledWith(
+        [expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/)],
+        settings,
+        true,
+      );
+      expect(unlink).toHaveBeenCalledWith(
+        expect.stringMatching(/^docker-compose\.merged\..*\.yaml$/),
+      );
+    });
+
+    it("throws when tags are present but the compose plugin is missing", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(false);
+      const merge = vi.spyOn(engine, "mergeComposeFiles");
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: { ports: new Tagged("!override", "sequence", []) },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(normalizeSpec(specs, settings)).rejects.toThrow(
+        /Docker Compose v2 plugin/,
+      );
+      expect(merge).not.toHaveBeenCalled();
+    });
+
+    it("uses docker stack config directly when no tags are present", async () => {
+      const merge = vi.spyOn(engine, "mergeComposeFiles");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        { spec: { services: { web: { image: "nginx" } } }, baseDir: "." },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(merge).not.toHaveBeenCalled();
+      expect(engine.normalizeStackSpecification).toHaveBeenCalled();
+    });
+
+    it("writes the input spec beside its compose file so relative paths resolve", async () => {
+      vi.spyOn(crypto, "randomUUID").mockReturnValue(
+        "10000000-0000-4000-0000-000000000000",
+      );
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  web:\n    image: nginx\n",
+      );
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx" } },
+      });
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: "docker",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      // On the tag path, reconcile has not inlined label_file yet, so the temp
+      // file must sit in baseDir for `docker compose config` to resolve the
+      // spec's relative paths against the compose file's own directory.
+      expect(writeFile.mock.calls.map(([path]) => path)).toContain(
+        "docker/docker-compose.generated.10000000-0000-4000-0000-000000000000.yaml",
+      );
+      // The baseDir-anchored temp file is the one handed to the compose merge.
+      const [mergedInputs] = vi.mocked(engine.mergeComposeFiles).mock.calls[0];
+      expect(mergedInputs[0]).toBe(
+        "docker/docker-compose.generated.10000000-0000-4000-0000-000000000000.yaml",
+      );
+    });
+
+    it("merges files from different directories, each written beside its source", async () => {
+      vi.spyOn(crypto, "randomUUID")
+        .mockReturnValueOnce("aaaaaaaa-0000-4000-0000-000000000000")
+        .mockReturnValueOnce("bbbbbbbb-0000-4000-0000-000000000000")
+        .mockReturnValueOnce("cccccccc-0000-4000-0000-000000000000");
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  web:\n    image: nginx\n",
+      );
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx" }, db: { image: "postgres" } },
+      });
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" }, db: { image: "postgres" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: "docker",
+        },
+        {
+          spec: { services: { db: { image: "postgres" } } },
+          baseDir: "config/stack",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      // Each input file is written beside its own compose file, and both are
+      // handed to a single `docker compose config` invocation in order.
+      const written = writeFile.mock.calls.map(([path]) => path);
+      expect(written).toContain(
+        "docker/docker-compose.generated.aaaaaaaa-0000-4000-0000-000000000000.yaml",
+      );
+      expect(written).toContain(
+        "config/stack/docker-compose.generated.bbbbbbbb-0000-4000-0000-000000000000.yaml",
+      );
+      const [mergedInputs] = vi.mocked(engine.mergeComposeFiles).mock.calls[0];
+      expect(mergedInputs.slice(0, 2)).toEqual([
+        "docker/docker-compose.generated.aaaaaaaa-0000-4000-0000-000000000000.yaml",
+        "config/stack/docker-compose.generated.bbbbbbbb-0000-4000-0000-000000000000.yaml",
+      ]);
+    });
+
+    it("propagates strict-compatibility failures from the merged spec", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  web:\n    image: nginx\n",
+      );
+      // The merged spec still carries a swarm-incompatible key (`develop`).
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", develop: { watch: [] } } },
+      });
+      const normalize = vi.spyOn(engine, "normalizeStackSpecification");
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(
+        normalizeSpec(specs, { ...settings, strictCompatibility: true }),
+      ).rejects.toThrow(/strict-compatibility is enabled/);
+      // reconcile throws before the spec ever reaches docker stack config.
+      expect(normalize).not.toHaveBeenCalled();
+    });
+
+    it("throws when reconciliation removes all services from the merged spec", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
+        "services:\n  ai:\n    provider:\n      type: model-runner\n",
+      );
+      // The only service in the merged spec is a provider, which reconcile drops.
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { ai: { provider: { type: "model-runner" } } },
+      });
+      const normalize = vi.spyOn(engine, "normalizeStackSpecification");
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              ai: {
+                provider: { type: "model-runner" },
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(
+        normalizeSpec(specs, { ...settings, strictCompatibility: false }),
+      ).rejects.toThrow(/All services were removed during reconciliation/);
+      expect(normalize).not.toHaveBeenCalled();
     });
   });
 
