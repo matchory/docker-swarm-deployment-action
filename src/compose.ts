@@ -266,6 +266,14 @@ export async function normalizeSpec(
   return spec;
 }
 
+// Write a spec to a uniquely-named temp file in `dir`, so the docker merge tool
+// that reads it resolves the spec's relative paths against that directory.
+async function writeSpecFile(spec: ComposeSpec, dir: string): Promise<string> {
+  const file = join(dir, `docker-compose.generated.${randomUUID()}.yaml`);
+  await writeFile(file, dump(spec, { schema: composeSchema }));
+  return file;
+}
+
 // Non-tag path: reconcile each spec (with its own base directory), then let
 // `docker stack config` merge and normalize them — the pre-rework flow.
 async function reconcileThenMerge(
@@ -277,12 +285,12 @@ async function reconcileThenMerge(
     assertServicesRemain(spec);
   }
 
+  // Write to the working directory (not baseDir) to preserve the released
+  // behavior: `docker stack config` resolves any remaining relative paths
+  // (env_file, secrets `file:`) against the generated file's location, and
+  // reconcile has already inlined label_file with the correct baseDir above.
   const files = await Promise.all(
-    prepared.map(async ({ spec }) => {
-      const file = `docker-compose.generated.${randomUUID()}.yaml`;
-      await writeFile(file, dump(spec, { schema: composeSchema }));
-      return file;
-    }),
+    prepared.map(({ spec }) => writeSpecFile(spec, ".")),
   );
 
   try {
@@ -308,12 +316,12 @@ async function mergeThenReconcile(
     );
   }
 
+  // Write each spec beside the compose file it came from so `docker compose
+  // config` resolves its relative paths (env_file, label_file) against the
+  // right directory. Unlike the non-tag path, reconcile has not run yet, so
+  // label_file is still relative here and must resolve during the merge.
   const tempFiles = await Promise.all(
-    prepared.map(async ({ spec }) => {
-      const file = `docker-compose.generated.${randomUUID()}.yaml`;
-      await writeFile(file, dump(spec, { schema: composeSchema }));
-      return file;
-    }),
+    prepared.map(({ spec, baseDir }) => writeSpecFile(spec, baseDir)),
   );
 
   try {
@@ -323,9 +331,16 @@ async function mergeThenReconcile(
       json: true,
     }) as ComposeSpec;
 
+    // `docker compose config` stamps a project name derived from the working
+    // directory; drop it to match the tag-free path, where prepareSpec removes
+    // the name from every input before merging.
+    delete mergedSpec.name;
+
     await reconcileSwarmCompatibility(mergedSpec, settings);
     assertServicesRemain(mergedSpec);
 
+    // The merged spec carries only absolute paths, so its directory no longer
+    // matters; write it in the working directory.
     const mergedFile = `docker-compose.merged.${randomUUID()}.yaml`;
     await writeFile(mergedFile, dump(mergedSpec, { schema: composeSchema }));
     tempFiles.push(mergedFile);

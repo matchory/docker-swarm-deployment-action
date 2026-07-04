@@ -107,10 +107,7 @@ export async function isComposePluginAvailable(): Promise<boolean> {
 export async function mergeComposeFiles(files: string[]): Promise<string> {
   const fileFlags = files.flatMap((file) => ["--file", file]);
   return executeDockerCommand(
-    ["compose", ...fileFlags, "config", "--no-interpolate"] as [
-      string,
-      ...string[],
-    ],
+    ["compose", ...fileFlags, "config", "--no-interpolate"],
     { silent: true },
   );
 }
