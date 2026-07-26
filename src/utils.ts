@@ -1,5 +1,28 @@
-import { access, constants, readdir } from "node:fs/promises";
+import { access, constants, readdir, unlink } from "node:fs/promises";
 import { basename, dirname } from "node:path";
+import * as core from "@actions/core";
+
+/**
+ * Remove a generated file, warning instead of throwing if it cannot be removed:
+ * it may hold a secret value that should not persist on a reused runner.
+ *
+ * @param path The path to remove
+ * @param description How to refer to the file in the warning message
+ */
+export async function removeFileQuietly(path: string, description: string) {
+  try {
+    await unlink(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+
+    core.warning(
+      `Failed to remove ${description} "${path}": ${error}. ` +
+        "It may contain a secret value and should be removed manually.",
+    );
+  }
+}
 
 /**
  * Check if a file or directory exists

@@ -16,6 +16,7 @@ export interface Settings {
   stack: string;
   strictCompatibility: boolean;
   strictVariables: boolean;
+  uploadComposeSpec: boolean;
   variables: Map<string, string>;
   version: string;
 }
@@ -66,6 +67,8 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       getBooleanInput("strict-compatibility", { required: false }) ?? false,
     strictVariables:
       getBooleanInput("strict-variables", { required: false }) ?? true,
+    uploadComposeSpec:
+      getBooleanInput("upload-compose-spec", { required: false }) ?? true,
     variables,
     version,
   });

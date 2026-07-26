@@ -5,6 +5,7 @@ import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose";
 import { deploy } from "./deployment.js";
 import { parseSettings } from "./settings.js";
+import { removeFileQuietly } from "./utils.js";
 
 export async function run() {
   const settings = parseSettings(env);
@@ -31,6 +32,12 @@ export async function run() {
     return;
   }
 
+  if (!settings.uploadComposeSpec) {
+    core.info("Compose spec artifact upload is disabled");
+
+    return;
+  }
+
   try {
     await storeComposeSpecArtifact(composeSpec);
   } catch (cause) {
@@ -48,22 +55,26 @@ async function storeComposeSpecArtifact(spec: ComposeSpec) {
   const path = `./compose-spec.generated.${crypto.randomUUID()}.json`;
 
   try {
-    await writeFile(path, JSON.stringify(spec, null, 2));
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`Failed to write compose spec to file: ${message}`, {
-      cause,
-    });
-  }
+    try {
+      await writeFile(path, JSON.stringify(spec, null, 2));
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`Failed to write compose spec to file: ${message}`, {
+        cause,
+      });
+    }
 
-  try {
-    await artifactClient.uploadArtifact("compose-spec", [path], ".", {
-      retentionDays: 30,
-    });
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`Failed to upload compose spec artifact: ${message}`, {
-      cause,
-    });
+    try {
+      await artifactClient.uploadArtifact("compose-spec", [path], ".", {
+        retentionDays: 30,
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`Failed to upload compose spec artifact: ${message}`, {
+        cause,
+      });
+    }
+  } finally {
+    await removeFileQuietly(path, "temporary compose spec file");
   }
 }
