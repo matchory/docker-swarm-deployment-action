@@ -6,22 +6,23 @@ import { parseSettings } from "../src/settings.js";
 vi.mock("@actions/core", { spy: true });
 
 describe("settings", () => {
+  // Inputs left out resolve to undefined, so parseSettings applies its defaults
+  let booleanInputs: Record<string, boolean>;
+
   beforeEach(() => {
     vi.resetAllMocks();
     vi.resetModules();
     vi.unstubAllEnvs();
+    booleanInputs = {};
+    vi.spyOn(core, "getBooleanInput").mockImplementation(
+      (name) => booleanInputs[name] as boolean,
+    );
   });
 
   it("should parse settings with default values", () => {
     vi.stubEnv("GITHUB_REPOSITORY", undefined);
     vi.stubEnv("GITHUB_REF", undefined);
     vi.stubEnv("GITHUB_SHA", undefined);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -33,10 +34,12 @@ describe("settings", () => {
     expect(settings.keyInterpolation).toBe(false);
     expect(settings.variables).toBeInstanceOf(Map);
     expect(settings.manageVariables).toBe(true);
-    expect(settings.strictVariables).toBe(false);
+    expect(settings.strictVariables).toBe(true);
+    expect(settings.strictCompatibility).toBe(false);
     expect(settings.monitor).toBe(false);
     expect(settings.monitorTimeout).toBe(300);
     expect(settings.monitorInterval).toBe(5);
+    expect(settings.uploadComposeSpec).toBe(true);
   });
 
   it("should parse settings with provided inputs", () => {
@@ -52,12 +55,7 @@ describe("settings", () => {
           "monitor-interval": "10",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
+    booleanInputs["upload-compose-spec"] = false;
 
     const settings = parseSettings(env);
 
@@ -73,16 +71,11 @@ describe("settings", () => {
     expect(settings.monitor).toBe(false);
     expect(settings.monitorTimeout).toBe(600);
     expect(settings.monitorInterval).toBe(10);
+    expect(settings.uploadComposeSpec).toBe(false);
   });
 
   it("should infer version from GITHUB_REF", () => {
     vi.stubEnv("GITHUB_REF", "refs/tags/v1.2.3");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -91,12 +84,6 @@ describe("settings", () => {
 
   it("should infer version from GITHUB_SHA if no GITHUB_REF is specified", () => {
     vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -105,12 +92,6 @@ describe("settings", () => {
 
   it("should infer stack name from GITHUB_REPOSITORY", () => {
     vi.stubEnv("GITHUB_REPOSITORY", "user/repo");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -119,12 +100,6 @@ describe("settings", () => {
 
   it("should handle missing GITHUB_REPOSITORY gracefully", () => {
     vi.stubEnv("GITHUB_REPOSITORY", undefined);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -134,12 +109,6 @@ describe("settings", () => {
   it("should retrieve compose files from COMPOSE_FILE environment variable", () => {
     vi.stubEnv("COMPOSE_FILE", "file1.yml,file2.yml");
     vi.stubEnv("COMPOSE_PATH_SEPARATOR", ",");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -153,12 +122,6 @@ describe("settings", () => {
           "compose-file": "compose.foo.yaml\ncompose.bar.yaml",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -176,12 +139,6 @@ describe("settings", () => {
             "compose.foo.yaml\ncompose.bar.yaml\ncompose.baz.yaml",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -199,12 +156,6 @@ describe("settings", () => {
           "compose-file": "compose.foo.yaml\n\ncompose.bar.yaml\n",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -221,12 +172,6 @@ describe("settings", () => {
           "compose-file": "  compose.foo.yaml  \n  compose.bar.yaml  ",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -243,12 +188,6 @@ describe("settings", () => {
           "compose-file": "compose.foo.yaml:compose.bar.yaml",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -266,12 +205,6 @@ describe("settings", () => {
           "compose-file": "compose.foo.yaml\ncompose.bar.yaml,compose.baz.yaml",
         })[name] || "",
     );
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -284,12 +217,6 @@ describe("settings", () => {
 
   it("should parse variables from input", () => {
     vi.stubEnv("INPUT_VARIABLES", "VAR1=value1\nVAR2=value2");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -299,12 +226,6 @@ describe("settings", () => {
 
   it("should handle empty variables input", () => {
     vi.stubEnv("INPUT_VARIABLES", "");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -315,12 +236,6 @@ describe("settings", () => {
     vi.stubEnv("VAR1", "envValue1");
     vi.stubEnv("VAR2", "envValue2");
     vi.stubEnv("INPUT_VARIABLES", "VAR1=inputValue1\nVAR3=inputValue3");
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
 
     const settings = parseSettings(env);
 
@@ -330,23 +245,13 @@ describe("settings", () => {
   });
 
   it("defaults strictCompatibility to false", () => {
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
     const settings = parseSettings({ GITHUB_REPOSITORY: "matchory/app" });
     expect(settings.strictCompatibility).toBe(false);
   });
 
   it("parses strict-compatibility input when set", () => {
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(false);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
-    vi.spyOn(core, "getBooleanInput").mockReturnValueOnce(true);
+    booleanInputs["strict-compatibility"] = true;
+
     const settings = parseSettings({ GITHUB_REPOSITORY: "matchory/app" });
     expect(settings.strictCompatibility).toBe(true);
   });
@@ -355,7 +260,6 @@ describe("settings", () => {
     it("should skip VARIABLES key in environment", () => {
       vi.stubEnv("VARIABLES", "should-skip");
       vi.stubEnv("FOO", "bar");
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
       const settings = parseSettings(process.env);
       expect(settings.variables.has("VARIABLES")).toBe(false);
       expect(settings.variables.get("FOO")).toBe("bar");
@@ -363,7 +267,6 @@ describe("settings", () => {
 
     it("should handle empty input gracefully", () => {
       vi.unstubAllEnvs();
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
       const settings = parseSettings(process.env);
       expect(settings.variables.size).toBeGreaterThanOrEqual(0);
     });
@@ -380,7 +283,6 @@ describe("settings", () => {
             version: "1.2.3",
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -398,7 +300,6 @@ describe("settings", () => {
       vi.stubEnv("GITHUB_REPOSITORY", "owner/inferred-repo");
       vi.stubEnv("GITHUB_REF", "refs/tags/v2.0.0");
       vi.spyOn(core, "getInput").mockReturnValue("");
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -427,7 +328,6 @@ UNRELATED_SINGLE_LINE_VARIABLE=test`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -451,7 +351,6 @@ SIMPLE_VAR=simple_value`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -470,7 +369,6 @@ NON_EMPTY=value`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -491,7 +389,6 @@ EOF`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -517,7 +414,6 @@ REGULAR=simple`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -539,7 +435,6 @@ VAR3=value with spaces`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -561,7 +456,6 @@ EOF`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -582,7 +476,6 @@ END`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -603,7 +496,6 @@ REGULAR_VAR=value`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -625,7 +517,6 @@ CONFIG_V2=simple_value`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -662,7 +553,6 @@ SCRIPT_END`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -700,7 +590,6 @@ REGULAR=value`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -726,7 +615,6 @@ EOF`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -749,7 +637,6 @@ EOF`;
             variables: jsonInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -770,7 +657,6 @@ EOF`;
             secrets: jsonSecrets,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -792,7 +678,6 @@ EOF`;
             variables: jsonInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -812,7 +697,6 @@ EOF`;
             variables: invalidJson,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -829,7 +713,6 @@ VAR2=value2}`;
             variables: fakeJson,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -848,7 +731,6 @@ VAR2=value2}`;
             variables: arrayJson,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -883,7 +765,6 @@ VAR2=value2}`;
             "extra-variables": extraVariables,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -904,7 +785,6 @@ VAR2=value2}`;
             secrets: secretsKeyValue,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -926,7 +806,6 @@ VAR2=value2}`;
             secrets: secretsKeyValue,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -952,7 +831,6 @@ VAR2=value2}`;
             "exclude-variables": excludeList,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -982,7 +860,6 @@ VAR2=value2}`;
             "exclude-variables": excludeList,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1008,7 +885,6 @@ VAR2=value2}`;
             "exclude-variables": excludeList,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1031,7 +907,6 @@ VAR2=value2}`;
             "exclude-variables": "",
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1054,7 +929,6 @@ VAR2=value2}`;
             "exclude-variables": excludeList,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1074,7 +948,6 @@ VAR2=value2}`;
             variables: variablesInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1084,7 +957,6 @@ VAR2=value2}`;
 
     it("should work with no inputs at all", () => {
       vi.spyOn(core, "getInput").mockReturnValue("");
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1104,7 +976,6 @@ SECRET2=simple_secret`;
             secrets: secretsInput,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1123,7 +994,6 @@ SECRET2=simple_secret`;
             variables: emptyJson,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 
@@ -1145,7 +1015,6 @@ SECRET2=simple_secret`;
             "exclude-variables": excludeList,
           })[name] || "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
 
       const settings = parseSettings(env);
 

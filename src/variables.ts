@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists, interpolateString } from "./utils.js";
+import { exists, interpolateString, removeFileQuietly } from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
 export const hashLabel = "com.matchory.deployment.hash";
@@ -298,16 +298,7 @@ const generatedFiles = new Set<string>();
  */
 export async function removeGeneratedVariableFiles() {
   for (const path of generatedFiles) {
-    try {
-      await unlink(path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        core.warning(
-          `Failed to remove temporary variable file "${path}": ${error}. ` +
-            "It may contain a secret value and should be removed manually.",
-        );
-      }
-    }
+    await removeFileQuietly(path, "temporary variable file");
   }
 
   generatedFiles.clear();

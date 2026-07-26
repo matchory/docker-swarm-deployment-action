@@ -112,6 +112,14 @@ inputs:
       Whether to emit warnings for missing or suspect health check
       configurations in compose services.
     default: "true"
+  upload-compose-spec:
+    description: >-
+      Whether to upload the final interpolated Compose Specification as a
+      workflow artifact after a successful deployment. The artifact may contain
+      variable values and is readable by anyone with repository access. This
+      governs the artifact only: the `compose-spec` output is written either
+      way.
+    default: "true"
 
 outputs:
   status:

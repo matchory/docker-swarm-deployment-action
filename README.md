@@ -159,6 +159,7 @@ To configure the action, you can use the following inputs:
 | `monitor-timeout`       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval`      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
 | `health-check-warnings` | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
+| `upload-compose-spec`   | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
 
