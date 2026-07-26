@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
@@ -291,6 +291,28 @@ function decodeVariable(content: string, name: string, variable: Variable) {
   return decoders[format](content);
 }
 
+const generatedFiles = new Set<string>();
+
+/**
+ * Remove generated variable files so secrets do not persist on reused runners
+ */
+export async function removeGeneratedVariableFiles() {
+  for (const path of generatedFiles) {
+    try {
+      await unlink(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        core.warning(
+          `Failed to remove temporary variable file "${path}": ${error}. ` +
+            "It may contain a secret value and should be removed manually.",
+        );
+      }
+    }
+  }
+
+  generatedFiles.clear();
+}
+
 async function transformVariable(
   value: string,
   name: string,
@@ -300,6 +322,7 @@ async function transformVariable(
   // existing files in the repository
   const path = `./${name}.${randomUUID()}.generated.secret`;
 
+  generatedFiles.add(path);
   await writeFile(path, value, "utf8");
 
   // Remove the existing value pointer from the variable to avoid multiple
