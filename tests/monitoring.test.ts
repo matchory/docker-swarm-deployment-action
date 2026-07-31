@@ -507,7 +507,11 @@ describe("Monitoring", () => {
   });
 
   describe("edge cases and error handling", () => {
+    // Fake timers, because the monitor loop compares wall-clock elapsed time
+    // against the timeout: on real timers a `monitorTimeout` of 1s races the
+    // 1s poll interval, and the run loses that race under load.
     it("should handle non-Error thrown in monitorDeployment", async () => {
+      vi.useFakeTimers();
       vi.spyOn(engine, "listServices").mockResolvedValueOnce([
         {
           ID: "svc1",
@@ -530,9 +534,13 @@ describe("Monitoring", () => {
         variables: new Map(),
         version: "1.0.0",
       });
-      await expect(monitorDeployment(settings)).rejects.toThrow(
+
+      const promise = expect(monitorDeployment(settings)).rejects.toThrow(
         /Deployment timed out/,
       );
+
+      await vi.runAllTimersAsync();
+      await promise;
     });
 
     it("should throw error if service update fails", () => {
