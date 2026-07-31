@@ -95,6 +95,23 @@ export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Rewrite every string in a value, returning a deep copy
+ *
+ * The JSON round-trip is both the traversal and the clone, so the input is
+ * never mutated. Keys are left alone, as is anything that is not a string.
+ *
+ * @param value The value to copy
+ * @param map Applied to each string encountered
+ */
+export function mapStrings<T>(value: T, map: (value: string) => string): T {
+  return JSON.parse(
+    JSON.stringify(value, (_, item) =>
+      typeof item === "string" ? map(item) : item,
+    ),
+  ) as T;
+}
+
 const variableRefPattern =
   /\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)[^{}]*)?})/gi;
 

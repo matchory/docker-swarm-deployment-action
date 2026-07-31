@@ -125,7 +125,12 @@ outputs:
   status:
     description: "Deployment status"
   compose-spec:
-    description: "Docker Compose spec used for deployment"
+    description: >-
+      Docker Compose spec used for deployment. This is the interpolated spec, so
+      it contains the resolved values of every variable it references, including
+      any supplied through the `secrets` input. It is not redacted -- treat it as
+      sensitive and do not write it anywhere the surrounding job would not put a
+      secret. The uploaded artifact, by contrast, has `secrets` values redacted.
   stack-name:
     description: "Name of the stack deployed"
   version:

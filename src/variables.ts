@@ -4,7 +4,12 @@ import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists, interpolateString, removeFileQuietly } from "./utils.js";
+import {
+  exists,
+  interpolateString,
+  mapStrings,
+  removeFileQuietly,
+} from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
 export const hashLabel = "com.matchory.deployment.hash";
@@ -304,6 +309,49 @@ export async function removeGeneratedVariableFiles() {
   }
 
   generatedFiles.clear();
+}
+
+// Below this length, a secret is only redacted when it makes up an entire
+// value. Substring-redacting a short one would rewrite unrelated strings: a
+// secret of "1" would turn the image "nginx:1.27" into "nginx:${NAME}.27".
+const minSubstringRedactionLength = 8;
+
+/**
+ * Redact values sourced from the `secrets` input out of a Compose specification
+ *
+ * Interpolation inlines every variable value into the spec, so any copy of it
+ * that leaves the job carries those values in plaintext. Each occurrence is
+ * replaced with `${NAME}`, which both hides the value and keeps the result
+ * readable as a template, showing which variable supplied it.
+ *
+ * Only the `secrets` input is redacted; plain `variables` stay visible, which
+ * is what keeps the artifact useful for debugging a deployment.
+ *
+ * @param spec The interpolated Compose specification
+ * @param secretValues Variable names mapped to the values they resolved to
+ * @returns A copy of the spec with secret values replaced
+ */
+export function redactSecretValues(
+  spec: ComposeSpec,
+  secretValues: ReadonlyMap<string, string>,
+): ComposeSpec {
+  // Longest first, so a secret that contains another is replaced as a whole
+  // rather than being left half-rewritten by the shorter one. Empty values are
+  // dropped: replacing "" would splice the placeholder between every character.
+  const redactable = [...secretValues]
+    .filter(([, value]) => value)
+    .sort(([, a], [, b]) => b.length - a.length);
+
+  return mapStrings(spec, (value) => {
+    for (const [name, secret] of redactable) {
+      // Short secrets are replaced only where they make up the entire value.
+      if (secret.length >= minSubstringRedactionLength || value === secret) {
+        value = value.replaceAll(secret, `\${${name}}`);
+      }
+    }
+
+    return value;
+  });
 }
 
 async function transformVariable(

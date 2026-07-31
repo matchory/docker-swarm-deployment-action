@@ -13,6 +13,13 @@ export interface Settings {
   monitor: boolean;
   monitorInterval: number;
   monitorTimeout: number;
+  /**
+   * Values that came from the `secrets` input, keyed by variable name
+   *
+   * Used to redact copies of the spec that leave the job; see
+   * `redactSecretValues` for why, and for what is deliberately not redacted.
+   */
+  secretValues: ReadonlyMap<string, string>;
   stack: string;
   strictCompatibility: boolean;
   strictVariables: boolean;
@@ -33,7 +40,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
 
   const stack = inferStackName(getInput("stack-name"), env);
   const version = inferVersion(getInput("version"), env);
-  const variables = inferVariables(
+  const { variables, secretValues } = inferVariables(
     {
       variables: getInput("variables"),
       secrets: getInput("secrets"),
@@ -83,6 +90,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       300,
       monitor,
     ),
+    secretValues,
     stack,
     strictCompatibility,
     strictVariables,
@@ -190,16 +198,15 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
   }
 
   // Step 3: Parse and merge secrets (higher priority than variables)
-  if (inputs.secrets) {
-    const parsedSecrets = parseVariableInput(inputs.secrets);
-    for (const [key, value] of parsedSecrets) {
-      // Ensure secrets are masked in output
-      if (value) {
-        setSecret(value);
-      }
+  const parsedSecrets = parseVariableInput(inputs.secrets ?? "");
 
-      variables.set(key, value);
+  for (const [key, value] of parsedSecrets) {
+    // Ensure secrets are masked in output
+    if (value) {
+      setSecret(value);
     }
+
+    variables.set(key, value);
   }
 
   // Step 4: Apply exclusions (before extra variables to ensure they have highest priority)
@@ -222,7 +229,17 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
     }
   }
 
-  return variables;
+  // Derived last, so it cannot disagree with `variables`: exclusions can drop a
+  // secret's name, and extra-variables can overwrite its value with one that is
+  // not secret. Either way the name no longer resolves to a secret value, and
+  // redacting it would rewrite something that is not sensitive.
+  const secretValues = new Map(
+    [...parsedSecrets].filter(
+      ([key, value]) => value && variables.get(key) === value,
+    ),
+  );
+
+  return { variables, secretValues };
 }
 
 function parseVariableInput(input: string): Map<string, string> {
