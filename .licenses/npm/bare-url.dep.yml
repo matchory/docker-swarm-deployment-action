@@ -1,6 +1,6 @@
 ---
 name: bare-url
-version: 2.4.5
+version: 2.4.6
 type: npm
 summary: WHATWG URL implementation for JavaScript
 homepage: https://github.com/holepunchto/bare-url
