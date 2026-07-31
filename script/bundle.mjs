@@ -4,13 +4,16 @@
 // TS 7 no longer ships one. esbuild parses TypeScript itself, so the
 // typescript package is only a typechecker here.
 
-import { readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 import { build } from "esbuild";
 
 const root = dirname(import.meta.dirname);
 const outDir = join(root, "dist");
-const licenseFilePattern = /^(licence|license|copying|notice)(\.|$)/i;
+
+// Matches LICENSE, LICENCE.md, COPYING, NOTICE.txt and the dashed variants
+// packages split across licenses with, like LICENSE-MIT and LICENSE-APACHE.
+const licenseFilePattern = /^(licence|license|copying|notice)([.-]|$)/i;
 
 // Node applies source maps to stack traces only when asked, and only to
 // modules compiled after the switch is flipped -- so the entry point the
@@ -32,9 +35,7 @@ const cjsShim = [
   "const require = __createRequire(import.meta.url);",
   "const __filename = __fileURLToPath(import.meta.url);",
   "const __dirname = __pathDirname(__filename);",
-].join("");
-
-await rm(outDir, { recursive: true, force: true });
+].join("\n");
 
 const result = await build({
   entryPoints: [join(root, "src/index.ts")],
@@ -48,16 +49,30 @@ const result = await build({
   metafile: true,
   legalComments: "none",
   banner: { js: cjsShim },
+  write: false,
+
+  // Node prints the raw generated line above a stack trace and does not
+  // source-map it, so an unminified line length is what an uncaught error
+  // dumps into the Actions log. Unbounded that is a quarter of a megabyte.
+  lineLimit: 500,
 });
 
-await writeFile(join(outDir, "index.js"), loader);
+const licenses = await collectLicenses(result);
 
-await writeFile(
-  join(outDir, "package.json"),
-  `${JSON.stringify({ type: "module" }, null, 2)}\n`,
-);
+// Nothing is removed until both the bundle and the license scan have
+// succeeded, so a failure cannot leave the committed dist/ half deleted.
+await rm(outDir, { recursive: true, force: true });
+await mkdir(outDir, { recursive: true });
 
-await writeFile(join(outDir, "licenses.txt"), await collectLicenses(result));
+await Promise.all([
+  ...result.outputFiles.map(({ path, contents }) => writeFile(path, contents)),
+  writeFile(join(outDir, "index.js"), loader),
+  writeFile(
+    join(outDir, "package.json"),
+    `${JSON.stringify({ type: "module" }, null, 2)}\n`,
+  ),
+  writeFile(join(outDir, "licenses.txt"), licenses),
+]);
 
 // Walks the packages esbuild actually pulled into the bundle and concatenates
 // their license texts, reproducing what ncc's --license flag produced.
@@ -73,15 +88,18 @@ async function collectLicenses({ metafile }) {
   }
 
   return [...packages.values()]
-    .filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map(({ name, license, text }) => `${name}\n${license}\n${text}\n`)
+    .map(
+      ({ name, license, text }) =>
+        `${[name, license, text].filter(Boolean).join("\n")}\n`,
+    )
     .join("\n");
 }
 
-// node_modules/foo/lib/x.js -> node_modules/foo, honouring @scope/name.
+// node_modules/foo/lib/x.js -> /abs/node_modules/foo, honouring @scope/name.
+// Metafile paths are relative to the working directory, not to the repo root.
 function packageRootOf(input) {
-  const segments = relative(root, join(root, input)).split(sep);
+  const segments = resolve(input).split(sep);
   const index = segments.lastIndexOf("node_modules");
 
   if (index === -1) {
@@ -94,27 +112,25 @@ function packageRootOf(input) {
 }
 
 async function describePackage(dir) {
-  const absolute = join(root, dir);
   const manifest = JSON.parse(
-    await readFile(join(absolute, "package.json"), "utf8"),
+    await readFile(join(dir, "package.json"), "utf8"),
   );
-  const entries = await readdir(absolute);
+  const entries = await readdir(dir, { withFileTypes: true });
   const files = entries
-    .filter((entry) => licenseFilePattern.test(entry))
+    .filter((entry) => entry.isFile() && licenseFilePattern.test(entry.name))
+    .map((entry) => entry.name)
     .sort();
   const texts = await Promise.all(
-    files.map((file) => readFile(join(absolute, file), "utf8")),
+    files.map((file) => readFile(join(dir, file), "utf8")),
   );
-  const text = texts.join("\n").trim();
 
-  if (!text) {
-    return null;
-  }
-
+  // Packages that ship no license file are still listed, with whatever their
+  // manifest declares -- they are in the bundle and need attributing. ncc
+  // emitted them the same way.
   return {
     name: manifest.name,
     license: licenseOf(manifest),
-    text,
+    text: texts.join("\n").trim(),
   };
 }
 
