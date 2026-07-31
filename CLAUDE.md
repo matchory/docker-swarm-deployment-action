@@ -80,8 +80,8 @@ Three workflows run on push to main: `ci.yml` (tests),
 
 Super-linter excludes `dist/`, `docs/superpowers/`, and
 `.licenses/` directories. Markdown files must follow the config in
-`.github/linters/.markdown-lint.yml` (80 char line length, tables
-exempt).
+`.github/linters/.markdown-lint.yml` (120 char line length, tables
+exempt, dash bullets, underscore emphasis).
 
 `release.yml` triggers on SemVer tags (`v*.*.*`), updates rolling
 `vN` and `vN.N` tags, and creates a GitHub release.

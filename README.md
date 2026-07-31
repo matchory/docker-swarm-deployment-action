@@ -23,7 +23,7 @@
 - [🚀 Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [Simple Usage](#simple-usage)
-- [⚙️ Configuration](#️-configuration)
+- [⚙ Configuration](#-configuration)
   - [Inputs](#inputs)
   - [Outputs](#outputs)
 - [📖 Reference](#-reference)
@@ -47,6 +47,9 @@
   - [Health Check Validation](#health-check-validation)
     - [Health Check Details in Failure Reports](#health-check-details-in-failure-reports)
 - [🔨 Contributing](#-contributing)
+  - [Development Setup](#development-setup)
+  - [Before Opening a Pull Request](#before-opening-a-pull-request)
+- [📄 License](#-license)
 
 ## ✨ Features
 
@@ -61,6 +64,9 @@
 - **Reliable Deployments:** Validates your configuration before deploying using
   `docker stack config`.
 - **Optional Post-Deployment Monitoring:** Ensures your services are stable after deployment.
+- **Actionable Failure Diagnostics:** When a service fails, the action reports a categorized cause (image pull failure,
+  crash, OOM kill, failing health check, scheduling problem, and more) along with the task attempt history and container
+  logs — in the log output and the job summary alike, so you don't have to SSH into the cluster to find out what broke.
 - **Fully Tested:** An extensive test suite ensures the action works as expected.
 
 ## 🚀 Getting Started
@@ -129,7 +135,7 @@ jobs:
           DOCKER_CONTEXT: swarm
 ```
 
-## ⚙️ Configuration
+## ⚙ Configuration
 
 ### Inputs
 
@@ -675,3 +681,42 @@ This appears in both the action log output and the GitHub Actions job summary.
 ## 🔨 Contributing
 
 Contributions are welcome! If you have any ideas, suggestions, or bug reports, please open an issue or a pull request.
+
+### Development Setup
+
+The action is written in TypeScript and runs on Node 24. After cloning, install the dependencies:
+
+```shell
+npm install
+```
+
+The following scripts are available:
+
+| Task                       | Command              |
+|:---------------------------|:---------------------|
+| Run the full pipeline      | `npm run all`        |
+| Run the tests              | `npm run test`       |
+| Type-check                 | `npm run typecheck`  |
+| Lint                       | `npm run lint`       |
+| Check formatting           | `npm run format:check` |
+| Fix formatting             | `npm run format:write` |
+| Bundle the action          | `npm run package`    |
+
+Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tests run on
+[Vitest](https://vitest.dev/).
+
+### Before Opening a Pull Request
+
+Two things are easy to miss:
+
+- **The `dist/` directory is committed.** [@vercel/ncc](https://github.com/vercel/ncc) bundles the TypeScript sources
+  into a single file that the Actions runner executes, so `npm run package` has to run after any change under `src/`.
+  A dedicated CI workflow fails the build if `dist/` is out of date.
+- **`npm run all` should pass locally.** It chains formatting, linting, type-checking, tests, the coverage badge, and
+  the bundle — the same steps CI runs.
+
+If you changed dependencies, run `npm install` so `package-lock.json` stays in sync; `npm ci` fails otherwise.
+
+## 📄 License
+
+Released under the [MIT License](./LICENSE).
