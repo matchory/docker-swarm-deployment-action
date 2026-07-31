@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import * as core from "@actions/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
 import * as engine from "../src/engine.js";
 import { defineSettings } from "../src/settings.js";
@@ -17,15 +17,18 @@ import {
   pruneConfigs,
   pruneSecrets,
   pruneVariables,
+  removeGeneratedVariableFiles,
   stackLabel,
   versionLabel,
 } from "../src/variables.js";
 
 const readFile = vi.hoisted(() => vi.fn());
 const writeFile = vi.hoisted(() => vi.fn());
+const unlink = vi.hoisted(() => vi.fn());
 vi.mock("node:fs/promises", () => ({
   readFile,
   writeFile,
+  unlink,
 }));
 vi.mock("node:crypto", {
   spy: true,
@@ -59,6 +62,8 @@ describe("Variables", () => {
     vi.unstubAllEnvs();
     settings.variables = new Map();
   });
+
+  afterEach(removeGeneratedVariableFiles);
 
   describe("Processing", () => {
     it("should process variables with default values", async () => {
@@ -252,6 +257,11 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         });
+
+        await removeGeneratedVariableFiles();
+        expect(unlink).toHaveBeenCalledExactlyOnceWith(
+          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        );
       });
 
       it("should not interpolate variables within environment variable content", async () => {
@@ -326,6 +336,9 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         });
+
+        await removeGeneratedVariableFiles();
+        expect(unlink).not.toHaveBeenCalled();
       });
 
       it("should bail on missing files", async () => {
@@ -1015,6 +1028,47 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).rejects.toThrowError();
       });
+    });
+  });
+
+  describe("Cleanup", () => {
+    it("should remove files when writing their content fails", async () => {
+      const variable = defineVariable({ environment: "FOO_BAR" });
+      settings.variables.set("FOO_BAR", "secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      writeFile.mockRejectedValue(new Error("Write failed"));
+      unlink.mockRejectedValue(
+        Object.assign(new Error("File not found"), { code: "ENOENT" }),
+      );
+
+      await expect(
+        processVariable("foo", variable, settings),
+      ).rejects.toThrowError("Write failed");
+      await removeGeneratedVariableFiles();
+
+      expect(unlink).toHaveBeenCalledWith(
+        "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+      );
+    });
+
+    it("should warn but not throw when a file cannot be removed", async () => {
+      const variable = defineVariable({ environment: "FOO_BAR" });
+      settings.variables.set("FOO_BAR", "secret");
+
+      vi.spyOn(crypto, "randomUUID").mockImplementation(
+        () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+      );
+      unlink.mockRejectedValueOnce(new Error("Permission denied"));
+
+      await processVariable("foo", variable, settings);
+
+      await expect(removeGeneratedVariableFiles()).resolves.not.toThrow();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("Permission denied"),
+      );
     });
   });
 
