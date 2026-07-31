@@ -17,7 +17,7 @@ extensive error handling.
 **Main Languages**: TypeScript, YAML, Bash  
 **Package Manager**: npm (v10.8.2+)  
 **Key Dependencies**: @actions/core, @actions/exec, js-yaml  
-**Build Tools**: unbuild, @vercel/ncc, vitest, biome
+**Build Tools**: esbuild, vitest, biome
 
 ## Build and Validation Commands
 
@@ -156,7 +156,7 @@ coverage:
 
 - `@actions/*` packages: Core GitHub Actions functionality
 - `js-yaml`: Critical for Compose file parsing
-- Build tools (unbuild, @vercel/ncc): Changes may affect action bundling
+- Build tools (esbuild): Changes may affect action bundling
 
 ### Files to Modify Based on Task Type
 
