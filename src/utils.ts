@@ -160,8 +160,9 @@ function detectCycles(str: string, variables: Map<string, string>): void {
  *   If the variable is missing, it returns the default value.
  * - Alternative value substitution: `${VARIABLE_NAME:+default}` or `${VARIABLE_NAME+default}`
  *   If the variable is present, it returns the default value.
- * - Required value substitution: `${VARIABLE_NAME:?default}` or `${VARIABLE_NAME?default}`
- *   If the variable is missing, it throws an error with the default value as the message.
+ * - Required value substitution: `${VARIABLE_NAME:?message}` or `${VARIABLE_NAME?message}`
+ *   If the variable is missing, it throws an error quoting `message`, which explains why the
+ *   variable is required. Unlike the other operators, the trailing text is not a default value.
  * - If the variable is present, it returns the variable's value.
  *
  * Further, it supports both `${VARIABLE_NAME}` and `$VARIABLE_NAME` formats, recursive interpolation, and escaping of
@@ -216,7 +217,15 @@ export function interpolateString(
       (operator === "?" && value === undefined) ||
       (operator === ":?" && !value)
     ) {
-      throw new Error(`Missing required value: ${defaultValue}`);
+      // The text after `?`/`:?` is an explanatory message written by the
+      // Compose file author, not a default value. Without one, point at the
+      // places a value can come from rather than trailing off after a colon.
+      throw new Error(
+        defaultValue
+          ? `it is required but has no value: ${defaultValue}`
+          : `it is required but has no value. Set it via the "variables" ` +
+              `or "secrets" input, or in the workflow environment.`,
+      );
     }
 
     return value;
@@ -259,7 +268,11 @@ export function interpolateString(
     }
 
     if (strict && replacement === undefined) {
-      throw new Error(`Variable ${key} is required but not defined`);
+      throw new Error(
+        `Variable "${key}" is not defined. Set it via the "variables" or ` +
+          `"secrets" input, or in the workflow environment, or set ` +
+          `"strict-variables: false" to substitute an empty string instead.`,
+      );
     }
 
     str = str.replace(fullMatch, replacement ?? "");

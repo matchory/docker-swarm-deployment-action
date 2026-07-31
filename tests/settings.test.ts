@@ -1056,6 +1056,24 @@ SECRET2=simple_secret`;
       );
     });
 
+    // `Number.parseInt` accepts all of these and silently truncates: "1e3"
+    // reads as 1, a thousandth of the timeout the author asked for.
+    it.each(["1e3", "5.9", "10s"])(
+      "should reject a monitor-timeout of %j that is not a whole number",
+      (raw) => {
+        vi.spyOn(core, "getInput").mockImplementation((name) =>
+          name === "monitor-timeout" ? raw : "",
+        );
+        vi.spyOn(core, "getBooleanInput").mockImplementation(
+          (name) => name === "monitor",
+        );
+
+        expect(() => parseSettings(env)).toThrow(
+          /"monitor-timeout" input must be a positive whole number/,
+        );
+      },
+    );
+
     // Monitoring is off, so the value is never read. Failing the deployment
     // over an unused input would break workflows that used to parse fine.
     it("should ignore an invalid monitor-interval when monitoring is disabled", () => {
