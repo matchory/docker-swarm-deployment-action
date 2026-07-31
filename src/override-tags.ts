@@ -63,16 +63,33 @@ export const overrideTagDefinitions: TagDefinition[] = [
 
 /** Deep-scan a parsed spec for any `Tagged` carrier. */
 export function containsOverrideTag(value: unknown): boolean {
+  return findOverrideTag(value) !== undefined;
+}
+
+/**
+ * Deep-scan a parsed spec for the first `Tagged` carrier at or below `value`
+ *
+ * Callers that need to name the offending tag in an error message use this
+ * instead of `containsOverrideTag`.
+ */
+export function findOverrideTag(value: unknown): Tagged | undefined {
   if (value instanceof Tagged) {
-    return true;
+    return value;
   }
-  if (Array.isArray(value)) {
-    return value.some(containsOverrideTag);
+
+  const children = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? Object.values(value as Record<string, unknown>)
+      : [];
+
+  for (const child of children) {
+    const found = findOverrideTag(child);
+
+    if (found) {
+      return found;
+    }
   }
-  if (value && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).some(
-      containsOverrideTag,
-    );
-  }
-  return false;
+
+  return undefined;
 }

@@ -1028,4 +1028,45 @@ SECRET2=simple_secret`;
       );
     });
   });
+
+  describe("monitor duration inputs", () => {
+    it("should reject a non-numeric monitor-interval when monitoring is enabled", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "monitor-interval" ? "abc" : "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockImplementation(
+        (name) => name === "monitor",
+      );
+
+      expect(() => parseSettings(env)).toThrow(
+        /"monitor-interval" input must be a positive whole number/,
+      );
+    });
+
+    it("should reject a zero monitor-timeout when monitoring is enabled", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "monitor-timeout" ? "0" : "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockImplementation(
+        (name) => name === "monitor",
+      );
+
+      expect(() => parseSettings(env)).toThrow(
+        /"monitor-timeout" input must be a positive whole number.*received "0"/,
+      );
+    });
+
+    // Monitoring is off, so the value is never read. Failing the deployment
+    // over an unused input would break workflows that used to parse fine.
+    it("should ignore an invalid monitor-interval when monitoring is disabled", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "monitor-interval" ? "0" : "",
+      );
+      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+
+      const settings = parseSettings(env);
+
+      expect(settings.monitorInterval).toBe(5);
+    });
+  });
 });

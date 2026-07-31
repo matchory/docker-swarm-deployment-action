@@ -11,6 +11,7 @@ import {
 } from "./engine";
 import {
   containsOverrideTag,
+  findOverrideTag,
   overrideTagDefinitions,
   Tagged,
 } from "./override-tags.js";
@@ -250,11 +251,11 @@ export async function prepareSpec(
   return composeSpec;
 }
 
-// A `!reset`/`!override` merge tag on a top-level secret/config carrier reaches
-// here as a `Tagged` value. `processVariable` can't interpret it and would fail
-// with a misleading "not defined in the environment" error, so we detect it
-// first and explain the real cause: managed variables are resolved before
-// Docker merges the files, leaving no merged value for the tag to apply to.
+// A `!reset`/`!override` merge tag on a secret/config carrier reaches here as a
+// `Tagged` value. `processVariable` can't interpret it and would fail with a
+// misleading "not defined in the environment" error, so we detect it first and
+// explain the real cause: managed variables are resolved before Docker merges
+// the files, leaving no merged value for the tag to apply to.
 function assertNoMergeTags(
   kind: "secret" | "config",
   section: "secrets" | "configs",
@@ -265,11 +266,15 @@ function assertNoMergeTags(
     throwMergeTagError(kind, `The "${section}:" section`, entries.tag);
   }
 
-  // Tag on an individual entry.
+  // Tag on an individual entry, or anywhere below it: a tag on a nested key
+  // such as `file:` is just as unusable, and would otherwise slip through to
+  // `processVariable` and silently resolve the entry to `undefined`.
   for (const [name, entry] of Object.entries(entries)) {
-    if (entry instanceof Tagged) {
+    const tagged = findOverrideTag(entry);
+
+    if (tagged) {
       const label = kind === "secret" ? "Secret" : "Config";
-      throwMergeTagError(kind, `${label} "${name}"`, entry.tag);
+      throwMergeTagError(kind, `${label} "${name}"`, tagged.tag);
     }
   }
 }
