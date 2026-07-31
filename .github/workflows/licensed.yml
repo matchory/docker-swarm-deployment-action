@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   licensed:
@@ -50,24 +50,9 @@ jobs:
           version: 4.x
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      # If this is a workflow_dispatch event, update the cached licenses.
-      - if: ${{ github.event_name == 'workflow_dispatch' }}
-        name: Update Licenses
-        id: update-licenses
-        run: licensed cache
-
-      # Then, commit the updated licenses to the repository.
-      - if: ${{ github.event_name == 'workflow_dispatch' }}
-        name: Commit Licenses
-        id: commit-licenses
-        run: |
-          git config --local user.email "licensed-ci@users.noreply.github.com"
-          git config --local user.name "licensed-ci"
-          git add .
-          git commit -m "Auto-update license files"
-          git push
-
-      # Last, check the status of the cached licenses.
+      # This workflow only reports on the cache; it never writes to it. Use the
+      # `Regenerate Artifacts` workflow to update `.licenses/`, which opens a
+      # pull request as the branch ruleset requires.
       - name: Check Licenses
         id: check-licenses
         run: licensed status
