@@ -1592,8 +1592,8 @@ describe("Variables", () => {
   });
 
   describe("redactSecretValues", () => {
-    const spec = (services: object) =>
-      defineComposeSpec({ version: "3.8", services }) as ComposeSpec;
+    const spec = (services: ComposeSpec["services"]) =>
+      defineComposeSpec({ version: "3.8", services });
 
     it("should replace a whole-string secret value with its variable name", () => {
       const result = redactSecretValues(
@@ -1601,10 +1601,9 @@ describe("Variables", () => {
         new Map([["TOKEN", "s3cr3t-value-here"]]),
       );
 
-      expect(
-        (result.services as Record<string, { environment: object }>).app
-          .environment,
-      ).toEqual({ TOKEN: "${TOKEN}" });
+      expect(result.services).toEqual({
+        app: { environment: { TOKEN: "${TOKEN}" } },
+      });
     });
 
     it("should replace a secret embedded in a longer string", () => {
@@ -1619,14 +1618,13 @@ describe("Variables", () => {
         new Map([["PASSWORD", "sup3rs3cr3tpw"]]),
       );
 
-      expect(
-        (
-          result.services as Record<
-            string,
-            { environment: { DATABASE_URL: string } }
-          >
-        ).app.environment.DATABASE_URL,
-      ).toBe("postgres://user:${PASSWORD}@host/db");
+      expect(result.services).toEqual({
+        app: {
+          environment: {
+            DATABASE_URL: "postgres://user:${PASSWORD}@host/db",
+          },
+        },
+      });
     });
 
     // Substring-redacting a short value would corrupt unrelated strings: a
@@ -1637,9 +1635,7 @@ describe("Variables", () => {
         new Map([["REPLICAS", "1"]]),
       );
 
-      expect(
-        (result.services as Record<string, { image: string }>).app.image,
-      ).toBe("nginx:1.27");
+      expect(result.services).toEqual({ app: { image: "nginx:1.27" } });
     });
 
     it("should still redact a short secret that is an entire value", () => {
@@ -1648,10 +1644,9 @@ describe("Variables", () => {
         new Map([["PIN", "1234"]]),
       );
 
-      expect(
-        (result.services as Record<string, { environment: object }>).app
-          .environment,
-      ).toEqual({ PIN: "${PIN}" });
+      expect(result.services).toEqual({
+        app: { environment: { PIN: "${PIN}" } },
+      });
     });
 
     it("should leave values that did not come from the secrets input alone", () => {
@@ -1660,10 +1655,9 @@ describe("Variables", () => {
         new Map([["TOKEN", "unrelated-secret-value"]]),
       );
 
-      expect(
-        (result.services as Record<string, { environment: object }>).app
-          .environment,
-      ).toEqual({ REGION: "eu-central-1" });
+      expect(result.services).toEqual({
+        app: { environment: { REGION: "eu-central-1" } },
+      });
     });
 
     it("should not mutate the spec it was given", () => {
@@ -1673,10 +1667,9 @@ describe("Variables", () => {
 
       redactSecretValues(original, new Map([["TOKEN", "s3cr3t-value-here"]]));
 
-      expect(
-        (original.services as Record<string, { environment: object }>).app
-          .environment,
-      ).toEqual({ TOKEN: "s3cr3t-value-here" });
+      expect(original.services).toEqual({
+        app: { environment: { TOKEN: "s3cr3t-value-here" } },
+      });
     });
 
     it("should ignore empty secret values", () => {
@@ -1685,9 +1678,7 @@ describe("Variables", () => {
         new Map([["EMPTY", ""]]),
       );
 
-      expect(
-        (result.services as Record<string, { image: string }>).app.image,
-      ).toBe("nginx:latest");
+      expect(result.services).toEqual({ app: { image: "nginx:latest" } });
     });
   });
 });

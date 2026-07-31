@@ -4,7 +4,12 @@ import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
 import type { Settings } from "./settings.js";
-import { exists, interpolateString, removeFileQuietly } from "./utils.js";
+import {
+  exists,
+  interpolateString,
+  mapStrings,
+  removeFileQuietly,
+} from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
 export const hashLabel = "com.matchory.deployment.hash";
@@ -331,32 +336,22 @@ export function redactSecretValues(
   secretValues: ReadonlyMap<string, string>,
 ): ComposeSpec {
   // Longest first, so a secret that contains another is replaced as a whole
-  // rather than being left half-rewritten by the shorter one.
+  // rather than being left half-rewritten by the shorter one. Empty values are
+  // dropped: replacing "" would splice the placeholder between every character.
   const redactable = [...secretValues]
     .filter(([, value]) => value)
     .sort(([, a], [, b]) => b.length - a.length);
 
-  return JSON.parse(
-    JSON.stringify(spec, (_, value) =>
-      typeof value === "string" ? redactString(value, redactable) : value,
-    ),
-  ) as ComposeSpec;
-}
-
-function redactString(value: string, redactable: [string, string][]): string {
-  let result = value;
-
-  for (const [name, secret] of redactable) {
-    if (result === secret) {
-      return `\${${name}}`;
+  return mapStrings(spec, (value) => {
+    for (const [name, secret] of redactable) {
+      // Short secrets are replaced only where they make up the entire value.
+      if (secret.length >= minSubstringRedactionLength || value === secret) {
+        value = value.replaceAll(secret, `\${${name}}`);
+      }
     }
 
-    if (secret.length >= minSubstringRedactionLength) {
-      result = result.split(secret).join(`\${${name}}`);
-    }
-  }
-
-  return result;
+    return value;
+  });
 }
 
 async function transformVariable(

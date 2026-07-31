@@ -17,7 +17,12 @@ import {
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
-import { exists, findFirstExistingFile, interpolateString } from "./utils.js";
+import {
+  exists,
+  findFirstExistingFile,
+  interpolateString,
+  mapStrings,
+} from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";
@@ -448,13 +453,17 @@ export function interpolateSpec(
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
 ) {
-  const spec = keyInterpolation
-    ? interpolateString(JSON.stringify(composeSpec), variables)
-    : JSON.stringify(composeSpec, (_, value) =>
-        typeof value === "string" ? interpolateString(value, variables) : value,
-      );
+  // Interpolating keys means interpolating the serialized JSON as one string,
+  // which the per-string walk cannot express.
+  if (keyInterpolation) {
+    return JSON.parse(
+      interpolateString(JSON.stringify(composeSpec), variables),
+    ) as ComposeSpec;
+  }
 
-  return JSON.parse(spec) as ComposeSpec;
+  return mapStrings(composeSpec, (value) =>
+    interpolateString(value, variables),
+  );
 }
 
 export function defineComposeSpec<T extends ComposeSpec>(spec: T) {

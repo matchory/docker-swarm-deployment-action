@@ -58,10 +58,8 @@ async function storeComposeSpecArtifact(
   const artifactClient = new DefaultArtifactClient();
   const path = `./compose-spec.generated.${crypto.randomUUID()}.json`;
 
-  // Redact here rather than at the call site, so the artifact cannot be
-  // written unredacted. The `compose-spec` output keeps its real values: it
-  // stays within the job, whereas this artifact is readable by anyone with
-  // repository access for its full retention period.
+  // Redacted here, not at the call site, so the artifact cannot be written
+  // unredacted. See `redactSecretValues` for what is left intact, and why.
   const redacted = redactSecretValues(spec, secretValues);
 
   try {
