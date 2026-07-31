@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import * as core from "@actions/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComposeSpec } from "../src/compose.js";
+import { type ComposeSpec, defineComposeSpec } from "../src/compose.js";
 import * as engine from "../src/engine.js";
 import { defineSettings } from "../src/settings.js";
 import * as utils from "../src/utils.js";
@@ -17,6 +17,7 @@ import {
   pruneConfigs,
   pruneSecrets,
   pruneVariables,
+  redactSecretValues,
   removeGeneratedVariableFiles,
   stackLabel,
   versionLabel,
@@ -1587,6 +1588,106 @@ describe("Variables", () => {
       expect(engine.removeSecret).toHaveBeenCalledWith("2");
       expect(engine.removeConfig).toHaveBeenCalledWith("1");
       expect(engine.removeConfig).toHaveBeenCalledWith("2");
+    });
+  });
+
+  describe("redactSecretValues", () => {
+    const spec = (services: object) =>
+      defineComposeSpec({ version: "3.8", services }) as ComposeSpec;
+
+    it("should replace a whole-string secret value with its variable name", () => {
+      const result = redactSecretValues(
+        spec({ app: { environment: { TOKEN: "s3cr3t-value-here" } } }),
+        new Map([["TOKEN", "s3cr3t-value-here"]]),
+      );
+
+      expect(
+        (result.services as Record<string, { environment: object }>).app
+          .environment,
+      ).toEqual({ TOKEN: "${TOKEN}" });
+    });
+
+    it("should replace a secret embedded in a longer string", () => {
+      const result = redactSecretValues(
+        spec({
+          app: {
+            environment: {
+              DATABASE_URL: "postgres://user:sup3rs3cr3tpw@host/db",
+            },
+          },
+        }),
+        new Map([["PASSWORD", "sup3rs3cr3tpw"]]),
+      );
+
+      expect(
+        (
+          result.services as Record<
+            string,
+            { environment: { DATABASE_URL: string } }
+          >
+        ).app.environment.DATABASE_URL,
+      ).toBe("postgres://user:${PASSWORD}@host/db");
+    });
+
+    // Substring-redacting a short value would corrupt unrelated strings: a
+    // secret of "1" would rewrite every "1" in the spec, image tags included.
+    it("should not substring-redact a short secret value", () => {
+      const result = redactSecretValues(
+        spec({ app: { image: "nginx:1.27" } }),
+        new Map([["REPLICAS", "1"]]),
+      );
+
+      expect(
+        (result.services as Record<string, { image: string }>).app.image,
+      ).toBe("nginx:1.27");
+    });
+
+    it("should still redact a short secret that is an entire value", () => {
+      const result = redactSecretValues(
+        spec({ app: { environment: { PIN: "1234" } } }),
+        new Map([["PIN", "1234"]]),
+      );
+
+      expect(
+        (result.services as Record<string, { environment: object }>).app
+          .environment,
+      ).toEqual({ PIN: "${PIN}" });
+    });
+
+    it("should leave values that did not come from the secrets input alone", () => {
+      const result = redactSecretValues(
+        spec({ app: { environment: { REGION: "eu-central-1" } } }),
+        new Map([["TOKEN", "unrelated-secret-value"]]),
+      );
+
+      expect(
+        (result.services as Record<string, { environment: object }>).app
+          .environment,
+      ).toEqual({ REGION: "eu-central-1" });
+    });
+
+    it("should not mutate the spec it was given", () => {
+      const original = spec({
+        app: { environment: { TOKEN: "s3cr3t-value-here" } },
+      });
+
+      redactSecretValues(original, new Map([["TOKEN", "s3cr3t-value-here"]]));
+
+      expect(
+        (original.services as Record<string, { environment: object }>).app
+          .environment,
+      ).toEqual({ TOKEN: "s3cr3t-value-here" });
+    });
+
+    it("should ignore empty secret values", () => {
+      const result = redactSecretValues(
+        spec({ app: { image: "nginx:latest" } }),
+        new Map([["EMPTY", ""]]),
+      );
+
+      expect(
+        (result.services as Record<string, { image: string }>).app.image,
+      ).toBe("nginx:latest");
     });
   });
 });

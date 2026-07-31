@@ -13,6 +13,14 @@ export interface Settings {
   monitor: boolean;
   monitorInterval: number;
   monitorTimeout: number;
+  /**
+   * Values that came from the `secrets` input, keyed by variable name
+   *
+   * `setSecret()` masks log output only, so copies of the spec that leave the
+   * job need these to redact. Scoped to `secrets` deliberately: plain
+   * `variables` stay visible, which keeps the artifact useful for debugging.
+   */
+  secretValues: ReadonlyMap<string, string>;
   stack: string;
   strictCompatibility: boolean;
   strictVariables: boolean;
@@ -33,7 +41,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
 
   const stack = inferStackName(getInput("stack-name"), env);
   const version = inferVersion(getInput("version"), env);
-  const variables = inferVariables(
+  const { variables, secretValues } = inferVariables(
     {
       variables: getInput("variables"),
       secrets: getInput("secrets"),
@@ -83,6 +91,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       300,
       monitor,
     ),
+    secretValues,
     stack,
     strictCompatibility,
     strictVariables,
@@ -169,6 +178,7 @@ interface VariableInputs {
 
 function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
   const variables = new Map<string, string>();
+  const secretValues = new Map<string, string>();
 
   // Step 1: Read environment variables from the process environment as defaults
   for (const [key, content] of Object.entries(env)) {
@@ -196,6 +206,7 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
       // Ensure secrets are masked in output
       if (value) {
         setSecret(value);
+        secretValues.set(key, value);
       }
 
       variables.set(key, value);
@@ -222,7 +233,7 @@ function inferVariables(inputs: VariableInputs, env: NodeJS.ProcessEnv) {
     }
   }
 
-  return variables;
+  return { variables, secretValues };
 }
 
 function parseVariableInput(input: string): Map<string, string> {

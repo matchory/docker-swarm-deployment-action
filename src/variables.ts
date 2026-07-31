@@ -306,6 +306,59 @@ export async function removeGeneratedVariableFiles() {
   generatedFiles.clear();
 }
 
+// Below this length, a secret is only redacted when it makes up an entire
+// value. Substring-redacting a short one would rewrite unrelated strings: a
+// secret of "1" would turn the image "nginx:1.27" into "nginx:${NAME}.27".
+const minSubstringRedactionLength = 8;
+
+/**
+ * Redact values sourced from the `secrets` input out of a Compose specification
+ *
+ * Interpolation inlines every variable value into the spec, so any copy of it
+ * that leaves the job carries those values in plaintext. Each occurrence is
+ * replaced with `${NAME}`, which both hides the value and keeps the result
+ * readable as a template, showing which variable supplied it.
+ *
+ * Only the `secrets` input is redacted; plain `variables` stay visible, which
+ * is what keeps the artifact useful for debugging a deployment.
+ *
+ * @param spec The interpolated Compose specification
+ * @param secretValues Variable names mapped to the values they resolved to
+ * @returns A copy of the spec with secret values replaced
+ */
+export function redactSecretValues(
+  spec: ComposeSpec,
+  secretValues: ReadonlyMap<string, string>,
+): ComposeSpec {
+  // Longest first, so a secret that contains another is replaced as a whole
+  // rather than being left half-rewritten by the shorter one.
+  const redactable = [...secretValues]
+    .filter(([, value]) => value)
+    .sort(([, a], [, b]) => b.length - a.length);
+
+  return JSON.parse(
+    JSON.stringify(spec, (_, value) =>
+      typeof value === "string" ? redactString(value, redactable) : value,
+    ),
+  ) as ComposeSpec;
+}
+
+function redactString(value: string, redactable: [string, string][]): string {
+  let result = value;
+
+  for (const [name, secret] of redactable) {
+    if (result === secret) {
+      return `\${${name}}`;
+    }
+
+    if (secret.length >= minSubstringRedactionLength) {
+      result = result.split(secret).join(`\${${name}}`);
+    }
+  }
+
+  return result;
+}
+
 async function transformVariable(
   value: string,
   name: string,

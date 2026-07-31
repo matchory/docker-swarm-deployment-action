@@ -171,6 +171,13 @@ To configure the action, you can use the following inputs:
 | `compose-spec` | The final compose specification used for the deployment.             |
 | `service-logs` | Logs of a failed service after deployment.                           |
 
+> **Note:** The `compose-spec` output is the _interpolated_ specification, so it
+> contains the resolved value of every variable it references, including any
+> supplied through the `secrets` input. It is **not** redacted: treat it as
+> sensitive, and do not write it anywhere you would not write a secret. The
+> uploaded artifact is different — `secrets` values are redacted there, and the
+> upload can be turned off entirely with `upload-compose-spec`.
+
 ## 📖 Reference
 
 ### How Compose File Detection Works

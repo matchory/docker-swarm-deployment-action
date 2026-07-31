@@ -6,6 +6,7 @@ import type { ComposeSpec } from "./compose";
 import { deploy } from "./deployment.js";
 import { parseSettings } from "./settings.js";
 import { removeFileQuietly } from "./utils.js";
+import { redactSecretValues } from "./variables.js";
 
 export async function run() {
   const settings = parseSettings(env);
@@ -39,7 +40,7 @@ export async function run() {
   }
 
   try {
-    await storeComposeSpecArtifact(composeSpec);
+    await storeComposeSpecArtifact(composeSpec, settings.secretValues);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     core.warning(
@@ -50,13 +51,22 @@ export async function run() {
   }
 }
 
-async function storeComposeSpecArtifact(spec: ComposeSpec) {
+async function storeComposeSpecArtifact(
+  spec: ComposeSpec,
+  secretValues: ReadonlyMap<string, string>,
+) {
   const artifactClient = new DefaultArtifactClient();
   const path = `./compose-spec.generated.${crypto.randomUUID()}.json`;
 
+  // Redact here rather than at the call site, so the artifact cannot be
+  // written unredacted. The `compose-spec` output keeps its real values: it
+  // stays within the job, whereas this artifact is readable by anyone with
+  // repository access for its full retention period.
+  const redacted = redactSecretValues(spec, secretValues);
+
   try {
     try {
-      await writeFile(path, JSON.stringify(spec, null, 2));
+      await writeFile(path, JSON.stringify(redacted, null, 2));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new Error(`Failed to write compose spec to file: ${message}`, {

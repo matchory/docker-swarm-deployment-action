@@ -209,6 +209,66 @@ describe("main", () => {
     expect(core.setFailed).not.toHaveBeenCalled();
   });
 
+  it("should redact secrets from the artifact but not from the output", async () => {
+    const composeSpec = defineComposeSpec({
+      services: {
+        app: {
+          image: "my-app:latest",
+          environment: { TOKEN: "${TOKEN}" },
+        },
+      },
+    });
+
+    vi.stubEnv("DOCKER_HOST", "tcp://localhost:2375");
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "secrets" ? "TOKEN=sup3rs3cr3tvalue" : "",
+    );
+    vi.mocked(exec).mockResolvedValue(0);
+    vi.mocked(exec)
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
+        return 0;
+      })
+      .mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
+        return 0;
+      })
+      .mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("[]"));
+        return 0;
+      });
+
+    readFile.mockResolvedValueOnce(dump(composeSpec));
+    writeFile.mockResolvedValue(undefined);
+    mockRandomUUID.mockReturnValue("uuid");
+    mockUploadArtifact.mockResolvedValueOnce({ id: "artifact-123" });
+    unlink.mockResolvedValue(undefined);
+
+    await expect(run()).resolves.not.toThrow();
+    expect(core.setFailed).not.toHaveBeenCalled();
+
+    // Select the artifact write specifically: `writeSpecFile` also writes the
+    // pre-interpolation spec, which contains "${TOKEN}" for unrelated reasons.
+    const artifactWrite = writeFile.mock.calls.find(([path]) =>
+      String(path).includes("compose-spec.generated."),
+    );
+    expect(artifactWrite).toBeDefined();
+
+    // The artifact leaves the job and is readable repository-wide, so the
+    // secret must not appear in it.
+    const written = artifactWrite?.[1] as string;
+    expect(written).not.toContain("sup3rs3cr3tvalue");
+    expect(written).toContain("${TOKEN}");
+
+    // The output stays inside the job and is deliberately left intact.
+    const output = vi
+      .mocked(core.setOutput)
+      .mock.calls.find(([name]) => name === "compose-spec");
+    expect(JSON.stringify(output?.[1])).toContain("sup3rs3cr3tvalue");
+  });
+
   it("should warn when file writing fails but continue execution", async () => {
     const composeSpec = defineComposeSpec({
       services: {
