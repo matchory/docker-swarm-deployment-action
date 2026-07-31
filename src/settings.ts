@@ -47,36 +47,46 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
   variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
   variables.set("MATCHORY_DEPLOYMENT_VERSION", version);
 
+  const healthCheckWarnings =
+    getBooleanInput("health-check-warnings", { required: false }) ?? true;
+  const keyInterpolation =
+    getBooleanInput("key-interpolation", { required: false }) ?? false;
+  const manageVariables =
+    getBooleanInput("manage-variables", { required: false }) ?? true;
+  const monitor = getBooleanInput("monitor", { required: false }) ?? false;
+  const strictCompatibility =
+    getBooleanInput("strict-compatibility", { required: false }) ?? false;
+  const strictVariables =
+    getBooleanInput("strict-variables", { required: false }) ?? true;
+  const uploadComposeSpec =
+    getBooleanInput("upload-compose-spec", { required: false }) ?? true;
+
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
     envVarPrefix: (getInput("env-var-prefix") || "DEPLOYMENT").replace(
       /_$/,
       "",
     ),
-    healthCheckWarnings:
-      getBooleanInput("health-check-warnings", { required: false }) ?? true,
-    keyInterpolation:
-      getBooleanInput("key-interpolation", { required: false }) ?? false,
-    manageVariables:
-      getBooleanInput("manage-variables", { required: false }) ?? true,
-    monitor: getBooleanInput("monitor", { required: false }) ?? false,
+    healthCheckWarnings,
+    keyInterpolation,
+    manageVariables,
+    monitor,
     monitorInterval: parsePositiveSeconds(
       getInput("monitor-interval"),
       "monitor-interval",
       5,
+      monitor,
     ),
     monitorTimeout: parsePositiveSeconds(
       getInput("monitor-timeout"),
       "monitor-timeout",
       300,
+      monitor,
     ),
     stack,
-    strictCompatibility:
-      getBooleanInput("strict-compatibility", { required: false }) ?? false,
-    strictVariables:
-      getBooleanInput("strict-variables", { required: false }) ?? true,
-    uploadComposeSpec:
-      getBooleanInput("upload-compose-spec", { required: false }) ?? true,
+    strictCompatibility,
+    strictVariables,
+    uploadComposeSpec,
     variables,
     version,
   });
@@ -86,10 +96,14 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
 // default; a non-numeric or non-positive value is rejected up front, because a
 // NaN interval/timeout would otherwise make the monitor loop hang silently
 // (`elapsed >= NaN` is always false) with no indication of why.
+// Rejecting only applies when monitoring is enabled, since the value is never
+// read otherwise: failing on an unused input would break existing workflows
+// that already pass one.
 function parsePositiveSeconds(
   raw: string,
   input: string,
   fallback: number,
+  monitor: boolean,
 ): number {
   if (!raw) {
     return fallback;
@@ -98,6 +112,10 @@ function parsePositiveSeconds(
   const value = Number.parseInt(raw, 10);
 
   if (!Number.isFinite(value) || value <= 0) {
+    if (!monitor) {
+      return fallback;
+    }
+
     throw new Error(
       `The "${input}" input must be a positive whole number of seconds, ` +
         `but received "${raw}".`,

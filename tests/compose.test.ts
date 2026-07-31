@@ -448,6 +448,21 @@ describe("Compose", () => {
       );
     });
 
+    it("should reject a merge tag nested inside a managed secret entry", async () => {
+      const composeSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+        secrets: {
+          secret1: { file: new Tagged("!reset", "scalar", null) },
+        },
+      } as unknown as ComposeSpec;
+
+      await expect(prepareSpec(composeSpec, settings)).rejects.toThrow(
+        /Secret "secret1" uses the "!reset" merge tag/,
+      );
+      expect(processVariable).not.toHaveBeenCalled();
+    });
+
     it("should not process secrets and configs if variable management is disabled", async () => {
       const composeSpec = defineComposeSpec({
         version: "3.8",
