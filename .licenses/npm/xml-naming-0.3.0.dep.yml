@@ -1,8 +1,9 @@
 ---
-name: fast-xml-parser
-version: 5.10.1
+name: xml-naming
+version: 0.3.0
 type: npm
-summary: Validate XML, Parse XML, Build XML without C/C++ based libraries
+summary: Validates XML name productions — Name, NCName, QName, NMToken, NMTokens —
+  for XML 1.0 and 1.1
 homepage:
 license: mit
 licenses:
@@ -10,7 +11,7 @@ licenses:
   text: |
     MIT License
 
-    Copyright (c) 2017 Amit Kumar Gupta
+    Copyright (c) 2026 Natural Intelligence
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -30,8 +31,5 @@ licenses:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 - sources: README.md
-  text: |-
-    * MIT License
-
-    ![Donate $5](static/img/donation_quote.png)
+  text: MIT
 notices: []
