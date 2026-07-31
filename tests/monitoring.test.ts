@@ -480,7 +480,7 @@ describe("Monitoring", () => {
     );
 
     const core = await import("@actions/core");
-    expect(core.error).toHaveBeenCalledWith(
+    expect(core.info).toHaveBeenCalledWith(
       expect.stringContaining("Error occurred during service update"),
     );
   });
@@ -507,7 +507,11 @@ describe("Monitoring", () => {
   });
 
   describe("edge cases and error handling", () => {
+    // Fake timers, because the monitor loop compares wall-clock elapsed time
+    // against the timeout: on real timers a `monitorTimeout` of 1s races the
+    // 1s poll interval, and the run loses that race under load.
     it("should handle non-Error thrown in monitorDeployment", async () => {
+      vi.useFakeTimers();
       vi.spyOn(engine, "listServices").mockResolvedValueOnce([
         {
           ID: "svc1",
@@ -530,9 +534,13 @@ describe("Monitoring", () => {
         variables: new Map(),
         version: "1.0.0",
       });
-      await expect(monitorDeployment(settings)).rejects.toThrow(
+
+      const promise = expect(monitorDeployment(settings)).rejects.toThrow(
         /Deployment timed out/,
       );
+
+      await vi.runAllTimersAsync();
+      await promise;
     });
 
     it("should throw error if service update fails", () => {
@@ -707,10 +715,10 @@ describe("Monitoring", () => {
 
       await buildFailureReport("svc1", "api", new Date());
 
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Task history"),
       );
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("worker-1"),
       );
     });
@@ -733,7 +741,7 @@ describe("Monitoring", () => {
 
       await buildFailureReport("svc1", "api", new Date());
 
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("No container logs available"),
       );
     });
@@ -765,9 +773,43 @@ describe("Monitoring", () => {
 
       await buildFailureReport("svc1", "api", new Date());
 
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Cannot connect to database"),
       );
+    });
+
+    // A failed service used to emit 3-4 annotations that duplicated the job
+    // summary. Annotations render only 10 per step and truncate near 4000
+    // characters, so a log dump could evict the headline naming the cause.
+    // The demoted detail goes to the step log, not the job summary: `setSecret`
+    // masks log output, but summaries are rendered unmasked, so publishing
+    // container logs there would leak what the log masks.
+    it("should emit one error annotation and keep the detail in the log", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "n1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
+        { timestamp: new Date("2026-03-28T12:00:01Z"), message: "boom" },
+      ]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.error).toHaveBeenCalledTimes(1);
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Container exited with code 1"),
+      );
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining("boom"));
+      expect(core.summary.write).not.toHaveBeenCalled();
     });
 
     it("should handle empty task list gracefully", async () => {
@@ -1227,7 +1269,7 @@ describe("Monitoring", () => {
       expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Services converged: web"),
       );
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Services not converged: api"),
       );
     });

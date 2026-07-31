@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   exists,
   findFirstExistingFile,
@@ -53,11 +53,30 @@ describe("Utilities", () => {
   });
 
   describe("sleep", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Fake timers, because comparing `Date.now()` either side of a real
+    // `setTimeout` is not reliable: the timer can fire a millisecond shy of the
+    // requested delay, and asserting `>= 100` then fails on a 99ms measurement.
+    // Driving the clock also lets us pin the actual contract -- that it does not
+    // resolve early -- rather than only that some time passed.
     it("should resolve after the specified time", async () => {
-      const start = Date.now();
-      await sleep(100);
-      const end = Date.now();
-      expect(end - start).toBeGreaterThanOrEqual(100);
+      vi.useFakeTimers();
+
+      let resolved = false;
+      const promise = sleep(100).then(() => {
+        resolved = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(resolved).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await promise;
+
+      expect(resolved).toBe(true);
     });
 
     it("should resolve immediately if time is 0", async () => {
