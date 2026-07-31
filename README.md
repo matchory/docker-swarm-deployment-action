@@ -146,11 +146,11 @@ To configure the action, you can use the following inputs:
 | `stack-name`            | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
 | `version`               | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
 | `compose-file`          | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
-| `env-var-prefix`        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). A trailing `_` is stripped; the prefix is joined to the variable name with `_`. |
+| `env-var-prefix`        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
 | `manage-variables`      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
 | `strict-variables`      | `true`                                | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
 | `strict-compatibility`  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
-| `key-interpolation`     | `false`                               | Whether to also interpolate variables in Compose Spec _keys_, not just values. See [variable interpolation](#variable-interpolation). |
+| `key-interpolation`     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
 | `variables`             | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
 | `secrets`               | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
 | `exclude-variables`     | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
@@ -386,8 +386,9 @@ configs:
   database_username: ~
 ```
 
-The action will attempt to resolve the variable content automatically, and populate the `file` property with that. This
-is done by the following rules:
+The action will attempt to resolve the variable content automatically, and populate the `file` property with that. The
+prefix used below is the `env-var-prefix` input (`DEPLOYMENT` by default); a trailing underscore is stripped from it, and
+it is joined to the variable name with a single `_`. Resolution follows these rules:
 
 1. If a file named after the variable key with the suffix `.secret` exists in the working directory (e.g.
    `./app_url.secret`), it will be used as the file source.
@@ -692,15 +693,15 @@ npm install
 
 The following scripts are available:
 
-| Task                       | Command              |
-|:---------------------------|:---------------------|
-| Run the full pipeline      | `npm run all`        |
-| Run the tests              | `npm run test`       |
-| Type-check                 | `npm run typecheck`  |
-| Lint                       | `npm run lint`       |
-| Check formatting           | `npm run format:check` |
-| Fix formatting             | `npm run format:write` |
-| Bundle the action          | `npm run package`    |
+| Task                  | Command                |
+|:----------------------|:-----------------------|
+| Run the full pipeline | `npm run all`          |
+| Run the tests         | `npm run test`         |
+| Type-check            | `npm run typecheck`    |
+| Lint                  | `npm run lint`         |
+| Check formatting      | `npm run format:check` |
+| Fix formatting        | `npm run format:write` |
+| Bundle the action     | `npm run package`      |
 
 Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tests run on
 [Vitest](https://vitest.dev/).
