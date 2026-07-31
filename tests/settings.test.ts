@@ -1034,9 +1034,7 @@ SECRET2=simple_secret`;
       vi.spyOn(core, "getInput").mockImplementation((name) =>
         name === "monitor-interval" ? "abc" : "",
       );
-      vi.spyOn(core, "getBooleanInput").mockImplementation(
-        (name) => name === "monitor",
-      );
+      booleanInputs.monitor = true;
 
       expect(() => parseSettings(env)).toThrow(
         /"monitor-interval" input must be a positive whole number/,
@@ -1047,9 +1045,7 @@ SECRET2=simple_secret`;
       vi.spyOn(core, "getInput").mockImplementation((name) =>
         name === "monitor-timeout" ? "0" : "",
       );
-      vi.spyOn(core, "getBooleanInput").mockImplementation(
-        (name) => name === "monitor",
-      );
+      booleanInputs.monitor = true;
 
       expect(() => parseSettings(env)).toThrow(
         /"monitor-timeout" input must be a positive whole number.*received "0"/,
@@ -1064,9 +1060,7 @@ SECRET2=simple_secret`;
         vi.spyOn(core, "getInput").mockImplementation((name) =>
           name === "monitor-timeout" ? raw : "",
         );
-        vi.spyOn(core, "getBooleanInput").mockImplementation(
-          (name) => name === "monitor",
-        );
+        booleanInputs.monitor = true;
 
         expect(() => parseSettings(env)).toThrow(
           /"monitor-timeout" input must be a positive whole number/,
@@ -1080,7 +1074,7 @@ SECRET2=simple_secret`;
       vi.spyOn(core, "getInput").mockImplementation((name) =>
         name === "monitor-interval" ? "0" : "",
       );
-      vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+      booleanInputs.monitor = false;
 
       const settings = parseSettings(env);
 
