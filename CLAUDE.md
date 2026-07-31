@@ -131,11 +131,11 @@ that parses TypeScript itself rather than one that loads
 - The `config` error pattern in `categorizeTaskError` requires
   "secret" or "config" context around "not found" to avoid false
   positives on generic "not found" errors.
-- Node source-maps stack _frames_ but not the code frame it prints
-  above them, so an uncaught throw dumps the raw generated line into
-  the Actions log. `lineLimit: 500` in `script/bundle.mjs` caps that
-  at a few hundred characters instead of a quarter megabyte. Prefer
-  failing through `core.setFailed` so it never comes up.
+- Node applies source maps to stack _frames_ but not to the code frame
+  it prints above them, so an uncaught throw dumps the raw generated
+  line into the Actions log. `lineLimit: 500` in `script/bundle.mjs`
+  caps that at a few hundred characters instead of a quarter megabyte.
+  Prefer failing through `core.setFailed` so it never comes up.
 - `script/bundle.mjs` builds with `write: false` and only clears
   `dist/` once the bundle and the license scan have both succeeded --
   a build error must not leave the committed directory half deleted.
