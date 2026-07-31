@@ -44,6 +44,7 @@
     "licensed": "licensed cache",
     "local-action": "npx @github/local-action . src/main.ts .env",
     "package": "npm run bundle",
+    "prepackage": "npm ls >/dev/null 2>&1 || (echo 'Installed dependencies do not match package-lock.json, so the bundle built here would not match the one check-dist builds after npm ci. Run npm ci first.' >&2 && exit 1)",
     "typecheck": "npx tsc --noEmit",
     "test": "npx vitest --run",
     "all": "npm run format:write && npm run lint && npm run typecheck && npm run test && npm run coverage && npm run package"
