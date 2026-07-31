@@ -773,7 +773,10 @@ describe("Monitoring", () => {
     // A failed service used to emit 3-4 annotations that duplicated the job
     // summary. Annotations render only 10 per step and truncate near 4000
     // characters, so a log dump could evict the headline naming the cause.
-    it("should emit exactly one error annotation per failure", async () => {
+    // The demoted detail goes to the step log, not the job summary: `setSecret`
+    // masks log output, but summaries are rendered unmasked, so publishing
+    // container logs there would leak what the log masks.
+    it("should emit one error annotation and keep the detail in the log", async () => {
       const core = await import("@actions/core");
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
         {
@@ -797,31 +800,6 @@ describe("Monitoring", () => {
       expect(core.error).toHaveBeenCalledWith(
         expect.stringContaining("Container exited with code 1"),
       );
-    });
-
-    // Demoted detail goes to the step log, not the job summary: `setSecret`
-    // masks log output, but summaries are rendered unmasked, so publishing
-    // container logs there would leak what the log masks.
-    it("should keep the task detail in the log rather than the summary", async () => {
-      const core = await import("@actions/core");
-      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
-        {
-          ID: "t1",
-          Name: "api.1",
-          Image: "img",
-          Node: "n1",
-          DesiredState: "Shutdown",
-          CurrentState: "Failed 1 minute ago",
-          Error: "task: non-zero exit (1)",
-          Ports: "",
-        },
-      ]);
-      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([
-        { timestamp: new Date("2026-03-28T12:00:01Z"), message: "boom" },
-      ]);
-
-      await buildFailureReport("svc1", "api", new Date());
-
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining("boom"));
       expect(core.summary.write).not.toHaveBeenCalled();
     });
@@ -1283,7 +1261,7 @@ describe("Monitoring", () => {
       expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Services converged: web"),
       );
-      expect(core.error).toHaveBeenCalledWith(
+      expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Services not converged: api"),
       );
     });

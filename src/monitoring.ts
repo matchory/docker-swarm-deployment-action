@@ -97,7 +97,10 @@ export async function monitorDeployment(
       }
 
       if (pendingNames.length > 0) {
-        core.error(`Services not converged: ${pendingNames.join(", ")}`);
+        // Not an annotation: each pending service already emitted one via
+        // `buildFailureReport`, and the thrown message below reports the
+        // counts and is annotated by `setFailed`.
+        core.info(`Services not converged: ${pendingNames.join(", ")}`);
       }
 
       throw new Error(
@@ -205,7 +208,10 @@ export async function monitorDeployment(
           );
           // A full service inspect dump is a debug aid, not a headline, and it
           // is long enough to crowd out the annotation that names the cause.
-          core.debug(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+          // Guarded so the payload is not serialized when it will be dropped.
+          if (core.isDebug()) {
+            core.debug(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+          }
         }
       }
 
