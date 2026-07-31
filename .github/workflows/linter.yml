@@ -45,6 +45,13 @@ jobs:
           FILTER_REGEX_EXCLUDE: (dist|docs/superpowers|\.licenses)/.*
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ALL_CODEBASE: true
+          # Biome is checked in ci.yml instead, using the version pinned in
+          # package.json. Super-linter bundles its own Biome, which drifts from
+          # that pin: 8.7.0 ships 2.5.0 against our 2.5.5, and the two format
+          # some constructs differently with no output that satisfies both. A
+          # green `npm run all` would then fail CI for no discoverable reason.
+          VALIDATE_BIOME_FORMAT: false
+          VALIDATE_BIOME_LINT: false
           VALIDATE_CHECKOV: false
           VALIDATE_JAVASCRIPT_ES: false
           VALIDATE_GITHUB_ACTIONS_ZIZMOR: false
