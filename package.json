@@ -35,7 +35,7 @@
   "packageManager": "npm@10.9.2",
   "scripts": {
     "postversion": "npm run licensed && npm run all",
-    "bundle": "npx @vercel/ncc build src/index.ts --source-map --license licenses.txt --minify --out dist --target es2022 --no-cache",
+    "bundle": "node script/bundle.mjs",
     "ci-test": "npx vitest",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "npx @biomejs/biome check --write --unsafe",
@@ -59,11 +59,11 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
     "@types/node": "^24.13.3",
-    "@vercel/ncc": "^0.44.1",
     "@vitest/coverage-v8": "^4.1.10",
+    "esbuild": "^0.28.1",
     "globals": "^17.8.0",
     "make-coverage-badge": "^1.2.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.6"
   },
   "overrides": {
