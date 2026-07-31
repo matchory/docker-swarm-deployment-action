@@ -34,6 +34,17 @@ jobs:
         id: npm-ci
         run: npm ci
 
+      # Formatting and linting run here, on the Biome version package.json
+      # pins, rather than in super-linter, which bundles its own. See
+      # linter.yml for why the two must not both check TypeScript.
+      - name: Format
+        id: npm-format-check
+        run: npm run format:check
+
+      - name: Lint
+        id: npm-lint
+        run: npm run lint
+
       - name: Typecheck
         id: npm-typecheck
         run: npm run typecheck
