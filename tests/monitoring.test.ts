@@ -781,9 +781,7 @@ describe("Monitoring", () => {
     // A failed service used to emit 3-4 annotations that duplicated the job
     // summary. Annotations render only 10 per step and truncate near 4000
     // characters, so a log dump could evict the headline naming the cause.
-    // The demoted detail goes to the step log, not the job summary: `setSecret`
-    // masks log output, but summaries are rendered unmasked, so publishing
-    // container logs there would leak what the log masks.
+    // The detail still reaches both the step log and the published summary.
     it("should emit one error annotation and keep the detail in the log", async () => {
       const core = await import("@actions/core");
       vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
@@ -809,7 +807,60 @@ describe("Monitoring", () => {
         expect.stringContaining("Container exited with code 1"),
       );
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining("boom"));
-      expect(core.summary.write).not.toHaveBeenCalled();
+    });
+
+    // The summary is buffered by @actions/core and only reaches the run page on
+    // write(), which was never called -- so every section built here was
+    // discarded. The runner masks registered secrets in summaries, so no
+    // redaction of our own is needed.
+    it("should publish the job summary it builds", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "n1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+
+      await buildFailureReport("svc1", "api", new Date());
+
+      expect(core.summary.write).toHaveBeenCalled();
+    });
+
+    // The caller throws the real deployment error immediately after this runs,
+    // so failing to publish the summary must not replace it.
+    it("should not throw when publishing the job summary fails", async () => {
+      const core = await import("@actions/core");
+      vi.spyOn(engine, "listServiceTasks").mockResolvedValueOnce([
+        {
+          ID: "t1",
+          Name: "api.1",
+          Image: "img",
+          Node: "n1",
+          DesiredState: "Shutdown",
+          CurrentState: "Failed 1 minute ago",
+          Error: "task: non-zero exit (1)",
+          Ports: "",
+        },
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValueOnce([]);
+      vi.mocked(core.summary.write).mockRejectedValueOnce(
+        new Error("GITHUB_STEP_SUMMARY not set"),
+      );
+
+      await expect(
+        buildFailureReport("svc1", "api", new Date()),
+      ).resolves.not.toThrow();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("job summary"),
+      );
     });
 
     it("should handle empty task list gracefully", async () => {

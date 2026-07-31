@@ -92,6 +92,8 @@ export async function monitorDeployment(
         ...pendingNames.map((n) => [{ data: n }, { data: "Pending" }]),
       ]);
 
+      await publishSummary();
+
       if (convergedNames.length > 0) {
         core.info(`Services converged: ${convergedNames.join(", ")}`);
       }
@@ -417,6 +419,28 @@ function resolveFailureReason(
 /**
  * Build a structured diagnostic report for a failed service update.
  */
+/**
+ * Publish the buffered job summary to the run page
+ *
+ * `@actions/core` buffers summary content and only writes it to
+ * `$GITHUB_STEP_SUMMARY` when this is called, so anything added without it is
+ * silently discarded. The runner masks registered secrets in summaries, the
+ * same as it does in the log, so no redaction of our own is required here.
+ *
+ * Failures are reported rather than thrown: callers raise the actual
+ * deployment error immediately after building a report, and that error is far
+ * more useful than one about writing a summary.
+ */
+async function publishSummary() {
+  try {
+    await core.summary.write();
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    core.warning(`Failed to publish the job summary: ${message}`);
+  }
+}
+
 export async function buildFailureReport(
   serviceId: string,
   serviceName: string,
@@ -532,6 +556,8 @@ export async function buildFailureReport(
       true,
     );
   }
+
+  await publishSummary();
 }
 
 export type ErrorCategory =
