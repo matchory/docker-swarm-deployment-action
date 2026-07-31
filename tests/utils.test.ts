@@ -214,7 +214,7 @@ describe("Utilities", () => {
         expect(() =>
           interpolateString("${NAME?error message}", variables),
         ).toThrow(
-          "Failed to resolve variable NAME: Missing required value: error message",
+          "Failed to resolve variable NAME: it is required but has no value: error message",
         );
       });
 
@@ -223,7 +223,7 @@ describe("Utilities", () => {
         expect(() =>
           interpolateString("${NAME:?error message}", variables),
         ).toThrow(
-          "Failed to resolve variable NAME: Missing required value: error message",
+          "Failed to resolve variable NAME: it is required but has no value: error message",
         );
       });
 
@@ -232,7 +232,7 @@ describe("Utilities", () => {
         expect(() =>
           interpolateString("${NAME:?error message}", variables),
         ).toThrow(
-          "Failed to resolve variable NAME: Missing required value: error message",
+          "Failed to resolve variable NAME: it is required but has no value: error message",
         );
       });
 
@@ -258,7 +258,9 @@ describe("Utilities", () => {
       it("should handle empty error messages", () => {
         const variables = new Map<string, string>();
         expect(() => interpolateString("${NAME?}", variables)).toThrow(
-          "Failed to resolve variable NAME: Missing required value: ",
+          "Failed to resolve variable NAME: it is required but has no " +
+            'value. Set it via the "variables" or "secrets" input, or in ' +
+            "the workflow environment.",
         );
       });
     });
@@ -320,7 +322,7 @@ describe("Utilities", () => {
       it("should throw error in strict mode when variable is undefined", () => {
         const variables = new Map<string, string>();
         expect(() => interpolateString("Hello $NAME", variables, true)).toThrow(
-          "Variable NAME is required but not defined",
+          'Variable "NAME" is not defined.',
         );
       });
 
@@ -356,7 +358,7 @@ describe("Utilities", () => {
         const variables = new Map<string, string>();
         expect(() =>
           interpolateString("Hello $NAME $SURNAME", variables, true),
-        ).toThrow("Variable NAME is required but not defined");
+        ).toThrow('Variable "NAME" is not defined.');
       });
     });
 
@@ -546,20 +548,23 @@ describe("Utilities", () => {
         const variables = new Map<string, string>();
         expect(() =>
           interpolateString("${MISSING_VAR?Custom error}", variables),
-        ).toThrow("Missing required value: Custom error");
+        ).toThrow("it is required but has no value: Custom error");
       });
 
       it("should handle error propagation properly", () => {
         const variables = new Map<string, string>();
         expect(() => interpolateString("${VAR:?}", variables)).toThrow(
-          "Failed to resolve variable VAR: Missing required value: ",
+          "Failed to resolve variable VAR: it is required but has no value. " +
+            'Set it via the "variables" or "secrets" input',
         );
       });
 
       it("should handle strict mode errors with clear messages", () => {
         const variables = new Map<string, string>();
         expect(() => interpolateString("$UNDEFINED", variables, true)).toThrow(
-          "Variable UNDEFINED is required but not defined",
+          'Variable "UNDEFINED" is not defined. Set it via the "variables" ' +
+            'or "secrets" input, or in the workflow environment, or set ' +
+            '"strict-variables: false" to substitute an empty string instead.',
         );
       });
     });

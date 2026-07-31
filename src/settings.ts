@@ -109,9 +109,12 @@ function parsePositiveSeconds(
     return fallback;
   }
 
-  const value = Number.parseInt(raw, 10);
+  // Only plain digits are accepted. `Number.parseInt` would silently truncate
+  // instead of rejecting: it reads "5.9" as 5, "10s" as 10, and "1e3" as 1 --
+  // a thousandth of the duration the author asked for.
+  const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
 
-  if (!Number.isFinite(value) || value <= 0) {
+  if (!Number.isInteger(value) || value <= 0) {
     if (!monitor) {
       return fallback;
     }
