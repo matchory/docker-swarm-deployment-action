@@ -203,7 +203,9 @@ export async function monitorDeployment(
             undefined,
             healthcheck,
           );
-          core.error(`Service Details:\n${JSON.stringify(service, null, 2)}`);
+          // A full service inspect dump is a debug aid, not a headline, and it
+          // is long enough to crowd out the annotation that names the cause.
+          core.debug(`Service Details:\n${JSON.stringify(service, null, 2)}`);
         }
       }
 
@@ -446,7 +448,7 @@ export async function buildFailureReport(
   }
 
   if (errorResult?.category === "health_check" && healthcheck) {
-    core.error(
+    core.info(
       `Health check configuration for service "${serviceName}":\n` +
         formatHealthCheck(healthcheck),
     );
@@ -459,7 +461,7 @@ export async function buildFailureReport(
     })
     .join("\n");
 
-  core.error(`Task history for service "${serviceName}":\n${history}`);
+  core.info(`Task history for service "${serviceName}":\n${history}`);
 
   let logs: Awaited<ReturnType<typeof getServiceLogs>>;
 
@@ -476,13 +478,13 @@ export async function buildFailureReport(
   });
 
   if (formattedLogs.length === 0) {
-    core.error(
+    core.info(
       `No container logs available for service "${serviceName}" (container may not have started)`,
     );
   } else {
     const logOutput = formattedLogs.map((l) => `  ${l}`).join("\n");
     core.setOutput("service-logs", logOutput);
-    core.error(`Container logs for service "${serviceName}":\n${logOutput}`);
+    core.info(`Container logs for service "${serviceName}":\n${logOutput}`);
   }
 
   // Job summary
