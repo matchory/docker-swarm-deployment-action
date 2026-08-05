@@ -63,7 +63,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "globals": "^17.8.0",
     "make-coverage-badge": "^1.2.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.6"
   },
   "overrides": {
