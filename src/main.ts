@@ -4,15 +4,19 @@ import { DefaultArtifactClient } from "@actions/artifact";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose";
 import { deploy } from "./deployment.js";
-import { parseSettings } from "./settings.js";
+import { parseSettings, type Settings } from "./settings.js";
 import { removeFileQuietly } from "./utils.js";
 import { redactSecretValues } from "./variables.js";
 
 export async function run() {
-  const settings = parseSettings(env);
+  let settings: Settings | undefined;
   let composeSpec: ComposeSpec | undefined;
 
+  // Parsing happens inside the try: bad input is an ordinary failure, and a
+  // throw escaping `run()` would reach the runner as an uncaught exception,
+  // which prints the whole generated bundle line above the stack trace.
   try {
+    settings = parseSettings(env);
     composeSpec = await deploy(settings);
 
     core.setOutput("compose-spec", composeSpec);
@@ -29,7 +33,7 @@ export async function run() {
     core.setOutput("status", "failure");
   }
 
-  if (!composeSpec) {
+  if (!composeSpec || !settings) {
     return;
   }
 

@@ -137,6 +137,25 @@ describe("main", () => {
     expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
   });
 
+  it("should report a settings parse failure instead of throwing", async () => {
+    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+    vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(core, "getBooleanInput").mockImplementation(() => {
+      throw new TypeError(
+        'Input does not meet YAML 1.2 "Core Schema" specification: monitor',
+      );
+    });
+
+    // A throw that escapes `run()` reaches the runner as an uncaught
+    // exception, which prints the generated bundle line above the stack.
+    // Bad input is an ordinary failure and has to be reported as one.
+    await expect(run()).resolves.not.toThrow();
+    expect(core.setFailed).toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
+    expect(mockUploadArtifact).not.toHaveBeenCalled();
+  });
+
   it("should store the artifact and report cleanup failures", async () => {
     const composeSpec = defineComposeSpec({
       services: {

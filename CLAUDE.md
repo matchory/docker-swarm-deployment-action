@@ -28,11 +28,16 @@ the full pipeline passes (format, lint, typecheck, test, package).
 
 ## Architecture
 
-**Build chain**: `src/*.ts` -> @vercel/ncc (`dist/index.js`)
+**Build chain**: `src/*.ts` -> esbuild (`script/bundle.mjs`) -> `dist/`
 
-ncc bundles TypeScript directly -- no intermediate compile step.
+esbuild parses TypeScript directly -- no intermediate compile step.
 The output is ESM (`"type": "module"` in dist/package.json).
-The GitHub Actions runner loads it via `node dist/index.js`.
+The GitHub Actions runner loads `dist/index.js`, a two-line entry
+point that turns on source map support and imports the real bundle
+in `dist/main.js`. Node only applies source maps to modules compiled
+after the switch is flipped, so the flip cannot live in the bundle
+itself. `script/bundle.mjs` also writes `dist/licenses.txt` from the
+packages esbuild actually pulled in.
 
 **Deployment flow** (orchestrated in `deployment.ts`):
 
@@ -104,8 +109,15 @@ exempt, dash bullets, underscore emphasis).
 
 - **Biome** for linting and formatting (not ESLint/Prettier)
 - **Vitest** for testing with V8 coverage
-- **@vercel/ncc** bundles TypeScript source into a single ESM file
+- **esbuild** bundles TypeScript source into a single ESM file
 - TypeScript strict mode, ESNext target, bundler module resolution
+
+TypeScript is version 7, the native compiler, and is only ever a
+typechecker here: `tsc --noEmit`. It ships no JavaScript API, so no
+build tooling can drive it. This is what ruled out @vercel/ncc, which
+compiled through that API and is frozen at 0.44.1. Reach for a tool
+that parses TypeScript itself rather than one that loads
+`typescript`. `tsserver` is gone too -- editors need an LSP client.
 
 ## Gotchas
 
@@ -119,3 +131,11 @@ exempt, dash bullets, underscore emphasis).
 - The `config` error pattern in `categorizeTaskError` requires
   "secret" or "config" context around "not found" to avoid false
   positives on generic "not found" errors.
+- Node applies source maps to stack _frames_ but not to the code frame
+  it prints above them, so an uncaught throw dumps the raw generated
+  line into the Actions log. `lineLimit: 500` in `script/bundle.mjs`
+  caps that at a few hundred characters instead of a quarter megabyte.
+  Prefer failing through `core.setFailed` so it never comes up.
+- `script/bundle.mjs` builds with `write: false` and only clears
+  `dist/` once the bundle and the license scan have both succeeded --
+  a build error must not leave the committed directory half deleted.
