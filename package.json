@@ -57,10 +57,10 @@
     "js-yaml": "^5.2.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.9",
     "@types/node": "^24.13.3",
     "@vercel/ncc": "^0.45.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "globals": "^17.11.0",
     "make-coverage-badge": "^1.2.0",
     "typescript": "^6.0.3",
