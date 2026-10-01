@@ -26,7 +26,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 # Two dependency merges in quick succession would otherwise race for the same
 # branch. Queue instead of cancelling, so the later run sees the newer lockfile.
@@ -78,11 +77,8 @@ jobs:
         id: licensed-cache
         run: licensed cache
 
-      # Pull requests opened with `GITHUB_TOKEN` do not trigger other
-      # workflows, so `Licensed` will not re-run on the branch this job
-      # creates. Check the regenerated cache here instead. `dist/` needs no
-      # equivalent step: `Check dist/` runs on the push to `main` once the
-      # pull request merges, which is the same build this job just performed.
+      # Check the regenerated cache here as well, so a broken cache never
+      # reaches a pull request in the first place.
       - name: Verify Licenses
         id: licensed-status
         run: licensed status
@@ -97,11 +93,26 @@ jobs:
             echo "Generated artifacts are already up to date."
           fi
 
+      # `GITHUB_TOKEN` cannot open pull requests: the org policy "Allow GitHub
+      # Actions to create and approve pull requests" is off, so that a workflow
+      # can never approve its own changes. Open the pull request with a
+      # short-lived GitHub App token instead, which also means the checks run
+      # on it. Needs the repository variable PR_BOT_APP_ID and secret
+      # PR_BOT_PRIVATE_KEY for an app with pull-requests: write on this
+      # repository. The branch itself is still pushed with `GITHUB_TOKEN`.
+      - name: Mint Pull Request Token
+        id: app
+        if: ${{ steps.changes.outputs.changed == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.PR_BOT_APP_ID }}
+          private-key: ${{ secrets.PR_BOT_PRIVATE_KEY }}
+
       - name: Open Pull Request
         id: pull-request
         if: ${{ steps.changes.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: chore/regenerate-artifacts
         run: |
           git config --local user.name "github-actions[bot]"
@@ -132,9 +143,7 @@ jobs:
           lockfile rather than a stale `node_modules`, and `licensed status`
           passed before this branch was pushed.
 
-          Because it was opened with `GITHUB_TOKEN`, no checks run here.
-          `Check dist/` will verify the bundle on the push to `main` once this
-          merges. Close this pull request if the change is not wanted; it will
-          be recreated the next time a dependency changes.
+          Close this pull request if the change is not wanted; it will be
+          recreated the next time a dependency changes.
           BODY
           )"
