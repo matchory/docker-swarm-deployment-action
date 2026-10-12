@@ -176,6 +176,21 @@ export async function loadComposeSpecs(
     specs.push(await loadComposeSpec(filename, settings));
   }
 
+  // A file may contribute only configs, secrets, networks or volumes, as long
+  // as another file supplies the services.
+  if (!specs.some(({ spec }) => Object.keys(spec.services).length > 0)) {
+    const where =
+      composeFiles.length === 1
+        ? `Compose file "${composeFiles[0]}" has no`
+        : `None of the Compose files (${composeFiles.join(", ")}) have any`;
+
+    throw new Error(
+      `${where} services to deploy: the "services:" section is missing or ` +
+        `empty. A stack needs at least one service. Add a "services:" ` +
+        `block, or point the "compose-file" input at the correct file.`,
+    );
+  }
+
   return specs;
 }
 
@@ -186,7 +201,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  const spec = await prepareSpec(parsedContent, settings, filename);
+  const spec = await prepareSpec(parsedContent, settings);
 
   return { spec, baseDir: dirname(filename) };
 }
@@ -200,7 +215,6 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
-  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -210,16 +224,8 @@ export async function prepareSpec(
     composeSpec.version = schemaVersion;
   }
 
-  if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
-    const where = filename ? `Compose file "${filename}"` : "The Compose file";
-
-    throw new Error(
-      `${where} has no services to deploy: its "services:" section is ` +
-        `missing or empty. A stack needs at least one service. Add a ` +
-        `"services:" block, or point the "compose-file" input at the ` +
-        `correct file.`,
-    );
-  }
+  // loadComposeSpecs checks that the files together define services.
+  composeSpec.services ??= {};
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
@@ -352,8 +358,13 @@ async function reconcileThenMerge(
   settings: Readonly<Settings>,
 ) {
   for (const { spec, baseDir } of prepared) {
+    const hadServices = Object.keys(spec.services).length > 0;
+
     await reconcileSwarmCompatibility(spec, settings, baseDir);
-    assertServicesRemain(spec);
+
+    if (hadServices) {
+      assertServicesRemain(spec);
+    }
   }
 
   // Write to the working directory (not baseDir) to preserve the released
