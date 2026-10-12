@@ -23,6 +23,7 @@ import {
   interpolateString,
   mapStrings,
 } from "./utils.js";
+import { assertOwnShares } from "./shares.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";
@@ -220,6 +221,8 @@ export async function prepareSpec(
         `correct file.`,
     );
   }
+
+  assertOwnShares(composeSpec, settings.stack);
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
