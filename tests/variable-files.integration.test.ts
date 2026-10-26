@@ -80,9 +80,7 @@ async function normalizeSecretFiles(override: string) {
     };
   } finally {
     await removeGeneratedVariableFiles();
-
-    // Cleanup must find the generated file by its absolute path.
-    expect(generated && existsSync(generated)).toBe(false);
+    const leftover = generated !== undefined && existsSync(generated);
     process.chdir(cwd);
 
     if (savedWorkspace === undefined) {
@@ -92,6 +90,11 @@ async function normalizeSecretFiles(override: string) {
     }
 
     rmSync(dir, { recursive: true, force: true });
+
+    // Cleanup must find the generated file by its absolute path. Asserted after
+    // restoring state, so a failure here neither skips it nor masks an error
+    // thrown above (where `generated` is still unset).
+    expect(leftover).toBe(false);
   }
 }
 

@@ -21,6 +21,7 @@ import {
   redactSecretValues,
   removeGeneratedVariableFiles,
   stackLabel,
+  type Variable,
   versionLabel,
 } from "../src/variables.js";
 
@@ -396,9 +397,19 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toMatchObject({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
+          file: resolve("path/to/file"),
           labels: { [hashLabel]: expectedHash },
         });
-        expect(readFile).toHaveBeenCalledWith(resolve("path/to/file"), "utf8");
+      });
+
+      it("should reject a file property that is not a path with a clear error", async () => {
+        const variable = { file: null } as unknown as Variable;
+
+        vi.spyOn(utils, "exists").mockResolvedValue(false);
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).rejects.toThrowError(/specifies the file "null"/);
       });
 
       it("should bail on missing files", async () => {

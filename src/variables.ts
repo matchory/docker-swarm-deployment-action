@@ -72,10 +72,9 @@ export async function processVariable(
   // The path is made absolute against the working directory, so the file we
   // hash is the one deployed, wherever Docker writes the spec it resolves from.
   if ("file" in variable) {
-    modifiedVariable = { ...variable, file: resolve(variable.file) };
-
     try {
-      content = await readFromFile(name, modifiedVariable);
+      content = await readFromFile(name, variable);
+      modifiedVariable = { ...variable, file: resolve(variable.file) };
     } catch (error) {
       if (strictVariables) {
         throw error;
