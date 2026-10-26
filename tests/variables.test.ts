@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { resolve } from "node:path";
 import * as core from "@actions/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ComposeSpec, defineComposeSpec } from "../src/compose.js";
@@ -79,7 +80,9 @@ describe("Variables", () => {
       await expect(processVariable("foo", variable, settings)).resolves.toEqual(
         {
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo",
             [hashLabel]: expectedHash,
@@ -103,7 +106,9 @@ describe("Variables", () => {
       await expect(processVariable("foo", variable, settings)).resolves.toEqual(
         {
           name: `bar-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo",
             [hashLabel]: expectedHash,
@@ -131,7 +136,9 @@ describe("Variables", () => {
       await expect(processVariable("foo", variable, settings)).resolves.toEqual(
         {
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             "custom-label": "custom-value",
             [nameLabel]: "foo",
@@ -181,7 +188,9 @@ describe("Variables", () => {
       settings.variables.set("foo", "secret");
       await expect(processVariable("foo", null, settings)).resolves.toEqual({
         name: "test-foo-2bb80d5",
-        file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        file: resolve(
+          "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        ),
         labels: {
           [nameLabel]: "foo",
           [hashLabel]:
@@ -212,7 +221,9 @@ describe("Variables", () => {
         }),
       ).resolves.toEqual({
         name: `test-foo-${expectedHash.slice(0, 7)}`,
-        file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        file: resolve(
+          "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        ),
         labels: {
           [nameLabel]: "foo",
           [hashLabel]: expectedHash,
@@ -220,6 +231,17 @@ describe("Variables", () => {
           [versionLabel]: "1.0.0",
         },
       });
+    });
+
+    it("should give values differing only in whitespace distinct names", async () => {
+      const names = await Promise.all(
+        ["secret", "secret\n", " secret"].map(
+          async (content) =>
+            (await processVariable("foo", { content }, settings)).name,
+        ),
+      );
+
+      expect(new Set(names).size).toBe(3);
     });
 
     it("should reject variable names that exceed Docker's 64-character limit", async () => {
@@ -263,7 +285,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo",
             [hashLabel]: expectedHash,
@@ -274,7 +298,7 @@ describe("Variables", () => {
 
         await removeGeneratedVariableFiles();
         expect(unlink).toHaveBeenCalledExactlyOnceWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
         );
       });
 
@@ -301,7 +325,9 @@ describe("Variables", () => {
           processVariable("server-config", variable, settings),
         ).resolves.toEqual({
           name: `test-server-config-${expectedHash.slice(0, 7)}`,
-          file: "./server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "server-config",
             [hashLabel]: expectedHash,
@@ -311,9 +337,11 @@ describe("Variables", () => {
         });
 
         expect(writeFile).toHaveBeenCalledWith(
-          "./server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve(
+            "server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           expectedContent,
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -342,7 +370,7 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "path/to/file",
+          file: resolve("path/to/file"),
           labels: {
             [nameLabel]: "foo",
             [hashLabel]: expectedHash,
@@ -353,6 +381,24 @@ describe("Variables", () => {
 
         await removeGeneratedVariableFiles();
         expect(unlink).not.toHaveBeenCalled();
+      });
+
+      it("should hash the file content exactly as it is deployed", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+        });
+        const expectedHash = hashVariable("secret\n");
+
+        readFile.mockResolvedValue("secret\n");
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({
+          name: `test-foo-${expectedHash.slice(0, 7)}`,
+          labels: { [hashLabel]: expectedHash },
+        });
+        expect(readFile).toHaveBeenCalledWith(resolve("path/to/file"), "utf8");
       });
 
       it("should bail on missing files", async () => {
@@ -395,7 +441,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo",
             [hashLabel]: expectedHash,
@@ -425,7 +473,9 @@ describe("Variables", () => {
           processVariable("example-secret", variable, settings),
         ).resolves.toEqual({
           name: `test-example-secret-${expectedHash.slice(0, 7)}`,
-          file: "./example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "example-secret",
             [hashLabel]: expectedHash,
@@ -435,9 +485,11 @@ describe("Variables", () => {
         });
 
         expect(writeFile).toHaveBeenCalledWith(
-          "./example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve(
+            "example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           expectedContent,
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -460,7 +512,9 @@ describe("Variables", () => {
           processVariable("config", variable, settings),
         ).resolves.toEqual({
           name: `test-config-${expectedHash.slice(0, 7)}`,
-          file: "./config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "config",
             [hashLabel]: expectedHash,
@@ -470,9 +524,11 @@ describe("Variables", () => {
         });
 
         expect(writeFile).toHaveBeenCalledWith(
-          "./config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve(
+            "config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           expectedContent,
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -505,7 +561,9 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -529,7 +587,9 @@ describe("Variables", () => {
           processVariable("foo-bar-baz", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-bar-baz-${expectedHash.slice(0, 7)}`,
-          file: "./foo-bar-baz.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo-bar-baz.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo-bar-baz",
             [hashLabel]: expectedHash,
@@ -557,7 +617,9 @@ describe("Variables", () => {
           processVariable("foo-bar", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-bar-${expectedHash.slice(0, 7)}`,
-          file: "./foo-bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo-bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo-bar",
             [hashLabel]: expectedHash,
@@ -583,7 +645,9 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -608,7 +672,9 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -632,7 +698,9 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -655,7 +723,9 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_bAr.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -687,7 +757,9 @@ describe("Variables", () => {
           processVariable("foo_config", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_config-${expectedHash.slice(0, 7)}`,
-          file: "./foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [nameLabel]: "foo_config",
             [hashLabel]: expectedHash,
@@ -697,9 +769,11 @@ describe("Variables", () => {
         });
 
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve(
+            "foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           expectedContent,
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -721,7 +795,7 @@ describe("Variables", () => {
           processVariable("foo_bAr", variable, settings),
         ).resolves.toEqual({
           name: `test-foo_bAr-${expectedHash.slice(0, 7)}`,
-          file: "./foo_bAr.secret",
+          file: resolve("foo_bAr.secret"),
           labels: {
             [nameLabel]: "foo_bAr",
             [hashLabel]: expectedHash,
@@ -729,7 +803,7 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         });
-        expect(utils.exists).toHaveBeenCalledWith("./foo_bAr.secret");
+        expect(utils.exists).toHaveBeenCalledWith(resolve("foo_bAr.secret"));
       });
 
       it("should throw an error if no source is provided and none can be inferred", async () => {
@@ -761,7 +835,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: "test-foo-1c1185e",
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [encodeLabel]: "base64",
             [nameLabel]: "foo",
@@ -771,9 +847,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           Buffer.from("secret").toString("base64"),
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -796,7 +872,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: "test-foo-1c1185e",
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [encodeLabel]: "base64url",
             [nameLabel]: "foo",
@@ -806,9 +884,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           Buffer.from("secret").toString("base64url"),
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -831,7 +909,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [encodeLabel]: "hex",
             [nameLabel]: "foo",
@@ -842,9 +922,9 @@ describe("Variables", () => {
         });
 
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           Buffer.from("secret").toString("hex"),
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -867,7 +947,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [encodeLabel]: "url",
             [nameLabel]: "foo",
@@ -877,9 +959,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           encodeURIComponent("some[secret]=value"),
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -915,7 +997,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [decodeLabel]: "base64",
             [nameLabel]: "foo",
@@ -925,9 +1009,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           "secret",
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -948,7 +1032,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [decodeLabel]: "base64url",
             [nameLabel]: "foo",
@@ -958,9 +1044,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           "secret",
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -981,7 +1067,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [decodeLabel]: "hex",
             [nameLabel]: "foo",
@@ -991,9 +1079,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           "secret",
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -1014,7 +1102,9 @@ describe("Variables", () => {
           processVariable("foo", variable, settings),
         ).resolves.toEqual({
           name: `test-foo-${expectedHash.slice(0, 7)}`,
-          file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          file: resolve(
+            "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          ),
           labels: {
             [decodeLabel]: "url",
             [nameLabel]: "foo",
@@ -1024,9 +1114,9 @@ describe("Variables", () => {
           },
         });
         expect(writeFile).toHaveBeenCalledWith(
-          "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+          resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
           "some[secret]=value",
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
@@ -1064,7 +1154,7 @@ describe("Variables", () => {
       await removeGeneratedVariableFiles();
 
       expect(unlink).toHaveBeenCalledWith(
-        "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+        resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
       );
     });
 
@@ -1093,7 +1183,9 @@ describe("Variables", () => {
         configs: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
@@ -1160,7 +1252,9 @@ describe("Variables", () => {
         secrets: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
@@ -1227,7 +1321,9 @@ describe("Variables", () => {
         secrets: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
@@ -1283,7 +1379,9 @@ describe("Variables", () => {
         secrets: {
           bar: {
             name: "test-bar-b5bb9d8",
-            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "bar",
               [hashLabel]:
@@ -1294,7 +1392,9 @@ describe("Variables", () => {
           },
           other_bar: {
             name: "test-other_bar-bf07a7f",
-            file: "./other_bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "other_bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "other_bar",
               [hashLabel]:
@@ -1307,7 +1407,9 @@ describe("Variables", () => {
         configs: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
@@ -1318,7 +1420,9 @@ describe("Variables", () => {
           },
           other_foo: {
             name: "test-other_foo-bf07a7f",
-            file: "./other_foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "other_foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "other_foo",
               [hashLabel]:
@@ -1487,7 +1591,9 @@ describe("Variables", () => {
         secrets: {
           bar: {
             name: "test-bar-b5bb9d8",
-            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "bar",
               [hashLabel]:
@@ -1500,7 +1606,9 @@ describe("Variables", () => {
         configs: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
@@ -1526,13 +1634,17 @@ describe("Variables", () => {
         secrets: {
           foo: {
             name: "test-foo-b5bb9d8",
-            file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
           },
         },
         configs: {
           bar: {
             name: "test-bar-b5bb9d8",
-            file: "./bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            file: resolve(
+              "bar.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
+            ),
           },
         },
       });
