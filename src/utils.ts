@@ -112,6 +112,10 @@ export function mapStrings<T>(value: T, map: (value: string) => string): T {
   ) as T;
 }
 
+// Thrown for a malformed reference, so an enclosing reference passes it on
+// instead of blaming its own variable
+class InterpolationFormatError extends Error {}
+
 /**
  * Interpolate a string with variables from a Map.
  *
@@ -132,19 +136,18 @@ export function mapStrings<T>(value: T, map: (value: string) => string): T {
  * `$VARIABLE_NAME`).
  * Like Compose, it substitutes in a single pass: substituted values are never interpolated again, so a `$` in a
  * variable's value is kept literally.
- * When strict mode is enabled, it will throw an error if a variable is used, has no default value, and is not defined in
- * the variable map.
+ * Also like Compose, a `${` that does not start a valid reference, such as `${A.b}` or an unterminated `${FOO:-bar`,
+ * throws an error, while a `$` followed by anything other than `$`, `{` or a name is kept literally. A malformed
+ * reference in a default value only throws if the default is used.
  *
  * @param str The string to interpolate
  * @param variables A Map of variable names to their values
- * @param [strict] If true, throw an error if a variable is used but not defined in the map
  * @param [onUndefined] Called with the name of each variable that is used without a default value and is not defined
  *                      in the map, once per use, before it is substituted with an empty string
  */
 export function interpolateString(
   str: string,
   variables: Map<string, string>,
-  strict = false,
   onUndefined?: (name: string) => void,
 ): string {
   type Operator = ":-" | ":+" | ":?" | "?" | "-" | "+";
@@ -163,12 +166,7 @@ export function interpolateString(
       (operator === ":+" && value)
     ) {
       // Only the default text itself is interpolated, and only when used
-      return interpolateString(
-        defaultValue ?? "",
-        variables,
-        strict,
-        onUndefined,
-      );
+      return interpolateString(defaultValue ?? "", variables, onUndefined);
     }
 
     // Alternative value substitution: If the variable is PRESENT, return
@@ -238,8 +236,20 @@ export function interpolateString(
       end = depth === 0 ? end + 1 : -1;
     }
 
-    // Not a valid reference: keep the dollar sign literally and move on
-    if (!match || end === -1) {
+    // Compose rejects a `${` that does not start a valid reference
+    if (str[dollar + 1] === "{" && (!match || end === -1)) {
+      // An unterminated reference runs to the end of the string
+      const close = match ? -1 : str.indexOf("}", dollar);
+      const text = str.slice(dollar, close === -1 ? undefined : close + 1);
+
+      throw new InterpolationFormatError(
+        `Invalid interpolation format "${text}". You may need to escape ` +
+          "any $ with another $.",
+      );
+    }
+
+    // Not a reference: keep the dollar sign literally and move on
+    if (!match) {
       result += "$";
       index = dollar + 1;
       continue;
@@ -259,19 +269,16 @@ export function interpolateString(
     try {
       replacement = resolveMatch(value, match[4] as Operator, defaultValue);
     } catch (cause) {
+      // Raised by a nested reference, which it already names
+      if (cause instanceof InterpolationFormatError) {
+        throw cause;
+      }
+
       const message = cause instanceof Error ? cause.message : String(cause);
 
       throw new Error(`Failed to resolve variable ${key}: ${message}`, {
         cause,
       });
-    }
-
-    if (strict && replacement === undefined) {
-      throw new Error(
-        `Variable "${key}" is not defined. Set it via the "variables" or ` +
-          `"secrets" input, or in the workflow environment, or set ` +
-          `"strict-variables: false" to substitute an empty string instead.`,
-      );
     }
 
     if (replacement === undefined) {

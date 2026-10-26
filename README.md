@@ -291,6 +291,11 @@ the old v3 format or the new Compose Specification. Instead, it:
 This ensures that regardless of the exact format you use (even mixing them), the final configuration passed to
 `docker stack deploy` is valid and correctly interpreted by Docker Swarm.
 
+A Compose file without a `version` key, as the Compose Specification recommends, is validated against stack file version
+`3.12`, so recent fields like `healthcheck.start_interval` are accepted. This requires Docker 25 or later on the runner;
+with an older version, set an explicit `version` in your Compose file. If you deploy several Compose files and another
+of them sets a `version`, a file without one uses that version instead, since Docker rejects files whose versions differ.
+
 #### Compose-Spec to Swarm Reconciliation
 
 Modern Compose Specification constructs (like `develop`, `gpus`, or `label_file`) aren't understood by
@@ -371,7 +376,10 @@ allow for unlimited nesting in default and alternative values, meaning that the 
 
 As in Compose, variable _values_ are inserted literally and never interpolated again: if `DB_PASSWORD` is `p@$$w0rd`,
 `${DB_PASSWORD}` becomes `p@$$w0rd`, and a value of `$OTHER` stays `$OTHER`. To get a literal `$` in the Compose file
-itself, escape it as `$$`.
+itself, escape it as `$$`. A `$` followed by anything other than `$`, `{` or a variable name is kept as it is.
+
+As Compose does, a `${` that does not start a valid reference, such as `${FOO.bar}` or an unterminated
+`${FOO:-bar`, fails the deployment with an `Invalid interpolation format` error naming the reference and where it is.
 
 Also as in Compose, a variable that is used without a default value but is not set is replaced with an empty string, and
 the action logs a warning such as `The "VERSION" variable is not set. Defaulting to a blank string.`, once per variable.

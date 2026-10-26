@@ -631,6 +631,16 @@ describe("Variables", () => {
         );
       });
 
+      it("should name the variable whose content has a malformed reference", async () => {
+        const variable = defineVariable({ content: "a=${A.b}" });
+
+        await expect(
+          processVariable("config", variable, settings),
+        ).rejects.toThrow(
+          'The content of "config": Invalid interpolation format "${A.b}"',
+        );
+      });
+
       it("should not throw an error if a variable is explicitly defined empty", async () => {
         const variable = defineVariable({
           content: "",

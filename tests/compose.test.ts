@@ -325,6 +325,18 @@ describe("Compose", () => {
       ]);
     });
 
+    it("should give a file without a version the version another file declares", async () => {
+      vi.spyOn(utils, "exists").mockResolvedValue(true);
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "load")
+        .mockReturnValueOnce({ services: { web: { image: "nginx" } } })
+        .mockReturnValueOnce({ version: "3.9", services: {} });
+
+      const specs = await loadComposeSpecs(["a.yaml", "b.yaml"], settings);
+
+      expect(specs.map(({ spec }) => spec.version)).toEqual(["3.9", "3.9"]);
+    });
+
     it("should throw an error if none of the compose files have services", async () => {
       vi.spyOn(utils, "exists").mockResolvedValue(true);
       vi.mocked(exec).mockResolvedValue(0);
@@ -818,6 +830,40 @@ describe("Compose", () => {
       );
     });
 
+    it("casts typed fields the merge emitted as strings", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // `docker compose config --no-interpolate` emits `!override 3` as "3".
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "3" } } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                deploy: { replicas: new Tagged("!override", "scalar", 3) },
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        { services: { web: { image: "nginx", deploy: { replicas: 3 } } } },
+        settings,
+      );
+    });
+
     it("throws when tags are present but the compose plugin is missing", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(false);
       const merge = vi.spyOn(engine, "mergeComposeFiles");
@@ -1133,6 +1179,17 @@ describe("Compose", () => {
           },
         },
       });
+    });
+
+    it("should name where a malformed reference in a typed field is", () => {
+      const spec: ComposeSpec = {
+        services: { app: { deploy: { replicas: "${REPLICAS" } } },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        "services.app.deploy.replicas: Invalid interpolation format " +
+          '"${REPLICAS"',
+      );
     });
 
     it("should reject numbers Docker does not parse as floats", () => {
@@ -1934,6 +1991,33 @@ describe("Compose", () => {
         });
       });
 
+      it.each([false, true])(
+        "should name where a malformed reference is with keyInterpolation %s",
+        (keyInterpolation) => {
+          const spec: ComposeSpec = {
+            services: {
+              app: { image: "nginx", environment: { BROKEN: "a ${A.b}" } },
+            },
+          };
+
+          expect(() =>
+            interpolateSpec(spec, { ...mockSettings, keyInterpolation }),
+          ).toThrow(
+            'services.app.environment.BROKEN: Invalid interpolation format "${A.b}"',
+          );
+        },
+      );
+
+      it("should name where a malformed reference in a key is", () => {
+        const spec: ComposeSpec = {
+          services: { "${NAME": { image: "nginx" } },
+        };
+
+        expect(() =>
+          interpolateSpec(spec, { ...mockSettings, keyInterpolation: true }),
+        ).toThrow('services.${NAME: Invalid interpolation format "${NAME"');
+      });
+
       it("should interpolate keys and values separately when keyInterpolation is enabled", () => {
         const settings = {
           ...mockSettings,
@@ -1949,7 +2033,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: "${PASSWORD}",
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
@@ -1962,7 +2045,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: 'p"a\\ss\nword',
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
