@@ -17,13 +17,13 @@ import {
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
+import { assertOwnShares } from "./shares.js";
 import {
   exists,
   findFirstExistingFile,
   interpolateString,
   mapStrings,
 } from "./utils.js";
-import { assertOwnShares } from "./shares.js";
 import { processVariable, type Variable } from "./variables.js";
 
 export const schemaVersion = "3.9";

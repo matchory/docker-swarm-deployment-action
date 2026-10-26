@@ -12,7 +12,9 @@ describe("assertOwnShares", () => {
     [{ external: true, name: "other_shared-v2" }],
     [{ name: "other_shared" }],
   ])("rejects another stack's share %j", (volume) => {
-    expect(() => assertOwnShares(spec(volume), "web")).toThrow(/volume "data" names "other_shared/i);
+    expect(() => assertOwnShares(spec(volume), "web")).toThrow(
+      /volume "data" names "other_shared/i,
+    );
   });
 
   it.each([
