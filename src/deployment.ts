@@ -25,12 +25,12 @@ export async function deploy(settings: Readonly<Settings>) {
 
   try {
     const composeFiles = await resolveComposeFiles(settings);
-    const composeSpecs = (await loadComposeSpecs(composeFiles, settings)).map(
-      (item) => ({
-        ...item,
-        spec: interpolateTypedFields(item.spec, settings, onUndefined),
-      }),
-    );
+    const composeSpecs = (
+      await loadComposeSpecs(composeFiles, settings, onUndefined)
+    ).map((item) => ({
+      ...item,
+      spec: interpolateTypedFields(item.spec, settings, onUndefined),
+    }));
     const composeSpec = await normalizeSpec(composeSpecs, settings);
     finalSpec = interpolateSpec(composeSpec, settings, onUndefined);
 

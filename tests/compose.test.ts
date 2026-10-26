@@ -14,8 +14,9 @@ import {
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
-import * as engine from "../src/engine";
-import { deployStack } from "../src/engine";
+import * as engine from "../src/engine.js";
+import { deployStack } from "../src/engine.js";
+import * as envFile from "../src/env-file.js";
 import { Tagged } from "../src/override-tags.js";
 import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
@@ -49,13 +50,17 @@ describe("Compose", () => {
 
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test-stack",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "ebadf1",
   });
@@ -287,6 +292,23 @@ describe("Compose", () => {
       ).resolves.toEqual([{ spec: composeSpec, baseDir: "." }]);
     });
 
+    it("should inline env files after loading all compose files", async () => {
+      const composeSpec = defineComposeSpec({
+        services: { web: { image: "nginx", env_file: "app.env" } },
+      });
+      const onUndefined = vi.fn();
+      vi.spyOn(yaml, "load").mockReturnValue(composeSpec);
+      vi.spyOn(envFile, "inlineEnvFiles").mockResolvedValue();
+
+      await loadComposeSpecs(["docker/compose.yaml"], settings, onUndefined);
+
+      expect(envFile.inlineEnvFiles).toHaveBeenCalledExactlyOnceWith(
+        [{ spec: composeSpec, baseDir: "docker" }],
+        settings,
+        onUndefined,
+      );
+    });
+
     it("should throw an error if the compose file does not have a services section", async () => {
       vi.spyOn(utils, "exists").mockResolvedValue(true);
       vi.mocked(exec).mockResolvedValue(0);
@@ -319,6 +341,18 @@ describe("Compose", () => {
           baseDir: ".",
         },
       ]);
+    });
+
+    it("should give a file without a version the version another file declares", async () => {
+      vi.spyOn(utils, "exists").mockResolvedValue(true);
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "load")
+        .mockReturnValueOnce({ services: { web: { image: "nginx" } } })
+        .mockReturnValueOnce({ version: "3.9", services: {} });
+
+      const specs = await loadComposeSpecs(["a.yaml", "b.yaml"], settings);
+
+      expect(specs.map(({ spec }) => spec.version)).toEqual(["3.9", "3.9"]);
     });
 
     it("should throw an error if none of the compose files have services", async () => {
@@ -814,6 +848,40 @@ describe("Compose", () => {
       );
     });
 
+    it("casts typed fields the merge emitted as strings", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // `docker compose config --no-interpolate` emits `!override 3` as "3".
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "3" } } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                deploy: { replicas: new Tagged("!override", "scalar", 3) },
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        { services: { web: { image: "nginx", deploy: { replicas: 3 } } } },
+        settings,
+      );
+    });
+
     it("throws when tags are present but the compose plugin is missing", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(false);
       const merge = vi.spyOn(engine, "mergeComposeFiles");
@@ -1129,6 +1197,17 @@ describe("Compose", () => {
           },
         },
       });
+    });
+
+    it("should name where a malformed reference in a typed field is", () => {
+      const spec: ComposeSpec = {
+        services: { app: { deploy: { replicas: "${REPLICAS" } } },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        "services.app.deploy.replicas: Invalid interpolation format " +
+          '"${REPLICAS"',
+      );
     });
 
     it("should reject numbers Docker does not parse as floats", () => {
@@ -1517,7 +1596,7 @@ describe("Compose", () => {
 
         const result = interpolateSpec(spec, mockSettings);
 
-        expect(result.services.app.environment).toEqual({
+        expect(result.services.app).toHaveProperty("environment", {
           KEY: "-----BEGIN KEY-----\nabc\tdef\n-----END KEY-----\n",
         });
       });
@@ -1930,6 +2009,33 @@ describe("Compose", () => {
         });
       });
 
+      it.each([false, true])(
+        "should name where a malformed reference is with keyInterpolation %s",
+        (keyInterpolation) => {
+          const spec: ComposeSpec = {
+            services: {
+              app: { image: "nginx", environment: { BROKEN: "a ${A.b}" } },
+            },
+          };
+
+          expect(() =>
+            interpolateSpec(spec, { ...mockSettings, keyInterpolation }),
+          ).toThrow(
+            'services.app.environment.BROKEN: Invalid interpolation format "${A.b}"',
+          );
+        },
+      );
+
+      it("should name where a malformed reference in a key is", () => {
+        const spec: ComposeSpec = {
+          services: { "${NAME": { image: "nginx" } },
+        };
+
+        expect(() =>
+          interpolateSpec(spec, { ...mockSettings, keyInterpolation: true }),
+        ).toThrow('services.${NAME: Invalid interpolation format "${NAME"');
+      });
+
       it("should interpolate keys and values separately when keyInterpolation is enabled", () => {
         const settings = {
           ...mockSettings,
@@ -1945,7 +2051,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: "${PASSWORD}",
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
@@ -1958,7 +2063,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: 'p"a\\ss\nword',
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
@@ -1972,13 +2076,17 @@ describe("Compose", () => {
     const settings = defineSettings({
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
       monitorTimeout: 300,
+      secretValues: new Map(),
       stack: "test-stack",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map([
         ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
         ["MATCHORY_DEPLOYMENT_VERSION", "ebadf1"],

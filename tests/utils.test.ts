@@ -337,50 +337,6 @@ describe("Utilities", () => {
       });
     });
 
-    describe("Strict mode", () => {
-      it("should throw error in strict mode when variable is undefined", () => {
-        const variables = new Map<string, string>();
-        expect(() => interpolateString("Hello $NAME", variables, true)).toThrow(
-          'Variable "NAME" is not defined.',
-        );
-      });
-
-      it("should not throw error in strict mode when variable is defined", () => {
-        const variables = new Map([["NAME", "John"]]);
-        expect(interpolateString("Hello $NAME", variables, true)).toBe(
-          "Hello John",
-        );
-      });
-
-      it("should not throw error in strict mode when variable is empty", () => {
-        const variables = new Map([["NAME", ""]]);
-        expect(interpolateString("Hello $NAME", variables, true)).toBe(
-          "Hello ",
-        );
-      });
-
-      it("should not throw error in strict mode when using default values", () => {
-        const variables = new Map<string, string>();
-        expect(
-          interpolateString("Hello ${NAME:-default}", variables, true),
-        ).toBe("Hello default");
-      });
-
-      it("should not throw error in strict mode when using alternative values", () => {
-        const variables = new Map<string, string>();
-        expect(
-          interpolateString("Hello ${NAME:+alternative}", variables, true),
-        ).toBe("Hello ");
-      });
-
-      it("should handle multiple undefined variables in strict mode", () => {
-        const variables = new Map<string, string>();
-        expect(() =>
-          interpolateString("Hello $NAME $SURNAME", variables, true),
-        ).toThrow('Variable "NAME" is not defined.');
-      });
-    });
-
     describe("Undefined variable callback", () => {
       it("should report each use of an undefined variable", () => {
         const onUndefined = vi.fn();
@@ -390,7 +346,6 @@ describe("Utilities", () => {
           interpolateString(
             "$GREETING ${NAME} ${SURNAME} $GREETING",
             variables,
-            false,
             onUndefined,
           ),
         ).toBe(" John  ");
@@ -408,7 +363,7 @@ describe("Utilities", () => {
           ["EMPTY", ""],
         ]);
 
-        interpolateString("$NAME ${EMPTY}", variables, false, onUndefined);
+        interpolateString("$NAME ${EMPTY}", variables, onUndefined);
         expect(onUndefined).not.toHaveBeenCalled();
       });
 
@@ -419,7 +374,6 @@ describe("Utilities", () => {
           interpolateString(
             "${A:-a} ${B-b} ${C:+c} ${D+d}",
             new Map(),
-            false,
             onUndefined,
           ),
         ).toBe("a b  ");
@@ -434,7 +388,6 @@ describe("Utilities", () => {
           interpolateString(
             "${A:-${B}} ${SET:+${C}} ${SET:-${D}}",
             variables,
-            false,
             onUndefined,
           ),
         ).toBe("  1");
@@ -445,7 +398,7 @@ describe("Utilities", () => {
         const onUndefined = vi.fn();
 
         expect(
-          interpolateString("$$NAME $${NAME}", new Map(), false, onUndefined),
+          interpolateString("$$NAME $${NAME}", new Map(), onUndefined),
         ).toBe("$NAME ${NAME}");
         expect(onUndefined).not.toHaveBeenCalled();
       });
@@ -462,10 +415,54 @@ describe("Utilities", () => {
         expect(interpolateString("$", variables)).toBe("$");
       });
 
-      it("should handle malformed variable syntax", () => {
+      it("should reject an unterminated reference", () => {
         const variables = new Map<string, string>();
-        expect(interpolateString("${", variables)).toBe("${");
+        expect(() => interpolateString("${", variables)).toThrow(
+          'Invalid interpolation format "${"',
+        );
       });
+
+      it.each([
+        ["${A.b}", "${A.b}"],
+        ["${}", "${}"],
+        ["${ FOO}", "${ FOO}"],
+        ["${1A}", "${1A}"],
+        ["${FOO:x}", "${FOO:x}"],
+        ["${FOO:}", "${FOO:}"],
+        ["${FOO#x}", "${FOO#x}"],
+        ["${FOO/x/y}", "${FOO/x/y}"],
+        ["${FOO:=x}", "${FOO:=x}"],
+        ["a ${FOO-x} ${A.b} c", "${A.b}"],
+        ["${FOO", "${FOO"],
+        ["${FOO:-a", "${FOO:-a"],
+      ])(
+        "should reject the malformed reference in %s, as Compose does",
+        (input, text) => {
+          expect(() => interpolateString(input, new Map())).toThrow(
+            `Invalid interpolation format "${text}". You may need to escape ` +
+              "any $ with another $.",
+          );
+        },
+      );
+
+      it.each([
+        ["a$ b", "a$ b"],
+        ["a$-b", "a$-b"],
+        ["a$", "a$"],
+        ["x$.y", "x$.y"],
+        ["$1", "$1"],
+        ["$}", "$}"],
+        ["{$FOO}", "{foo}"],
+        ["$FOO.bar", "foo.bar"],
+        ["${FOO:-a}b}", "foob}"],
+      ])(
+        "should keep a dollar sign not followed by a name in %s",
+        (input, expected) => {
+          expect(interpolateString(input, new Map([["FOO", "foo"]]))).toBe(
+            expected,
+          );
+        },
+      );
 
       it("should handle variables with special characters (should not match)", () => {
         const variables = new Map([["VAR", "value"]]);
@@ -592,9 +589,22 @@ describe("Utilities", () => {
         );
       });
 
-      it("should leave an unterminated nested default literal", () => {
-        const variables = new Map<string, string>();
-        expect(interpolateString("${FOO:-${BAR}", variables)).toBe("${FOO:-");
+      it("should reject an unterminated nested default", () => {
+        const variables = new Map([["FOO", "foo"]]);
+        expect(() => interpolateString("${FOO:-${BAR}", variables)).toThrow(
+          'Invalid interpolation format "${FOO:-${BAR}"',
+        );
+      });
+
+      it("should reject a malformed reference in a used default", () => {
+        expect(() => interpolateString("${FOO-${A.b}}", new Map())).toThrow(
+          'Invalid interpolation format "${A.b}"',
+        );
+      });
+
+      it("should not reject a malformed reference in an unused default", () => {
+        const variables = new Map([["FOO", "foo"]]);
+        expect(interpolateString("${FOO-${A.b}}", variables)).toBe("foo");
       });
     });
 
@@ -681,15 +691,6 @@ describe("Utilities", () => {
         expect(() => interpolateString("${VAR:?}", variables)).toThrow(
           "Failed to resolve variable VAR: it is required but has no value. " +
             'Set it via the "variables" or "secrets" input',
-        );
-      });
-
-      it("should handle strict mode errors with clear messages", () => {
-        const variables = new Map<string, string>();
-        expect(() => interpolateString("$UNDEFINED", variables, true)).toThrow(
-          'Variable "UNDEFINED" is not defined. Set it via the "variables" ' +
-            'or "secrets" input, or in the workflow environment, or set ' +
-            '"strict-variables: false" to substitute an empty string instead.',
         );
       });
     });
