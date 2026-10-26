@@ -329,7 +329,7 @@ The following syntax is supported for variable interpolation:
 ```
 
 In contrast to the legacy Compose File v3 format, the Compose Specification (and the implementation in this action) do
-allow for unlimited recursive interpolation, meaning that the following will work as expected:
+allow for unlimited nesting in default and alternative values, meaning that the following will work as expected:
 
 ```yaml
 - "${FOO:-${BAR:-${BAZ}}}"

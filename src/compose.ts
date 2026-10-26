@@ -453,12 +453,32 @@ export function interpolateSpec(
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
 ) {
-  // Interpolating keys means interpolating the serialized JSON as one string,
-  // which the per-string walk cannot express.
+  // mapStrings leaves keys alone, so interpolating them needs its own walk.
+  // Each key and value is interpolated on its own, so a value is never
+  // spliced into serialized JSON and a template cannot span two strings.
   if (keyInterpolation) {
-    return JSON.parse(
-      interpolateString(JSON.stringify(composeSpec), variables),
-    ) as ComposeSpec;
+    const walk = (node: unknown): unknown => {
+      if (typeof node === "string") {
+        return interpolateString(node, variables);
+      }
+
+      if (Array.isArray(node)) {
+        return node.map(walk);
+      }
+
+      if (node && typeof node === "object") {
+        return Object.fromEntries(
+          Object.entries(node).map(([key, value]) => [
+            interpolateString(key, variables),
+            walk(value),
+          ]),
+        );
+      }
+
+      return node;
+    };
+
+    return walk(composeSpec) as ComposeSpec;
   }
 
   return mapStrings(composeSpec, (value) =>
