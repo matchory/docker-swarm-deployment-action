@@ -10,6 +10,7 @@ import { deployStack } from "./engine.js";
 import { validateHealthChecks } from "./healthcheck.js";
 import { monitorDeployment } from "./monitoring.js";
 import type { Settings } from "./settings.js";
+import { assertOwnShares } from "./shares.js";
 import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
 
 /**
@@ -29,6 +30,8 @@ export async function deploy(settings: Readonly<Settings>) {
     const composeSpec = await normalizeSpec(composeSpecs, settings);
     finalSpec = interpolateSpec(composeSpec, settings);
 
+    // After interpolation: volume names are often built from variables.
+    assertOwnShares(finalSpec, settings.stack);
     validateHealthChecks(finalSpec, settings);
 
     await deployStack(finalSpec, settings);
