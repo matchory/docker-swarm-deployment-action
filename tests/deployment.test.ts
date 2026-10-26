@@ -186,6 +186,37 @@ describe("Deployment", () => {
       );
     });
 
+    it("should not prune variables if variable management is disabled", async () => {
+      const settings = defineSettings({
+        envVarPrefix: "",
+        keyInterpolation: false,
+        manageVariables: false,
+        monitor: false,
+        monitorInterval: 0,
+        monitorTimeout: 0,
+        stack: "test-stack",
+        strictVariables: false,
+        variables: new Map(),
+        version: "1.2.3",
+      });
+      const spec = { services: { web: { image: "nginx:latest" } } };
+
+      vi.spyOn(compose, "resolveComposeFiles").mockResolvedValue([
+        "docker-compose.yaml",
+      ]);
+      vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
+        { spec, baseDir: "." },
+      ]);
+      vi.spyOn(compose, "normalizeSpec").mockResolvedValue(spec);
+      vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
+      vi.spyOn(variables, "removeGeneratedVariableFiles").mockResolvedValue();
+
+      await deploy(settings);
+
+      expect(engine.deployStack).toHaveBeenCalled();
+      expect(variables.pruneVariables).not.toHaveBeenCalled();
+    });
+
     it("should monitor the deployed services post-deployment if enabled", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
