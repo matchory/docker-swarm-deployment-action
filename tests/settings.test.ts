@@ -443,6 +443,49 @@ VAR3=value with spaces`;
       expect(settings.variables.get("VAR3")).toBe("value with spaces");
     });
 
+    it("should split key=value pairs on the first equals sign only", () => {
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            variables: "A=x = y\nB==b=\n  C = c",
+          })[name] || "",
+      );
+
+      const settings = parseSettings(env);
+
+      expect(settings.variables.get("A")).toBe("x = y");
+      expect(settings.variables.get("B")).toBe("=b=");
+      expect(settings.variables.get("C")).toBe(" c");
+    });
+
+    it("should keep surrounding whitespace in values as written", () => {
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            secrets: "PASSWORD= secret \nOTHER=value",
+          })[name] || "",
+      );
+
+      const settings = parseSettings(env);
+
+      expect(settings.variables.get("PASSWORD")).toBe(" secret ");
+      expect(settings.variables.get("OTHER")).toBe("value");
+    });
+
+    it("should drop the carriage return of CRLF line endings", () => {
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({
+            variables: "A=a\r\nB= b \r\n",
+          })[name] || "",
+      );
+
+      const settings = parseSettings(env);
+
+      expect(settings.variables.get("A")).toBe("a");
+      expect(settings.variables.get("B")).toBe(" b ");
+    });
+
     it("should ignore comments within multi-line variables", () => {
       const variablesInput = `CONFIG<<EOF
 # This is a comment in the config
