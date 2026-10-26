@@ -527,7 +527,7 @@ describe("Monitoring", () => {
           UpdateStatus: { State: "updating" },
         },
       ] as Awaited<ReturnType<typeof engine.listServices>>);
-      vi.spyOn(engine, "inspectService").mockImplementation(() => {
+      vi.spyOn(engine, "listServiceTasks").mockImplementation(() => {
         throw "string error";
       });
       const settings = defineSettings({

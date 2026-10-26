@@ -794,6 +794,56 @@ describe("Compose", () => {
   describe("normalizeSpec override-tag merge", () => {
     beforeEach(() => vi.clearAllMocks());
 
+    it("restores the declared version and reports through the caller's warner", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // `docker compose config` drops `version` and leaves typed fields as
+      // strings when interpolation is off.
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "${N}" } } },
+      });
+      const reconcileSpy = vi
+        .spyOn(reconcile, "reconcileSwarmCompatibility")
+        .mockResolvedValue(undefined);
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+      const onUndefined = vi.fn();
+
+      const specs = [
+        {
+          spec: {
+            version: "3.12",
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(normalizeSpec(specs, settings, onUndefined)).rejects.toThrow(
+        /replicas must be an integer/,
+      );
+
+      expect(onUndefined).toHaveBeenCalledWith("N");
+      expect(reconcileSpy).not.toHaveBeenCalled();
+
+      vi.mocked(yaml.load).mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "2" } } },
+      });
+
+      await normalizeSpec(specs, settings, onUndefined);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ version: "3.12" }),
+        settings,
+      );
+    });
+
     it("merges via docker compose then reconciles + normalizes when tags are present", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
       vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
@@ -2129,10 +2179,10 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "test-stack",
             MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -2168,10 +2218,10 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "test-stack",
             MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -2218,11 +2268,11 @@ describe("Compose", () => {
           "different-name",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "different-name",
             MATCHORY_DEPLOYMENT_VERSION: "abcd123",
             CUSTOM_VAR: "custom_value",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
