@@ -557,7 +557,7 @@ describe("Variables", () => {
         expect(writeFile).toHaveBeenCalledWith(
           expect.any(String),
           "a=\nb=\nc=c",
-          "utf8",
+          { encoding: "utf8", mode: 0o600 },
         );
       });
 
