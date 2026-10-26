@@ -63,7 +63,7 @@ export async function monitorDeployment(
       );
       for (let i = 0; i < pendingOnTimeout.length; i++) {
         const service = pendingOnTimeout[i];
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         const healthcheck = findServiceHealthCheck(spec, name);
         await buildFailureReport(
           service.ID,
@@ -76,10 +76,10 @@ export async function monitorDeployment(
 
       const convergedNames = services
         .filter((s) => completedServices.has(s.ID))
-        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
+        .map(displayName);
       const pendingNames = services
         .filter((s) => !completedServices.has(s.ID))
-        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
+        .map(displayName);
 
       // Job summary table for partial success
       core.summary.addHeading("Deployment timeout summary", 2);
@@ -168,7 +168,7 @@ export async function monitorDeployment(
     // Process completions first
     for (const [service, result] of checks) {
       if (result.kind === "complete") {
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         core.info(`Service "${name}" has been deployed successfully`);
         completedServices.add(service.ID);
       }
@@ -190,7 +190,7 @@ export async function monitorDeployment(
     );
     if (failures.length > 0) {
       for (const [service, result] of failures) {
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         const healthcheck = findServiceHealthCheck(spec, name);
         if (result.kind === "stuck") {
           await buildFailureReport(
@@ -218,8 +218,7 @@ export async function monitorDeployment(
       }
 
       const [firstService, firstResult] = failures[0];
-      const firstName =
-        firstService.Spec?.Name ?? firstService.Name ?? firstService.ID;
+      const firstName = displayName(firstService);
       if (firstResult.kind === "stuck") {
         throw new Error(
           `Service "${firstName}" failed: all tasks are in a failed state`,
@@ -349,6 +348,12 @@ export function isServiceRunning(
   core.debug(`Service "${name}" is not running`);
 
   return false;
+}
+
+function displayName(
+  service: Pick<ServiceWithMetadata, "Spec" | "Name" | "ID">,
+) {
+  return service.Spec?.Name ?? service.Name ?? service.ID;
 }
 
 async function fetchTasks(serviceId: string): Promise<TaskStatus[] | null> {

@@ -503,6 +503,37 @@ services:
       });
     });
 
+    it("should replace relative timestamps with exact ones", async () => {
+      mockedExec.mockImplementation(async (_0, args, options) => {
+        const line =
+          args?.[1] === "ls"
+            ? {
+                ID: "sec1",
+                Name: "my_secret",
+                Labels: "",
+                CreatedAt: "2 hours ago",
+                UpdatedAt: "2 hours ago",
+              }
+            : {
+                ID: "sec1",
+                CreatedAt: "2026-03-07T17:44:28.484060447Z",
+                UpdatedAt: "2026-03-07T17:44:28.484060447Z",
+              };
+        options?.listeners?.stdout?.(Buffer.from(`${JSON.stringify(line)}\n`));
+        return 0;
+      });
+
+      const secrets = await engine.listSecrets({});
+
+      expect(mockedExec).toHaveBeenLastCalledWith(
+        "docker",
+        ["secret", "inspect", expect.any(String), "sec1"],
+        expect.any(Object),
+      );
+      expect(secrets[0].CreatedAt).toBe("2026-03-07T17:44:28.484060447Z");
+      expect(secrets[0].UpdatedAt).toBe("2026-03-07T17:44:28.484060447Z");
+    });
+
     it("should handle filters correctly", async () => {
       await engine.listSecrets({
         id: "sec1",

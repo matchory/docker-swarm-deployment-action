@@ -47,7 +47,11 @@ export async function deploy(settings: Readonly<Settings>) {
     await monitorDeployment(settings, finalSpec);
   }
 
-  await pruneVariables(finalSpec, settings);
+  // Without variable management, the spec carries no deployment labels, so
+  // pruning would treat every variable of the stack as outdated.
+  if (settings.manageVariables) {
+    await pruneVariables(finalSpec, settings);
+  }
 
   return finalSpec;
 }
