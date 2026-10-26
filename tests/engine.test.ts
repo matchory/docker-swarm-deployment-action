@@ -361,44 +361,30 @@ services:
         /Failed to list services/,
       );
     });
-  });
 
-  describe("inspectService", () => {
-    it("should inspect a service and parse JSON", async () => {
-      const mockService = { ID: "abc", Spec: { Name: "test" } };
-      const mockOutput = JSON.stringify(mockService);
-      mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from(mockOutput));
+    it("should throw error on invalid inspect JSON", async () => {
+      mockedExec.mockImplementation(async (_0, args, options) => {
+        const output = args?.includes("ls")
+          ? JSON.stringify(mockServiceMetadata)
+          : "invalid json";
+        options?.listeners?.stdout?.(Buffer.from(output));
         return 0;
       });
-
-      const service = await engine.inspectService("abc");
-
-      expect(mockedExec).toHaveBeenCalledWith(
-        "docker",
-        ["service", "inspect", "--format=json", "abc"],
-        expect.any(Object),
-      );
-      expect(service).toEqual(mockService);
-    });
-
-    it("should throw error on invalid JSON", async () => {
-      mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from("invalid json"));
-        return 0;
-      });
-      await expect(engine.inspectService("abc")).rejects.toThrowError(
+      await expect(engine.listServices({}, true)).rejects.toThrowError(
         /could not be parsed as JSON/,
       );
     });
 
-    it("should report a not-found error (not a parse bug) for an empty result", async () => {
-      mockedExec.mockImplementation(async (_0, _1, options) => {
-        options?.listeners?.stdout?.(Buffer.from("[]"));
+    it("should report a service missing from the inspect output", async () => {
+      mockedExec.mockImplementation(async (_0, args, options) => {
+        const output = args?.includes("ls")
+          ? JSON.stringify(mockServiceMetadata)
+          : "[]";
+        options?.listeners?.stdout?.(Buffer.from(output));
         return 0;
       });
-      await expect(engine.inspectService("abc")).rejects.toThrowError(
-        /Service "abc" was not found on the Swarm/,
+      await expect(engine.listServices({}, true)).rejects.toThrowError(
+        /was not found on the Swarm/,
       );
     });
   });

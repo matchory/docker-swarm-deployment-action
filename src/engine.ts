@@ -199,19 +199,6 @@ export async function listServices(
   }
 }
 
-export async function inspectService(id: string) {
-  const [service] = await inspectServices([id]);
-
-  if (!service) {
-    throw new Error(
-      `Service "${id}" was not found on the Swarm. It may have been ` +
-        "removed, or the deployment may not have created it.",
-    );
-  }
-
-  return service;
-}
-
 async function inspectServices(ids: string[]) {
   const output = await executeDockerCommand(
     ["service", "inspect", "--format=json", ...ids],

@@ -29,10 +29,6 @@ export async function inlineEnvFiles(
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
-  // Relative paths resolve against the working directory, as they always have
-  // on the tag-free path, where the generated spec file is written there; the
-  // merge-tag path follows suit, like `file:` sources do.
-  const baseDir = ".";
   const names = new Set(
     prepared.flatMap(({ spec }) => fieldsOf(spec.services)?.keys() ?? []),
   );
@@ -85,11 +81,10 @@ export async function inlineEnvFiles(
             );
           }
 
+          // Relative paths resolve against the working directory on both
+          // merge paths, like `file:` sources of configs and secrets do.
           files.push({
-            path: resolve(
-              baseDir,
-              interpolateString(path, variables, onUndefined),
-            ),
+            path: resolve(interpolateString(path, variables, onUndefined)),
             required: required !== false,
           });
         }

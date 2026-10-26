@@ -161,9 +161,10 @@ trust whichever host answers:
   uses: matchory/docker-swarm-deployment-action@v1
 ```
 
-Don't list `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, `HOME`, `PATH`, or `SSH_AUTH_SOCK` in
-`exclude-variables`: the action passes the merged variables to the Docker commands it runs, so excluding them would
-point some of those commands at a different daemon or keep them from reaching it over SSH.
+Set `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, `HOME`, `PATH`, and `SSH_AUTH_SOCK` in the step's `env`, not
+through the `variables`, `secrets`, or `extra-variables` inputs: the action passes those inputs only to
+`docker stack config` and `docker stack deploy`, so they would point just these two commands at a different daemon.
+Listing them in `exclude-variables` is harmless, since every Docker command keeps the process environment.
 
 ## ⚙ Configuration
 

@@ -449,7 +449,8 @@ async function mergeThenReconcile(
 
     // It also drops `version`, which would leave `docker stack config` to
     // validate against its own default schema instead of the one the inputs
-    // declare (loadComposeSpecs gives every input the same version).
+    // declare (loadComposeSpecs gives inputs without one the first declared
+    // version; if inputs declare different versions, the first file's wins).
     mergedSpec.version = prepared[0].spec.version;
 
     await reconcileSwarmCompatibility(mergedSpec, settings);
