@@ -386,16 +386,16 @@ The action will automatically create files for these configs, and the resulting 
 ```yaml
 configs:
   app_url:
-    file: ./app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
+    file: /home/runner/work/app/app/app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
     # omitting rest for brevity
   database_username:
-    file: ./database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
+    file: /home/runner/work/app/app/database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
     # omitting rest for brevity
 ```
 
-The action will create the files in the working directory and append a unique identifier to the filename to avoid
-conflicts. The files are removed once the deployment no longer needs them — including when the deployment fails — so no
-plain variable values are left behind for a later job to read.
+The action will create the files in the working directory, readable only by the runner user, and append a unique
+identifier to the filename to avoid conflicts. The files are removed once the deployment no longer needs them —
+including when the deployment fails — so no plain variable values are left behind for a later job to read.
 
 #### Smart Variable Resolution
 
@@ -549,7 +549,7 @@ The action will transform it to:
 configs:
   database_username:
     name: YOUR_STACK-database_username-53175bc
-    file: ./database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
+    file: /home/runner/work/app/app/database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
     labels:
       com.matchory.deployment.name: database_username
       com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a
