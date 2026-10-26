@@ -293,7 +293,45 @@ describe("Compose", () => {
 
       await expect(
         loadComposeSpecs(["docker-compose.yaml"], settings),
-      ).rejects.toThrowError();
+      ).rejects.toThrowError(
+        'Compose file "docker-compose.yaml" has no services to deploy',
+      );
+    });
+
+    it("should accept a file without services when another file has them", async () => {
+      const servicesSpec = defineComposeSpec({
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+      });
+      vi.spyOn(utils, "exists").mockResolvedValue(true);
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "load")
+        .mockReturnValueOnce(servicesSpec)
+        .mockReturnValueOnce({ version: "3.8", networks: { shared: {} } });
+
+      await expect(
+        loadComposeSpecs(["compose.yaml", "compose.networks.yaml"], settings),
+      ).resolves.toEqual([
+        { spec: servicesSpec, baseDir: "." },
+        {
+          spec: { version: "3.8", services: {}, networks: { shared: {} } },
+          baseDir: ".",
+        },
+      ]);
+    });
+
+    it("should throw an error if none of the compose files have services", async () => {
+      vi.spyOn(utils, "exists").mockResolvedValue(true);
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "load")
+        .mockReturnValueOnce({ version: "3.8" })
+        .mockReturnValueOnce({ version: "3.8", services: {} });
+
+      await expect(
+        loadComposeSpecs(["a.yaml", "b.yaml"], settings),
+      ).rejects.toThrowError(
+        "None of the Compose files (a.yaml, b.yaml) have any services to deploy",
+      );
     });
   });
 
@@ -357,16 +395,10 @@ describe("Compose", () => {
       });
     });
 
-    it("should throw an error if the compose file does not have a services section", async () => {
+    it("should default a missing services section to an empty one", async () => {
       await expect(
         prepareSpec({ version: "3.8" } as ComposeSpec, settings),
-      ).rejects.toThrowError();
-    });
-
-    it("should throw an error if the compose file has an empty services section", async () => {
-      await expect(
-        prepareSpec({ version: "3.8", services: {} } as ComposeSpec, settings),
-      ).rejects.toThrowError();
+      ).resolves.toEqual({ version: "3.8", services: {} });
     });
 
     it("should process secrets and configs in the compose specification", async () => {
@@ -526,6 +558,39 @@ describe("Compose", () => {
         ),
       ).rejects.toThrow(/All services were removed during reconciliation/);
     });
+
+    it("accepts a file whose services are all removed when another file has services left", async () => {
+      const outputSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+      };
+      vi.spyOn(yaml, "load").mockReturnValue(outputSpec);
+      vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
+
+        return 0;
+      });
+
+      await expect(
+        normalizeSpec(
+          [
+            {
+              spec: defineComposeSpec({
+                services: { web: { image: "nginx:latest" } },
+              }),
+              baseDir: ".",
+            },
+            {
+              spec: defineComposeSpec({
+                services: { ai: { provider: { type: "model-runner" } } },
+              }),
+              baseDir: ".",
+            },
+          ],
+          { ...settings, manageVariables: false, strictCompatibility: false },
+        ),
+      ).resolves.toEqual(outputSpec);
+    });
   });
 
   describe("Spec Normalization and Merging", () => {
@@ -584,6 +649,42 @@ describe("Compose", () => {
         filename: "docker-compose.yaml",
         json: true,
       });
+    });
+
+    it("should merge a spec without services into one that has them", async () => {
+      const outputSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+        networks: { shared: {} },
+      };
+      vi.spyOn(crypto, "randomUUID")
+        .mockReturnValueOnce("10000000-0000-4000-0000-000000000000")
+        .mockReturnValueOnce("20000000-0000-4000-0000-000000000000");
+      vi.spyOn(yaml, "load").mockReturnValue(outputSpec);
+      vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
+
+        return 0;
+      });
+
+      await expect(
+        normalizeSpec(
+          [
+            {
+              spec: {
+                version: "3.8",
+                services: { web: { image: "nginx:latest" } },
+              },
+              baseDir: ".",
+            },
+            {
+              spec: { version: "3.8", services: {}, networks: { shared: {} } },
+              baseDir: ".",
+            },
+          ],
+          settings,
+        ),
+      ).resolves.toEqual(outputSpec);
     });
 
     it("writes generated files in the working directory (non-tag path)", async () => {
