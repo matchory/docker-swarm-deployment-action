@@ -86,9 +86,9 @@ so a dependency bump alone makes `check-dist.yml` and
 runs on pushes to main that touch `package.json` or
 `package-lock.json`, regenerates both, and opens a pull request.
 It runs post-merge rather than on the Dependabot PR because
-Dependabot-triggered runs get a read-only token. Note that pull
-requests it opens do not trigger other workflows, since they are
-created with `GITHUB_TOKEN`.
+Dependabot-triggered runs get a read-only token. It opens the pull
+request and commits through the API with a GitHub App token, so
+the commit is signed and the usual checks run on the pull request.
 
 `licensed.yml` only reports; it never writes to `.licenses/`.
 

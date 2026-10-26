@@ -98,7 +98,7 @@ jobs:
       # can never approve its own changes. Its pushes are also unsigned, which
       # the signed-commits ruleset rejects. Use a short-lived GitHub App token
       # for both instead, which also means the checks run on the pull request.
-      # Needs the repository variable PR_BOT_APP_ID and secret
+      # Needs the repository variable PR_BOT_CLIENT_ID and secret
       # PR_BOT_PRIVATE_KEY for an app with contents: write and
       # pull-requests: write on this repository.
       - name: Mint App Token
@@ -106,8 +106,10 @@ jobs:
         if: ${{ steps.changes.outputs.changed == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.PR_BOT_APP_ID }}
+          client-id: ${{ vars.PR_BOT_CLIENT_ID }}
           private-key: ${{ secrets.PR_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Open Pull Request
         id: pull-request
@@ -118,38 +120,42 @@ jobs:
         run: |
           # GitHub only signs commits an app creates through the API, not ones
           # it pushes, so the commit is built with `createCommitOnBranch`
-          # rather than `git commit`. Reset the branch onto the checked-out
-          # commit first, creating it if needed, so the commit lands on top.
+          # rather than `git commit`. That mutation only appends to an
+          # existing branch, so build the commit on a throwaway branch cut
+          # from the checked-out commit, then move the real branch onto it in
+          # one update. Resetting the real branch first would briefly leave
+          # an open pull request with no changes, which GitHub closes.
           set -o pipefail
           head=$(git rev-parse HEAD)
-          ref="repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+          repo="repos/$GITHUB_REPOSITORY/git"
+          staging="$BRANCH-$GITHUB_RUN_ID"
 
-          if gh api "$ref" >/dev/null 2>&1; then
-            gh api --method PATCH "$ref" -f sha="$head" -F force=true >/dev/null
-          else
-            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f ref="refs/heads/$BRANCH" -f sha="$head" >/dev/null
-          fi
+          gh api "$repo/refs" \
+            -f ref="refs/heads/$staging" -f sha="$head" >/dev/null
+          trap 'gh api --method DELETE "$repo/refs/heads/$staging" >/dev/null' EXIT
 
+          # NUL-separated so git does not quote unusual paths, which would
+          # make `base64` fail inside the process substitution unnoticed and
+          # commit the file empty.
           git add --all dist .licenses
-          git diff --cached --name-only --no-renames --diff-filter=d |
-            while read -r path; do
+          git diff --cached --name-only -z --no-renames --diff-filter=d |
+            while IFS= read -r -d '' path; do
               jq --null-input --arg path "$path" \
                 --rawfile contents <(base64 --wrap=0 "$path") \
                 '{path: $path, contents: $contents}'
             done | jq --slurp . >"$RUNNER_TEMP/additions.json"
-          git diff --cached --name-only --no-renames --diff-filter=D |
-            jq --raw-input --slurp 'split("\n") | map(select(. != "") | {path: .})' \
+          git diff --cached --name-only -z --no-renames --diff-filter=D |
+            jq --raw-input --slurp 'split("\u0000") | map(select(. != "") | {path: .})' \
             >"$RUNNER_TEMP/deletions.json"
 
           jq --null-input \
             --arg repository "$GITHUB_REPOSITORY" \
-            --arg branch "$BRANCH" \
+            --arg branch "$staging" \
             --arg head "$head" \
             --slurpfile additions "$RUNNER_TEMP/additions.json" \
             --slurpfile deletions "$RUNNER_TEMP/deletions.json" \
             '{
-              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
               variables: {input: {
                 branch: {repositoryNameWithOwner: $repository, branchName: $branch},
                 expectedHeadOid: $head,
@@ -157,8 +163,18 @@ jobs:
                 fileChanges: {additions: $additions[0], deletions: $deletions[0]}
               }}
             }' >"$RUNNER_TEMP/commit.json"
-          gh api graphql --input "$RUNNER_TEMP/commit.json" \
-            --jq '.data.createCommitOnBranch.commit.url'
+          commit=$(gh api graphql --input "$RUNNER_TEMP/commit.json" \
+            --jq '.data.createCommitOnBranch.commit.oid')
+
+          # `git/ref/` (singular) matches exactly; `git/refs/` would also
+          # answer 200 for other branches that merely share this prefix.
+          if gh api "$repo/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            gh api --method PATCH "$repo/refs/heads/$BRANCH" \
+              -f sha="$commit" -F force=true >/dev/null
+          else
+            gh api "$repo/refs" \
+              -f ref="refs/heads/$BRANCH" -f sha="$commit" >/dev/null
+          fi
 
           open=$(gh pr list --head "$BRANCH" --state open --json number \
             --jq '.[].number')
@@ -177,7 +193,7 @@ jobs:
 
           `dist/` was rebuilt from a clean `npm ci`, so it reflects the current
           lockfile rather than a stale `node_modules`, and `licensed status`
-          passed before this branch was pushed.
+          passed before this branch was updated.
 
           Close this pull request if the change is not wanted; it will be
           recreated the next time a dependency changes.
