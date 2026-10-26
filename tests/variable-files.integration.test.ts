@@ -108,39 +108,49 @@ async function normalizeSecretFiles(
   }
 }
 
-suite("variable files with a compose file in a subdirectory", () => {
-  it("points at existing files on the merge-tag path", async () => {
-    const { dir, files, exist, mode } = await normalizeSecretFiles(
-      "services:\n  web:\n    deploy: !override\n      replicas: 2\n",
-    );
+// Docker's first invocation on a fresh CI runner can take several seconds,
+// so the default 5s per-test timeout is too tight for real CLI calls.
+suite(
+  "variable files with a compose file in a subdirectory",
+  { timeout: 30_000 },
+  () => {
+    it("points at existing files on the merge-tag path", async () => {
+      const { dir, files, exist, mode } = await normalizeSecretFiles(
+        "services:\n  web:\n    deploy: !override\n      replicas: 2\n",
+      );
 
-    expect(files).toHaveLength(2);
-    expect(exist).toEqual([true, true]);
-    expect(files).toContain(join(dir, "api.secret"));
-    expect(mode).toBe(0o600);
-  });
+      expect(files).toHaveLength(2);
+      expect(exist).toEqual([true, true]);
+      expect(files).toContain(join(dir, "api.secret"));
+      expect(mode).toBe(0o600);
+    });
 
-  it("points at existing files on the tag-free path", async () => {
-    const { dir, files, exist, mode } = await normalizeSecretFiles(
-      "services:\n  web:\n    deploy:\n      replicas: 2\n",
-    );
+    it("points at existing files on the tag-free path", async () => {
+      const { dir, files, exist, mode } = await normalizeSecretFiles(
+        "services:\n  web:\n    deploy:\n      replicas: 2\n",
+      );
 
-    expect(files).toHaveLength(2);
-    expect(exist).toEqual([true, true]);
-    expect(files).toContain(join(dir, "api.secret"));
-    expect(mode).toBe(0o600);
-  });
-});
+      expect(files).toHaveLength(2);
+      expect(exist).toEqual([true, true]);
+      expect(files).toContain(join(dir, "api.secret"));
+      expect(mode).toBe(0o600);
+    });
+  },
+);
 
-suite("variable files in a working directory containing a dollar sign", () => {
-  it("points at existing files after interpolation", async () => {
-    const { dir, files, exist } = await normalizeSecretFiles(
-      "services:\n  web:\n    deploy:\n      replicas: 2\n",
-      "variable-files-$HOME-",
-    );
+suite(
+  "variable files in a working directory containing a dollar sign",
+  { timeout: 30_000 },
+  () => {
+    it("points at existing files after interpolation", async () => {
+      const { dir, files, exist } = await normalizeSecretFiles(
+        "services:\n  web:\n    deploy:\n      replicas: 2\n",
+        "variable-files-$HOME-",
+      );
 
-    expect(dir).toContain("$HOME");
-    expect(exist).toEqual([true, true]);
-    expect(files).toContain(join(dir, "api.secret"));
-  });
-});
+      expect(dir).toContain("$HOME");
+      expect(exist).toEqual([true, true]);
+      expect(files).toContain(join(dir, "api.secret"));
+    });
+  },
+);

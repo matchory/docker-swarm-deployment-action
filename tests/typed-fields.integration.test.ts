@@ -27,7 +27,9 @@ const suite = dockerAvailable() ? describe : describe.skip;
 // `docker stack config --skip-interpolation` validates the schema while
 // variable references are still strings, so typed fields must already hold
 // their final type when the real CLI sees them (issue #207).
-suite("typed fields against docker stack config", () => {
+// Docker's first invocation on a fresh CI runner can take several seconds,
+// so the default 5s per-test timeout is too tight for real CLI calls.
+suite("typed fields against docker stack config", { timeout: 30_000 }, () => {
   const settings = { variables: new Map<string, string>() };
 
   async function normalize(spec: ComposeSpec) {
