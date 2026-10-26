@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
@@ -68,9 +69,12 @@ export async function processVariable(
   let content: string | undefined;
 
   // If a variable names a file explicitly, we need to check if the file exists.
+  // The path is made absolute against the working directory, so the file we
+  // hash is the one deployed, wherever Docker writes the spec it resolves from.
   if ("file" in variable) {
     try {
       content = await readFromFile(name, variable);
+      modifiedVariable = { ...variable, file: resolve(variable.file) };
     } catch (error) {
       if (strictVariables) {
         throw error;
@@ -207,7 +211,7 @@ async function inferVariable(
     variables,
   }: Pick<Settings, "envVarPrefix" | "stack" | "variables">,
 ): Promise<[string, FileVariable]> {
-  const filePath = `./${name}.secret`;
+  const filePath = resolve(`${name}.secret`);
 
   // If the variable doesn't specify a source, we need to check if it exists;
   // first as a file, then as an environment variable in several variants.
@@ -239,7 +243,6 @@ async function inferVariable(
         `Loading variable "${name}" from environment variable "${variant}"`,
       );
 
-      (variable as EnvironmentVariable).environment = variant;
       const value = variables.get(variant) ?? "";
 
       return [value, await transformVariable(value, name, variable)] as const;
@@ -370,21 +373,25 @@ async function transformVariable(
   variable: Variable,
 ): Promise<FileVariable> {
   // Generate a random file name for the secret, so it doesn't conflict with
-  // existing files in the repository
-  const path = `./${name}.${randomUUID()}.generated.secret`;
+  // existing files in the repository. The path is absolute, so it stays valid
+  // wherever Docker resolves the spec from.
+  const path = resolve(`${name}.${randomUUID()}.generated.secret`);
 
   generatedFiles.add(path);
-  await writeFile(path, value, "utf8");
+  await writeFile(path, value, { encoding: "utf8", mode: 0o600 });
 
-  // Remove the existing value pointer from the variable to avoid multiple
+  // Drop the existing value pointer from the variable to avoid multiple
   // source definition errors during the actual deployment
-  delete (variable as Partial<EnvironmentVariable>).environment;
-  delete (variable as Partial<ContentVariable>).content;
+  const {
+    environment: _environment,
+    content: _content,
+    ...rest
+  } = variable as Partial<EnvironmentVariable & ContentVariable>;
 
-  // Overwrite the variable with the new secret file path, so the docker CLI
+  // Point the variable at the new secret file, so the docker CLI
   // will use it instead of the original value
   return {
-    ...variable,
+    ...rest,
     file: path,
     labels: {
       ...variable.labels,
@@ -533,7 +540,7 @@ export function defineVariable<T extends Variable>(variable: T) {
 }
 
 export function hashVariable(value: string) {
-  return createHash("sha256").update(value.trim()).digest("hex");
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function marshalLabels(labels: Record<string, string | number> | undefined) {
