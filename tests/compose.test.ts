@@ -995,6 +995,52 @@ describe("Compose", () => {
       );
     });
 
+    it("should keep merge tags and cast the typed fields they wrap", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            ports: new Tagged("!reset", "sequence", []),
+            deploy: {
+              replicas: new Tagged("!override", "scalar", "${REPLICAS}"),
+              update_config: new Tagged(
+                "!override",
+                "mapping",
+                new Map([["parallelism", "${REPLICAS}"]]),
+              ),
+            },
+          },
+        },
+      };
+
+      expect(interpolateTypedFields(spec, typedSettings)).toStrictEqual({
+        services: {
+          app: {
+            ports: new Tagged("!reset", "sequence", []),
+            deploy: {
+              replicas: new Tagged("!override", "scalar", 3),
+              update_config: new Tagged(
+                "!override",
+                "mapping",
+                new Map([["parallelism", 3]]),
+              ),
+            },
+          },
+        },
+      });
+    });
+
+    it("should reject numbers Docker does not parse as floats", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: { deploy: { update_config: { max_failure_ratio: "0x10" } } },
+        },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        "services.app.deploy.update_config.max_failure_ratio must be a number",
+      );
+    });
+
     it("should reject booleans Docker does not accept", () => {
       const spec: ComposeSpec = {
         services: { app: { privileged: "1" } },

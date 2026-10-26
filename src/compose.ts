@@ -475,7 +475,7 @@ const toInt: Cast = {
 const toFloat: Cast = {
   type: "a number",
   cast: (value) =>
-    value.trim() !== "" && !Number.isNaN(Number(value))
+    /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(value)
       ? Number(value)
       : undefined,
 };
@@ -585,6 +585,22 @@ export function interpolateTypedFields(
       }
 
       return value;
+    }
+
+    // Keep `!reset`/`!override` carriers intact, so `normalizeSpec` still
+    // routes the spec through the tag-aware merge, but cast what they wrap.
+    if (node instanceof Tagged) {
+      const value =
+        node.value instanceof Map
+          ? new Map(
+              [...node.value].map(([key, item]) => [
+                key,
+                walk(item, [...path, String(key)]),
+              ]),
+            )
+          : walk(node.value, path);
+
+      return new Tagged(node.tag, node.kind, value);
     }
 
     if (Array.isArray(node)) {
