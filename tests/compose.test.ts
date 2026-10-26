@@ -1165,10 +1165,10 @@ describe("Compose", () => {
       const spec: ComposeSpec = {
         services: {
           app: {
-            image: "app:${VERSON}",
+            image: "app:${UNSET_TAG}",
             environment: {
-              A: "$VERSON",
-              B: "${VERSON}-${TAG}",
+              A: "$UNSET_TAG",
+              B: "${UNSET_TAG}-${TAG}",
               C: "${OTHER}",
             },
           },
@@ -1184,7 +1184,7 @@ describe("Compose", () => {
         },
       });
       expect(vi.mocked(core.warning).mock.calls).toEqual([
-        ['The "VERSON" variable is not set. Defaulting to a blank string.'],
+        ['The "UNSET_TAG" variable is not set. Defaulting to a blank string.'],
         ['The "OTHER" variable is not set. Defaulting to a blank string.'],
       ]);
     });
