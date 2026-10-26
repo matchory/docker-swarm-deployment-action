@@ -108,6 +108,13 @@ describe("parseEnvFile", () => {
     });
   });
 
+  it("keeps CRLF line breaks inside quoted values, as Compose does", () => {
+    expect(parse('A="one\r\ntwo"\r\nB=3\r\n')).toEqual({
+      A: "one\r\ntwo",
+      B: "3",
+    });
+  });
+
   it("ignores a UTF-8 byte order mark", () => {
     expect(parse("﻿A=1")).toEqual({ A: "1" });
   });
@@ -161,6 +168,7 @@ describe("inlineEnvFiles", () => {
 
     await inlineEnvFiles(prepared, {
       variables: new Map(Object.entries(variables)),
+      keyInterpolation: false,
     });
 
     return prepared.map(({ spec }) => spec.services);
@@ -345,6 +353,58 @@ describe("inlineEnvFiles", () => {
     expect(override.app).toEqual({
       environment: new Tagged("!override", "mapping", new Map([["C", "b"]])),
     });
+  });
+
+  it("does not leak values through an environment shared by a YAML alias", async () => {
+    file("a.env", "A=a");
+    file("b.env", "A=b");
+    const shared = { TZ: "UTC" };
+
+    await expect(
+      inline([
+        {
+          one: { env_file: "a.env", environment: shared },
+          two: { env_file: "b.env", environment: shared },
+        },
+      ]),
+    ).resolves.toEqual([
+      {
+        one: { environment: { TZ: "UTC", A: "a" } },
+        two: { environment: { TZ: "UTC", A: "b" } },
+      },
+    ]);
+    expect(shared).toEqual({ TZ: "UTC" });
+  });
+
+  it("matches explicit keys after key interpolation", async () => {
+    file("app.env", "X_A=file\nX_B=file");
+    const prepared = [
+      {
+        spec: {
+          services: {
+            app: { env_file: "app.env", environment: { "${P}_A": "explicit" } },
+          },
+        } as ComposeSpec,
+        baseDir: ".",
+      },
+    ];
+
+    await inlineEnvFiles(prepared, {
+      variables: new Map([["P", "X"]]),
+      keyInterpolation: true,
+    });
+
+    expect(prepared[0].spec.services).toEqual({
+      app: { environment: { "${P}_A": "explicit", X_B: "file" } },
+    });
+  });
+
+  it("rejects an env file format it cannot parse", async () => {
+    file("app.env", "A=1");
+
+    await expect(
+      inline([{ app: { env_file: [{ path: "app.env", format: "raw" }] } }]),
+    ).rejects.toThrowError('Service "app": env_file format "raw"');
   });
 
   it("leaves services without env files untouched", async () => {

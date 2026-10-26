@@ -23,7 +23,10 @@ import { interpolateString, warnAboutUndefinedVariables } from "./utils.js";
  */
 export async function inlineEnvFiles(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
-  { variables }: Pick<Readonly<Settings>, "variables">,
+  {
+    keyInterpolation,
+    variables,
+  }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
   // Docker resolved relative paths against the first generated file, which the
@@ -68,10 +71,21 @@ export async function inlineEnvFiles(
 
       if (!isReset(envFile)) {
         for (const entry of [unwrap(envFile) ?? []].flat()) {
-          const { path, required } =
+          const { path, required, format } =
             typeof entry === "string"
-              ? { path: entry, required: true }
-              : (entry as { path: string; required?: boolean });
+              ? { path: entry, required: true, format: undefined }
+              : (entry as {
+                  path: string;
+                  required?: boolean;
+                  format?: string;
+                });
+
+          if (format !== undefined) {
+            throw new Error(
+              `Service "${name}": env_file format "${format}" is not ` +
+                `supported. Remove "format" to use the default format.`,
+            );
+          }
 
           files.push({
             path: resolve(
@@ -91,7 +105,11 @@ export async function inlineEnvFiles(
 
       if (!isReset(environment)) {
         for (const [key, value] of environmentEntries(unwrap(environment))) {
-          explicit.set(key, value);
+          // Key interpolation runs later; match the keys it will produce.
+          explicit.set(
+            keyInterpolation ? interpolateString(key, variables) : key,
+            value,
+          );
         }
       }
     }
@@ -125,7 +143,10 @@ export async function inlineEnvFiles(
         content = await readFile(path, "utf8");
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw cause;
+          throw new Error(
+            `Service "${name}": failed to read env_file "${path}": ${cause}`,
+            { cause },
+          );
         }
 
         if (!required) {
@@ -160,7 +181,8 @@ export async function inlineEnvFiles(
 }
 
 // Add entries to a service's `environment`, which holds none of their keys,
-// keeping its form and any merge tag that applies to earlier files.
+// keeping its form and any merge tag that applies to earlier files. The new
+// value is a copy: a YAML alias may share the old one with other services.
 function addEnvironment(service: Fields, entries: Array<[string, string]>) {
   if (entries.length === 0) {
     return;
@@ -173,17 +195,25 @@ function addEnvironment(service: Fields, entries: Array<[string, string]>) {
       "environment",
       new Tagged("!override", "mapping", new Map(entries)),
     );
-  } else if (Array.isArray(unwrap(environment))) {
-    (unwrap(environment) as string[]).push(
-      ...entries.map(([key, value]) => `${key}=${value}`),
-    );
-  } else if (fieldsOf(environment)) {
-    for (const [key, value] of entries) {
-      fieldsOf(environment)?.set(key, value);
-    }
-  } else {
-    service.set("environment", Object.fromEntries(entries));
+    return;
   }
+
+  const value = unwrap(environment);
+  const merged = Array.isArray(value)
+    ? [...value, ...entries.map(([key, item]) => `${key}=${item}`)]
+    : value instanceof Map
+      ? new Map([...value, ...entries])
+      : {
+          ...(fieldsOf(value) ? (value as Record<string, unknown>) : {}),
+          ...Object.fromEntries(entries),
+        };
+
+  service.set(
+    "environment",
+    environment instanceof Tagged
+      ? new Tagged(environment.tag, environment.kind, merged)
+      : merged,
+  );
 }
 
 function environmentEntries(value: unknown): Array<[string, string | null]> {
@@ -421,7 +451,7 @@ const escapes: Record<string, string> = {
 };
 
 function expandEscapes(value: string) {
-  return value.replace(/\\(?:[abcfnrtv$"\\]|0\d{0,3})/g, (match) => {
+  return value.replace(/\\(?:[abfnrtv$"\\]|0\d{0,3})/g, (match) => {
     // `\0` is followed by up to three digits; only three octal digits up to
     // 255 form a character, like Go's `strconv.UnquoteChar`.
     if (match[1] === "0") {

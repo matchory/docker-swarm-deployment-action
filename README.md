@@ -360,7 +360,8 @@ rules, so they behave as with `docker compose`:
 - A line with only a key (`A`) takes its value from the action's variables or the service's `environment`, and is left
   out if neither has it.
 - Entries in `environment` win over env files, in any Compose file, and later env files win over earlier ones.
-- The long syntax (`- path: optional.env` with `required: false`) skips a file that does not exist.
+- The long syntax (`- path: optional.env` with `required: false`) skips a file that does not exist. Its `format`
+  attribute is not supported.
 
 Relative `env_file` paths resolve against the working directory, or against the directory of the first Compose file
 when a Compose file uses the `!reset` or `!override` tags.

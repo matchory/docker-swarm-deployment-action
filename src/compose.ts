@@ -377,7 +377,7 @@ async function reconcileThenMerge(
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
-  // (env_file, secrets `file:`) against the generated file's location, and
+  // (secrets `file:`) against the generated file's location, and
   // reconcile has already inlined label_file with the correct baseDir above.
   const files = await Promise.all(
     prepared.map(({ spec }) => writeSpecFile(spec, ".")),
@@ -407,7 +407,7 @@ async function mergeThenReconcile(
   }
 
   // Write each spec beside the compose file it came from so `docker compose
-  // config` resolves its relative paths (env_file, label_file) against the
+  // config` resolves its relative paths (label_file) against the
   // right directory. Unlike the non-tag path, reconcile has not run yet, so
   // label_file is still relative here and must resolve during the merge.
   const tempFiles = await Promise.all(
