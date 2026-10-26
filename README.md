@@ -137,15 +137,20 @@ jobs:
 
 The action talks to Docker exclusively through the `docker` CLI, so it honors whatever the CLI would use: the
 `DOCKER_CONTEXT` and `DOCKER_HOST` environment variables, or the context selected with `docker context use` in an
-earlier step. You can also create the context yourself, for example over SSH:
+earlier step. You can also create the context yourself, for example over SSH. Store the host's public key in
+`SSH_KNOWN_HOSTS` (the `ssh-keyscan` output, verified out of band) rather than scanning it during the job, which would
+trust whichever host answers:
 
 ```yaml
 - name: Set up SSH
+  env:
+    SSH_KEY: ${{ secrets.SSH_KEY }}
+    SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
   run: |
     install -m 700 -d ~/.ssh
-    echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+    printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
     chmod 600 ~/.ssh/id_ed25519
-    ssh-keyscan example.domain.tld >> ~/.ssh/known_hosts
+    printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
 
 - name: Create Docker context
   run: |
@@ -156,9 +161,9 @@ earlier step. You can also create the context yourself, for example over SSH:
   uses: matchory/docker-swarm-deployment-action@v1
 ```
 
-Don't list `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, or `HOME` in `exclude-variables`: the action passes the
-merged variables to the Docker commands it runs, so excluding them would point some of those commands at a different
-daemon.
+Don't list `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, `HOME`, `PATH`, or `SSH_AUTH_SOCK` in
+`exclude-variables`: the action passes the merged variables to the Docker commands it runs, so excluding them would
+point some of those commands at a different daemon or keep them from reaching it over SSH.
 
 ## ⚙ Configuration
 
