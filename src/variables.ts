@@ -478,9 +478,7 @@ async function pruneStoredVariables({
         .map(({ labels }) => marshalLabels(labels))
         .filter((labels) => labels !== undefined)
     : [];
-  const specIdentifiers = specLabels.map((labels) =>
-    variableIdentifier(labels),
-  );
+  const specIdentifiers = new Set(specLabels.map(variableIdentifier));
   const specNames = new Set(specLabels.map(({ name }) => name));
 
   const items = await list();
@@ -500,7 +498,7 @@ async function pruneStoredVariables({
     if (
       !labels ||
       !specNames.has(labels.name) ||
-      specIdentifiers.includes(variableIdentifier(labels))
+      specIdentifiers.has(variableIdentifier(labels))
     ) {
       continue;
     }
@@ -539,7 +537,7 @@ async function pruneStoredVariables({
         `Keeping previous version "${labels.hash.substring(0, 7)}" of ` +
           `${kind} "${labels.name}" for rollbacks: ${name}`,
       );
-    } else if (!specIdentifiers.includes(variableIdentifier(labels))) {
+    } else if (!specIdentifiers.has(variableIdentifier(labels))) {
       const hash = labels.hash.substring(0, 7);
 
       core.notice(
@@ -547,9 +545,7 @@ async function pruneStoredVariables({
       );
 
       await remove(ID);
-    }
-
-    if (checkRotation && shouldRotate(new Date(CreatedAt ?? 0))) {
+    } else if (checkRotation && shouldRotate(new Date(CreatedAt ?? 0))) {
       core.warning(
         `Secret "${name}" is over a year old and should be rotated. Update ` +
           `its value at the source it is read from and redeploy to roll it ` +

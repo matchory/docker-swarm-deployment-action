@@ -1271,12 +1271,12 @@ describe("Variables", () => {
         services: {},
         secrets: {
           foo: {
-            name: "test-foo-b5bb9d8",
+            name: "test-foo-7d865e9",
             file: "./foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
             labels: {
               [nameLabel]: "foo",
               [hashLabel]:
-                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+                "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
               [stackLabel]: "test",
               [versionLabel]: "1.0.0",
             },
@@ -1316,9 +1316,50 @@ describe("Variables", () => {
       await pruneSecrets(spec, settings);
 
       expect(engine.listSecrets).toHaveBeenCalledOnce();
-      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
-      expect(engine.removeSecret).toHaveBeenCalledWith("2");
+      expect(engine.removeSecret).not.toHaveBeenCalled();
       expect(core.warning).toHaveBeenCalledOnce();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining('Secret "test-foo-7d865e9"'),
+      );
+    });
+
+    it("should not issue rotation warnings for outdated secrets", async () => {
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-b5bb9d8",
+            file: "./foo.generated.secret",
+            labels: {
+              [nameLabel]: "foo",
+              [hashLabel]:
+                "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+              [stackLabel]: "test",
+              [versionLabel]: "1.0.0",
+            },
+          },
+        },
+      });
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
+        {
+          ID: "1",
+          CreatedAt: "2023-10-01T00:00:00Z",
+          UpdatedAt: "2023-10-01T00:00:00Z",
+          Name: "test-foo-7d865e9",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
+      ]);
+      vi.spyOn(core, "warning").mockImplementation(() => {});
+
+      await pruneSecrets(spec, settings);
+
+      expect(core.warning).not.toHaveBeenCalled();
     });
 
     it("should not prune outdated versions on an unrelated variable", async () => {

@@ -555,7 +555,8 @@ This has two notable implications:
 2. After the deployment is complete, the action will prune any unused variables by checking the labels. If a variable is
    not referenced in the Compose File anymore, it will be safely removed from the cluster. This is important to keep the
    cluster clean and avoid cluttering it with old variables. The most recent previous version of each variable still in
-   the Compose File is kept, so a rollback (automatic or via `docker service rollback`) can still find it; all older versions are removed.
+   the Compose File is kept, so a rollback (automatic or via `docker service rollback`) can still find it; all older
+   versions are removed.
 
 #### Configuring the Variable Name
 
