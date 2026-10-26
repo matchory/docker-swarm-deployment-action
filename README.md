@@ -386,9 +386,23 @@ the action logs a warning such as `The "VERSION" variable is not set. Defaulting
 The same applies to the `content` of secrets and configs, with one warning per variable and secret or config. Use
 `${VERSION:?message}` to fail instead.
 
-Values read from an `env_file` are interpolated too, as Compose does: `A=$B` gets the value of `B`, and `$$` becomes `$`.
-Unlike Compose, quotes around a value are kept as part of it (as `docker stack deploy` does), and the action interpolates
-inside single quotes, too.
+Files listed in a service's `env_file` are read by the action and merged into its `environment` following the Compose
+rules, so they behave as with `docker compose`:
+
+- Unquoted and double-quoted values are interpolated: `A=$B` and `A="$B"` get the value of `B`, and `$$` becomes `$`.
+  Variables are looked up in the action's variables first, then in the service's `environment`, then in the keys set
+  earlier in the env files.
+- Single-quoted values are literal: `A='$B'` is `$B`. The quotes are not part of the value.
+- Double-quoted values may span lines and expand escapes such as `\n`, `\t`, `\"` and `\\`.
+- `#` starts a comment at the start of a line, or after a space in an unquoted value. An `export` prefix is ignored.
+- A line with only a key (`A`) takes its value from the action's variables or the service's `environment`, and is left
+  out if neither has it.
+- Entries in `environment` win over env files, in any Compose file, and later env files win over earlier ones.
+- The long syntax (`- path: optional.env` with `required: false`) skips a file that does not exist. Its `format`
+  attribute is not supported.
+
+Relative `env_file` paths resolve against the working directory, or against the directory of the first Compose file
+when a Compose file uses the `!reset` or `!override` tags.
 
 In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the following variables derived from the

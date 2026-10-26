@@ -94,6 +94,7 @@ describe("Deployment", () => {
       expect(compose.loadComposeSpecs).toHaveBeenCalledWith(
         ["docker-compose.yaml"],
         settings,
+        expect.any(Function),
       );
       expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [
@@ -293,6 +294,7 @@ describe("Deployment", () => {
       expect(compose.loadComposeSpecs).toHaveBeenCalledWith(
         ["docker-compose.yaml"],
         settings,
+        expect.any(Function),
       );
       expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [

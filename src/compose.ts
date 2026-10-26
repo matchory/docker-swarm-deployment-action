@@ -9,6 +9,7 @@ import {
   mergeComposeFiles,
   normalizeStackSpecification,
 } from "./engine.js";
+import { inlineEnvFiles } from "./env-file.js";
 import {
   containsOverrideTag,
   findOverrideTag,
@@ -165,10 +166,16 @@ export async function resolveComposeFiles(
  * file version 3 format, and resolves all referenced variables.
  * It returns a set of normalized Compose specification objects that will be
  * usable to docker stack commands.
+ *
+ * @param composeFiles The Compose files to load, in merge order
+ * @param settings The settings to use for the deployment
+ * @param onUndefined Called with the name of each undefined variable used in
+ *   an env file
  */
 export async function loadComposeSpecs(
   composeFiles: Readonly<Array<string>>,
   settings: Readonly<Settings>,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   const parsed = [];
 
@@ -203,6 +210,9 @@ export async function loadComposeSpecs(
         `block, or point the "compose-file" input at the correct file.`,
     );
   }
+
+  // Needs all files: explicit environment entries in any of them win.
+  await inlineEnvFiles(specs, settings, onUndefined);
 
   return specs;
 }
@@ -377,7 +387,7 @@ async function reconcileThenMerge(
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
-  // (env_file, secrets `file:`) against the generated file's location, and
+  // (secrets `file:`) against the generated file's location, and
   // reconcile has already inlined label_file with the correct baseDir above.
   const files = await Promise.all(
     prepared.map(({ spec }) => writeSpecFile(spec, ".")),
@@ -407,7 +417,7 @@ async function mergeThenReconcile(
   }
 
   // Write each spec beside the compose file it came from so `docker compose
-  // config` resolves its relative paths (env_file, label_file) against the
+  // config` resolves its relative paths (label_file) against the
   // right directory. Unlike the non-tag path, reconcile has not run yet, so
   // label_file is still relative here and must resolve during the merge.
   const tempFiles = await Promise.all(
