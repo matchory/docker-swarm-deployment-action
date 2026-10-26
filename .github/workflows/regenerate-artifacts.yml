@@ -93,7 +93,7 @@ jobs:
 
       - name: Prepare Commit Payload
         id: payload
-        uses: matchory/.github/actions/prepare-signed-commit@ab76df36c2b1279661d6c5efed815456d25e7aaf # main
+        uses: matchory/.github/actions/prepare-signed-commit@dfbf7d083e5aa74d356eda21d1f620eeba19665b # main
         with:
           paths: |
             dist
@@ -103,7 +103,7 @@ jobs:
     name: Open Pull Request
     needs: build
     if: ${{ needs.build.outputs.changed == 'true' }}
-    uses: matchory/.github/.github/workflows/signed-pull-request.yml@ab76df36c2b1279661d6c5efed815456d25e7aaf # main
+    uses: matchory/.github/.github/workflows/signed-pull-request.yml@dfbf7d083e5aa74d356eda21d1f620eeba19665b # main
     permissions: {}
     with:
       app-id: ${{ vars.GH_AUTH_APP_ID }}
