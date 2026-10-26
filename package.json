@@ -60,11 +60,11 @@
     "@biomejs/biome": "2.5.13",
     "@types/node": "^24.13.4",
     "@vercel/ncc": "^0.45.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.5",
     "globals": "^17.12.0",
     "make-coverage-badge": "^1.2.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.6"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "undici": "^6.29.1",
