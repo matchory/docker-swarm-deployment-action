@@ -12,6 +12,12 @@
 # runs `npm ci` over dependency versions nobody has reviewed yet. Running after
 # the merge keeps the writable token in the same trust context that `Check
 # dist/` already builds in.
+#
+# Even so, `npm ci` runs install scripts from newly merged dependencies, so the
+# job that does it never sees the GitHub App's private key. `build` hands the
+# changes over as a commit payload, and the org's signed-pull-request workflow
+# turns it into a signed commit and a pull request. It runs none of this
+# repository's code and refuses any path outside `dist/` and `.licenses/`.
 
 name: Regenerate Artifacts
 
@@ -25,8 +31,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 # Two dependency merges in quick succession would otherwise race for the same
 # branch. Queue instead of cancelling, so the later run sees the newer lockfile.
@@ -35,16 +40,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  regenerate:
-    name: Regenerate Artifacts
+  build:
+    name: Build Artifacts
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.payload.outputs.changed }}
 
     steps:
-      # Credentials are persisted on purpose here, unlike the other workflows:
-      # this job has to push the regenerated artifacts back to the repository.
       - name: Checkout
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
 
       - name: Setup Node.js
         id: setup-node
@@ -78,63 +85,43 @@ jobs:
         id: licensed-cache
         run: licensed cache
 
-      # Pull requests opened with `GITHUB_TOKEN` do not trigger other
-      # workflows, so `Licensed` will not re-run on the branch this job
-      # creates. Check the regenerated cache here instead. `dist/` needs no
-      # equivalent step: `Check dist/` runs on the push to `main` once the
-      # pull request merges, which is the same build this job just performed.
+      # Check the regenerated cache here as well, so a broken cache never
+      # reaches a pull request in the first place.
       - name: Verify Licenses
         id: licensed-status
         run: licensed status
 
-      - name: Check for Changes
-        id: changes
-        run: |
-          if [ -n "$(git status --porcelain dist .licenses)" ]; then
-            echo "changed=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >>"$GITHUB_OUTPUT"
-            echo "Generated artifacts are already up to date."
-          fi
+      - name: Prepare Commit Payload
+        id: payload
+        uses: matchory/.github/actions/prepare-signed-commit@dfbf7d083e5aa74d356eda21d1f620eeba19665b # main
+        with:
+          paths: |
+            dist
+            .licenses
 
-      - name: Open Pull Request
-        id: pull-request
-        if: ${{ steps.changes.outputs.changed == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: chore/regenerate-artifacts
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
+  publish:
+    name: Open Pull Request
+    needs: build
+    if: ${{ needs.build.outputs.changed == 'true' }}
+    uses: matchory/.github/.github/workflows/signed-pull-request.yml@dfbf7d083e5aa74d356eda21d1f620eeba19665b # main
+    permissions: {}
+    with:
+      app-id: ${{ vars.GH_AUTH_APP_ID }}
+      branch: chore/regenerate-artifacts
+      title: "chore: regenerate dist and license cache"
+      allowed-paths: |
+        dist
+        .licenses
+      body: |
+        `dist/` and `.licenses/` are derived from `package-lock.json`, and a
+        dependency change landed on `main` without them. This pull request was
+        opened automatically to bring them back in sync.
 
-          git switch --create "$BRANCH"
-          git add --all dist .licenses
-          git commit --message "chore: regenerate dist and license cache"
-          git push --force origin "$BRANCH"
+        `dist/` was rebuilt from a clean `npm ci`, so it reflects the current
+        lockfile rather than a stale `node_modules`, and `licensed status`
+        passed before this branch was updated.
 
-          open=$(gh pr list --head "$BRANCH" --state open --json number \
-            --jq '.[].number')
-
-          if [ -n "$open" ]; then
-            echo "Updated existing pull request #$open."
-            exit 0
-          fi
-
-          gh pr create --base main --head "$BRANCH" \
-            --title "chore: regenerate dist and license cache" \
-            --body "$(cat <<'BODY'
-          `dist/` and `.licenses/` are derived from `package-lock.json`, and a
-          dependency change landed on `main` without them. This pull request was
-          opened automatically to bring them back in sync.
-
-          `dist/` was rebuilt from a clean `npm ci`, so it reflects the current
-          lockfile rather than a stale `node_modules`, and `licensed status`
-          passed before this branch was pushed.
-
-          Because it was opened with `GITHUB_TOKEN`, no checks run here.
-          `Check dist/` will verify the bundle on the push to `main` once this
-          merges. Close this pull request if the change is not wanted; it will
-          be recreated the next time a dependency changes.
-          BODY
-          )"
+        Close this pull request if the change is not wanted; it will be
+        recreated the next time a dependency changes.
+    secrets:
+      app-private-key: ${{ secrets.GH_AUTH_APP_PRIVATE_KEY }}
