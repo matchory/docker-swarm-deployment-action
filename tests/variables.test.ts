@@ -39,7 +39,7 @@ vi.mock("node:crypto", {
 vi.mock("@actions/core");
 vi.mock("../src/engine.js");
 vi.mock("../src/utils.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("../src/utils.js")>();
   return {
     ...actual,
     exists: vi.fn(),
@@ -49,13 +49,17 @@ vi.mock("../src/utils.js", async (importOriginal) => {
 describe("Variables", () => {
   const settings = defineSettings({
     envVarPrefix: "APP",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test",
+    strictCompatibility: false,
     strictVariables: true,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "1.0.0",
   });

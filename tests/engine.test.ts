@@ -16,13 +16,17 @@ describe("engine", () => {
   const settings = defineSettings({
     composeFiles: ["docker-compose.yml"],
     envVarPrefix: "APP",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test-stack",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map([
       ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
       ["MATCHORY_DEPLOYMENT_VERSION", "1.0.0"],
@@ -108,7 +112,7 @@ describe("engine", () => {
         }),
       );
       // The caller's spec is not modified
-      expect(spec.services?.web.healthcheck?.test).toEqual([
+      expect(spec.services.web).toHaveProperty("healthcheck.test", [
         "CMD-SHELL",
         "curl localhost:$PORT",
       ]);
