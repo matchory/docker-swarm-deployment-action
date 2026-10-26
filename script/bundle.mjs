@@ -54,6 +54,8 @@ const result = await build({
   // Node prints the raw generated line above a stack trace and does not
   // source-map it, so an unminified line length is what an uncaught error
   // dumps into the Actions log. Unbounded that is a quarter of a megabyte.
+  // The limit is soft -- esbuild only breaks where it can -- so most lines
+  // stay near it but a few still run to several thousand characters.
   lineLimit: 500,
 });
 
@@ -77,18 +79,15 @@ await Promise.all([
 // Walks the packages esbuild actually pulled into the bundle and concatenates
 // their license texts, reproducing what ncc's --license flag produced.
 async function collectLicenses({ metafile }) {
-  const packages = new Map();
+  const dirs = new Set(
+    Object.keys(metafile.inputs).map(packageRootOf).filter(Boolean),
+  );
+  const packages = await Promise.all([...dirs].map(describePackage));
 
-  for (const input of Object.keys(metafile.inputs)) {
-    const dir = packageRootOf(input);
-
-    if (dir && !packages.has(dir)) {
-      packages.set(dir, await describePackage(dir));
-    }
-  }
-
-  return [...packages.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
+  // Code unit order, not localeCompare: the collation depends on the host
+  // locale, and dist/licenses.txt has to come out byte-identical in CI.
+  return packages
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     .map(
       ({ name, license, text }) =>
         `${[name, license, text].filter(Boolean).join("\n")}\n`,
@@ -143,5 +142,11 @@ function licenseOf({ license, licenses }) {
     return license.type;
   }
 
-  return licenses?.map(({ type }) => type).join(", ") ?? "UNKNOWN";
+  // The legacy `licenses` field is an array of { type } objects in theory,
+  // but older manifests also use a bare object or plain strings.
+  if (Array.isArray(licenses)) {
+    return licenses.map((entry) => entry?.type ?? entry).join(", ");
+  }
+
+  return licenses?.type ?? "UNKNOWN";
 }

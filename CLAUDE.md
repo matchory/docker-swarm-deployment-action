@@ -134,7 +134,8 @@ that parses TypeScript itself rather than one that loads
 - Node applies source maps to stack _frames_ but not to the code frame
   it prints above them, so an uncaught throw dumps the raw generated
   line into the Actions log. `lineLimit: 500` in `script/bundle.mjs`
-  caps that at a few hundred characters instead of a quarter megabyte.
+  keeps that to a few thousand characters at worst instead of a quarter
+  megabyte; the limit is soft, so some lines still overshoot it.
   Prefer failing through `core.setFailed` so it never comes up.
 - `script/bundle.mjs` builds with `write: false` and only clears
   `dist/` once the bundle and the license scan have both succeeded --
