@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import * as core from "@actions/core";
 import { exec } from "@actions/exec";
 import * as yaml from "js-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -1150,6 +1151,86 @@ describe("Compose", () => {
       expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
         'services.app.privileged must be a boolean, but "1" does not ' +
           "resolve to one",
+      );
+    });
+  });
+
+  describe("Undefined Variables", () => {
+    const undefinedSettings = {
+      keyInterpolation: false,
+      variables: new Map([["TAG", "1.0"]]),
+    };
+
+    it("should warn once per undefined variable in the spec", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            image: "app:${VERSON}",
+            environment: {
+              A: "$VERSON",
+              B: "${VERSON}-${TAG}",
+              C: "${OTHER}",
+            },
+          },
+        },
+      };
+
+      expect(interpolateSpec(spec, undefinedSettings)).toEqual({
+        services: {
+          app: {
+            image: "app:",
+            environment: { A: "", B: "-1.0", C: "" },
+          },
+        },
+      });
+      expect(vi.mocked(core.warning).mock.calls).toEqual([
+        ['The "VERSON" variable is not set. Defaulting to a blank string.'],
+        ['The "OTHER" variable is not set. Defaulting to a blank string.'],
+      ]);
+    });
+
+    it("should not warn for variables with a default or alternative", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            image: "app:${VERSION:-latest}",
+            command: "${A-a} ${B:+b} ${C+c} $${D}",
+          },
+        },
+      };
+
+      interpolateSpec(spec, undefinedSettings);
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("should warn for undefined variables in keys", () => {
+      const spec: ComposeSpec = {
+        services: { "app${SUFFIX}": { image: "app" } },
+      };
+
+      interpolateSpec(spec, { ...undefinedSettings, keyInterpolation: true });
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'The "SUFFIX" variable is not set. Defaulting to a blank string.',
+      );
+    });
+
+    it("should warn once across typed field and spec interpolation", () => {
+      const onUndefined = utils.warnAboutUndefinedVariables();
+      const spec = interpolateTypedFields(
+        {
+          services: {
+            app: { image: "app:${X}", deploy: { replicas: "1${X}" } },
+          },
+        },
+        undefinedSettings,
+        onUndefined,
+      );
+
+      expect(interpolateSpec(spec, undefinedSettings, onUndefined)).toEqual({
+        services: { app: { image: "app:", deploy: { replicas: 1 } } },
+      });
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'The "X" variable is not set. Defaulting to a blank string.',
       );
     });
   });

@@ -138,11 +138,14 @@ export function mapStrings<T>(value: T, map: (value: string) => string): T {
  * @param str The string to interpolate
  * @param variables A Map of variable names to their values
  * @param [strict] If true, throw an error if a variable is used but not defined in the map
+ * @param [onUndefined] Called with the name of each variable that is used without a default value and is not defined
+ *                      in the map, once per use, before it is substituted with an empty string
  */
 export function interpolateString(
   str: string,
   variables: Map<string, string>,
   strict = false,
+  onUndefined?: (name: string) => void,
 ): string {
   type Operator = ":-" | ":+" | ":?" | "?" | "-" | "+";
 
@@ -160,7 +163,12 @@ export function interpolateString(
       (operator === ":+" && value)
     ) {
       // Only the default text itself is interpolated, and only when used
-      return interpolateString(defaultValue ?? "", variables, strict);
+      return interpolateString(
+        defaultValue ?? "",
+        variables,
+        strict,
+        onUndefined,
+      );
     }
 
     // Alternative value substitution: If the variable is PRESENT, return
@@ -266,11 +274,36 @@ export function interpolateString(
       );
     }
 
+    if (replacement === undefined) {
+      onUndefined?.(key);
+    }
+
     // Appended to the output and never scanned again, so values are literal
     result += replacement ?? "";
   }
 
   return result + str.slice(index);
+}
+
+/**
+ * Create a callback for `interpolateString` that warns about each undefined
+ * variable once, like Compose does, however often it is used
+ *
+ * @param [where] Where the variables are used, to name in the warning
+ */
+export function warnAboutUndefinedVariables(where?: string) {
+  const reported = new Set<string>();
+  const context = where ? ` used in ${where}` : "";
+
+  return (name: string) => {
+    if (!reported.has(name)) {
+      reported.add(name);
+      core.warning(
+        `The "${name}" variable${context} is not set. ` +
+          "Defaulting to a blank string.",
+      );
+    }
+  };
 }
 
 /**

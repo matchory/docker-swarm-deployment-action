@@ -9,6 +9,7 @@ import {
   interpolateString,
   mapStrings,
   removeFileQuietly,
+  warnAboutUndefinedVariables,
 } from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
@@ -190,12 +191,17 @@ function readFromEnvironment(
  * by now.
  */
 function readFromContent(
-  _name: string,
+  name: string,
   { content }: ContentVariable,
   variables: Map<string, string>,
 ) {
   // Interpolate variables within the inline content
-  return interpolateString(String(content), variables);
+  return interpolateString(
+    String(content),
+    variables,
+    false,
+    warnAboutUndefinedVariables(`the content of "${name}"`),
+  );
 }
 
 async function inferVariable(
