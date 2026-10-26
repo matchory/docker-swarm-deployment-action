@@ -579,16 +579,8 @@ export type Service = {
   Version: {
     Index: number;
   };
-  Spec?: {
-    Name: string;
-    Labels: Record<string, string>;
-    TaskTemplate: Record<string, unknown>;
-  };
-  PreviousSpec?: {
-    Name: string;
-    Labels: Record<string, string>;
-    TaskTemplate: Record<string, unknown>;
-  };
+  Spec?: ServiceSpec;
+  PreviousSpec?: ServiceSpec;
   Endpoint: Record<string, unknown>;
   UpdateStatus?: {
     StartedAt?: string | undefined;
@@ -601,6 +593,16 @@ export type Service = {
       | "rollback_started"
       | "rollback_paused"
       | "rollback_completed";
+  };
+};
+export type ServiceSpec = {
+  Name: string;
+  Labels: Record<string, string>;
+  TaskTemplate: Record<string, unknown> & {
+    ContainerSpec?: {
+      Secrets?: Array<{ SecretID: string; SecretName: string }>;
+      Configs?: Array<{ ConfigID: string; ConfigName: string }>;
+    };
   };
 };
 export type ServiceWithMetadata = ServiceMetadata & Service;

@@ -1206,7 +1206,31 @@ describe("Variables", () => {
   });
 
   describe("Pruning", () => {
-    it("should prune configs, keeping the newest previous version", async () => {
+    // A service whose current and previous specs reference the given secret
+    // and config IDs
+    const service = (current: string[], previous?: string[]) => {
+      const spec = (ids: string[]) => ({
+        Name: "test_app",
+        Labels: {},
+        TaskTemplate: {
+          ContainerSpec: {
+            Secrets: ids.map((id) => ({ SecretID: id, SecretName: id })),
+            Configs: ids.map((id) => ({ ConfigID: id, ConfigName: id })),
+          },
+        },
+      });
+
+      return {
+        Spec: spec(current),
+        PreviousSpec: previous && spec(previous),
+      } as engine.Service;
+    };
+
+    beforeEach(() => {
+      vi.spyOn(engine, "listServices").mockResolvedValue([]);
+    });
+
+    it("should prune configs, keeping the version the previous spec references", async () => {
       const spec = defineComposeSpec({
         services: {},
         configs: {
@@ -1267,14 +1291,16 @@ describe("Variables", () => {
         },
       ]);
 
-      await pruneConfigs(spec, settings);
+      // After a rollback, the previous spec references an older version than
+      // the newest outdated one
+      await pruneConfigs(spec, settings, [service(["3"], ["1"])]);
 
       expect(engine.listConfigs).toHaveBeenCalledOnce();
       expect(engine.removeConfig).toHaveBeenCalledTimes(1);
-      expect(engine.removeConfig).toHaveBeenCalledWith("1");
+      expect(engine.removeConfig).toHaveBeenCalledWith("2");
     });
 
-    it("should prune secrets, keeping the newest previous version", async () => {
+    it("should prune secrets, keeping the version the previous spec references", async () => {
       const spec = defineComposeSpec({
         services: {},
         secrets: {
@@ -1335,14 +1361,16 @@ describe("Variables", () => {
         },
       ]);
 
-      await pruneSecrets(spec, settings);
+      // After a rollback, the previous spec references an older version than
+      // the newest outdated one
+      await pruneSecrets(spec, settings, [service(["3"], ["1"])]);
 
       expect(engine.listSecrets).toHaveBeenCalledOnce();
       expect(engine.removeSecret).toHaveBeenCalledTimes(1);
-      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("2");
     });
 
-    it("should keep only the newest previous version of variables in the spec", async () => {
+    it("should keep the versions current and previous service specs reference", async () => {
       const labels = (name: string, hash: string) => ({
         [nameLabel]: name,
         [hashLabel]: hash.padEnd(64, "0"),
@@ -1380,13 +1408,98 @@ describe("Variables", () => {
         secret("6", "2026-03-01T00:00:00Z", "retired", "bbb"),
       ]);
 
-      await pruneSecrets(spec, settings);
+      // "retired" was removed from the spec in this deploy, but a rollback of
+      // the service that used it still needs the version it referenced
+      await pruneSecrets(spec, settings, [
+        service(["3"], ["1"]),
+        service([], ["6"]),
+      ]);
 
-      expect(engine.removeSecret).toHaveBeenCalledTimes(4);
-      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledTimes(3);
+      expect(engine.removeSecret).toHaveBeenCalledWith("2");
       expect(engine.removeSecret).toHaveBeenCalledWith("4");
       expect(engine.removeSecret).toHaveBeenCalledWith("5");
-      expect(engine.removeSecret).toHaveBeenCalledWith("6");
+    });
+
+    it("should prune all outdated versions if no service has a previous spec", async () => {
+      const labels = (hash: string) => ({
+        [nameLabel]: "foo",
+        [hashLabel]: hash.padEnd(64, "0"),
+        [stackLabel]: "test",
+        [versionLabel]: "1.0.0",
+      });
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-bbb",
+            file: "./foo.generated.secret",
+            labels: labels("bbb"),
+          },
+        },
+      });
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce(
+        ["aaa", "bbb"].map((hash, index) => ({
+          ID: String(index + 1),
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: `test-foo-${hash}`,
+          Labels: labels(hash),
+        })),
+      );
+
+      await pruneSecrets(spec, settings, [service(["2"])]);
+
+      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+    });
+
+    it("should read service references from the stack's services", async () => {
+      const spec = defineComposeSpec({ services: {} });
+      const stored = {
+        ID: "1",
+        CreatedAt: new Date().toISOString(),
+        UpdatedAt: new Date().toISOString(),
+        Name: "test-foo-bf07a7f",
+        Labels: {
+          [nameLabel]: "foo",
+          [hashLabel]:
+            "bf07a7fbb825fc0aae7bf4a1177b2b31fcf8a3feeaf7092761e18c859ee52a9c",
+          [stackLabel]: "test",
+          [versionLabel]: "1.0.0",
+        },
+      };
+      vi.spyOn(engine, "listServices").mockResolvedValueOnce([
+        service([], ["1"]) as engine.ServiceWithMetadata,
+      ]);
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([stored]);
+      vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([stored]);
+
+      await pruneVariables(spec, settings);
+
+      expect(engine.listServices).toHaveBeenCalledExactlyOnceWith(
+        { labels: { "com.docker.stack.namespace": "test" } },
+        true,
+      );
+      expect(engine.removeSecret).not.toHaveBeenCalled();
+      expect(engine.removeConfig).not.toHaveBeenCalled();
+    });
+
+    it("should keep variables with invalid labels a service references", async () => {
+      const spec = defineComposeSpec({ services: {} });
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce(
+        ["1", "2"].map((ID) => ({
+          ID,
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: `invalid-${ID}`,
+          Labels: { [stackLabel]: "test" },
+        })),
+      );
+
+      await pruneSecrets(spec, settings, [service([], ["1"])]);
+
+      expect(engine.removeSecret).toHaveBeenCalledExactlyOnceWith("2");
     });
 
     it("should issue a warning for secrets that have not been rotated for a long time", async () => {
@@ -1438,7 +1551,7 @@ describe("Variables", () => {
       ]);
       vi.spyOn(core, "warning").mockImplementationOnce(() => {});
 
-      await pruneSecrets(spec, settings);
+      await pruneSecrets(spec, settings, [service(["2"], ["1"])]);
 
       expect(engine.listSecrets).toHaveBeenCalledOnce();
       expect(engine.removeSecret).not.toHaveBeenCalled();
@@ -1482,7 +1595,7 @@ describe("Variables", () => {
       ]);
       vi.spyOn(core, "warning").mockImplementation(() => {});
 
-      await pruneSecrets(spec, settings);
+      await pruneSecrets(spec, settings, []);
 
       expect(core.warning).not.toHaveBeenCalled();
     });
@@ -1655,6 +1768,9 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         },
+      ]);
+      vi.spyOn(engine, "listServices").mockResolvedValueOnce([
+        service(["2", "3"], ["1"]) as engine.ServiceWithMetadata,
       ]);
 
       await pruneVariables(spec, settings);
