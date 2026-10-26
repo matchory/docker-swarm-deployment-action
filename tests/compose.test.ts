@@ -1394,7 +1394,7 @@ describe("Compose", () => {
         };
 
         expect(() => interpolateSpec(spec, mockSettings)).toThrow(
-          /"my-service"/,
+          /"my-service" more than once in services/,
         );
       });
     });

@@ -313,7 +313,8 @@ All environment variables inside the Compose Spec(s) will be interpolated automa
 [Compose Specification rules](https://docs.docker.com/reference/compose-file/interpolation/), with one optional
 improvement: If you enable the `key-interpolation` input, the action will also replace environment variables in all keys
 in your Compose Spec, not just in values. This is useful for dynamic service names or other keys that depend on
-environment variables.
+environment variables. If two keys in the same mapping interpolate to the same name, the deployment fails with an error
+naming that key.
 
 The following syntax is supported for variable interpolation:
 

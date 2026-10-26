@@ -468,13 +468,16 @@ export function interpolateSpec(
 function interpolateKeysAndValues(
   node: unknown,
   variables: Map<string, string>,
+  path: Array<string | number> = [],
 ): unknown {
   if (typeof node === "string") {
     return interpolateString(node, variables);
   }
 
   if (Array.isArray(node)) {
-    return node.map((item) => interpolateKeysAndValues(item, variables));
+    return node.map((item, index) =>
+      interpolateKeysAndValues(item, variables, [...path, index]),
+    );
   }
 
   if (node === null || typeof node !== "object") {
@@ -491,14 +494,18 @@ function interpolateKeysAndValues(
 
       if (seen.has(name)) {
         throw new Error(
-          `Key interpolation produced the key "${name}" more than once ` +
-            `(from "${key}"); rename the keys or variables so they are unique.`,
+          `Key interpolation produced the key "${name}" more than once in ` +
+            `${path.length ? path.join(".") : "the top level"} (from ` +
+            `"${key}"); rename the keys or variables so they are unique.`,
         );
       }
 
       seen.add(name);
 
-      return [name, interpolateKeysAndValues(value, variables)];
+      return [
+        name,
+        interpolateKeysAndValues(value, variables, [...path, name]),
+      ];
     }),
   );
 }
