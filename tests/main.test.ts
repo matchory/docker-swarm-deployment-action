@@ -80,6 +80,9 @@ describe("main", () => {
         return 0;
       })
 
+      // docker service ls
+      .mockResolvedValueOnce(0)
+
       // docker config ls
       .mockImplementationOnce(async (_0, _1, options) => {
         options?.listeners?.stdout?.(Buffer.from("[]"));
@@ -254,6 +257,7 @@ describe("main", () => {
         options?.listeners?.stdout?.(Buffer.from("Deploying stack my-app"));
         return 0;
       })
+      .mockResolvedValueOnce(0)
       .mockImplementation(async (_0, _1, options) => {
         options?.listeners?.stdout?.(Buffer.from("[]"));
         return 0;

@@ -6,8 +6,11 @@ import type { ComposeSpec } from "./compose.js";
 import {
   listConfigs,
   listSecrets,
+  listServices,
   removeConfig,
   removeSecret,
+  type Service,
+  type ServiceSpec,
 } from "./engine.js";
 import type { Settings } from "./settings.js";
 import {
@@ -463,8 +466,17 @@ export async function pruneVariables(
 ) {
   core.startGroup("Pruning outdated variables");
 
-  await pruneSecrets(composeSpec, settings);
-  await pruneConfigs(composeSpec, settings);
+  // Swarm only refuses to remove variables referenced by a service's current
+  // spec, not by its previous one, which a rollback restores. Docker sets the
+  // previous spec as part of the update, so it is present even if the stack
+  // was deployed detached.
+  const services = await listServices(
+    { labels: { "com.docker.stack.namespace": settings.stack } },
+    true,
+  );
+
+  await pruneSecrets(composeSpec, settings, services);
+  await pruneConfigs(composeSpec, settings, services);
 
   core.endGroup();
 }
@@ -475,10 +487,14 @@ export async function pruneVariables(
 export async function pruneSecrets(
   { secrets }: ComposeSpec,
   { stack }: Settings,
+  services: Service[],
 ) {
   await pruneStoredVariables({
     kind: "secret",
     specVariables: secrets,
+    referencedIds: referencedIds(services, (container) =>
+      container?.Secrets?.map(({ SecretID }) => SecretID),
+    ),
     stack,
     list: () => listSecrets({ labels: { [stackLabel]: stack } }),
     remove: removeSecret,
@@ -492,19 +508,42 @@ export async function pruneSecrets(
 export async function pruneConfigs(
   { configs }: ComposeSpec,
   { stack }: Settings,
+  services: Service[],
 ) {
   await pruneStoredVariables({
     kind: "config",
     specVariables: configs,
+    referencedIds: referencedIds(services, (container) =>
+      container?.Configs?.map(({ ConfigID }) => ConfigID),
+    ),
     stack,
     list: () => listConfigs({ labels: { [stackLabel]: stack } }),
     remove: removeConfig,
   });
 }
 
+/**
+ * Collect the IDs of the variables the current and previous specs of the
+ * services reference
+ */
+function referencedIds(
+  services: Service[],
+  select: (
+    container: ServiceSpec["TaskTemplate"]["ContainerSpec"],
+  ) => string[] | undefined,
+) {
+  return new Set(
+    services.flatMap(({ Spec, PreviousSpec }) => [
+      ...(select(Spec?.TaskTemplate.ContainerSpec) ?? []),
+      ...(select(PreviousSpec?.TaskTemplate.ContainerSpec) ?? []),
+    ]),
+  );
+}
+
 async function pruneStoredVariables({
   kind,
   specVariables,
+  referencedIds,
   stack,
   list,
   remove,
@@ -512,6 +551,7 @@ async function pruneStoredVariables({
 }: {
   kind: "secret" | "config";
   specVariables: Record<string, Variable> | undefined;
+  referencedIds: Set<string>;
   stack: string;
   list: () => Promise<
     Array<{
@@ -538,39 +578,12 @@ async function pruneStoredVariables({
         .filter((labels) => labels !== undefined)
     : [];
   const specIdentifiers = new Set(specLabels.map(variableIdentifier));
-  const specNames = new Set(specLabels.map(({ name }) => name));
 
   const items = await list();
 
   if (items.length === 0) {
     return;
   }
-
-  // Swarm only refuses to remove variables referenced by a service's current
-  // spec, not by its previous one. Keep the newest previous version of each
-  // variable still in the spec, so a rollback can find it.
-  const previousVersions = new Map<string, { ID: string; created: number }>();
-
-  for (const { CreatedAt, ID, Labels } of items) {
-    const labels = marshalLabels(Labels);
-
-    if (
-      !labels ||
-      !specNames.has(labels.name) ||
-      specIdentifiers.has(variableIdentifier(labels))
-    ) {
-      continue;
-    }
-
-    const created = new Date(CreatedAt ?? 0).getTime();
-    const newest = previousVersions.get(labels.name);
-
-    if (!newest || created > newest.created) {
-      previousVersions.set(labels.name, { ID, created });
-    }
-  }
-
-  const keptIds = new Set([...previousVersions.values()].map(({ ID }) => ID));
 
   core.info(
     `Checking ${items.length} ${kind}${items.length !== 1 ? "s" : ""} ` +
@@ -585,18 +598,25 @@ async function pruneStoredVariables({
 
     core.debug(`Checking ${kind} ${i + 1}/${items.length}: ${name}`);
 
+    if (!labels && referencedIds.has(ID)) {
+      core.info(`Keeping invalid ${kind} "${name}" referenced by a service.`);
+      continue;
+    }
+
     if (!labels) {
       core.notice(`Found invalid ${kind} "${name}": Missing labels. Pruning.`);
       await remove(ID);
       continue;
     }
 
-    if (keptIds.has(ID)) {
+    const current = specIdentifiers.has(variableIdentifier(labels));
+
+    if (!current && referencedIds.has(ID)) {
       core.info(
-        `Keeping previous version "${labels.hash.substring(0, 7)}" of ` +
-          `${kind} "${labels.name}" for rollbacks: ${name}`,
+        `Keeping version "${labels.hash.substring(0, 7)}" of ${kind} ` +
+          `"${labels.name}" referenced by a service: ${name}`,
       );
-    } else if (!specIdentifiers.has(variableIdentifier(labels))) {
+    } else if (!current) {
       const hash = labels.hash.substring(0, 7);
 
       core.notice(
