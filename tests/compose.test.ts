@@ -1417,6 +1417,87 @@ describe("Compose", () => {
           },
         });
       });
+
+      it("should keep multi-line values intact when keyInterpolation is true", async () => {
+        mockSettings.keyInterpolation = true;
+        mockSettings.variables.set(
+          "PEM",
+          "-----BEGIN KEY-----\nabc\tdef\n-----END KEY-----\n",
+        );
+
+        const spec: ComposeSpec = {
+          services: {
+            app: {
+              image: "nginx",
+              environment: { KEY: "${PEM}" },
+            },
+          },
+        };
+
+        const result = interpolateSpec(spec, mockSettings);
+
+        expect(result.services.app.environment).toEqual({
+          KEY: "-----BEGIN KEY-----\nabc\tdef\n-----END KEY-----\n",
+        });
+      });
+
+      it("should not let values inject keys when keyInterpolation is true", async () => {
+        mockSettings.keyInterpolation = true;
+        mockSettings.variables.set("Q", 'x","privileged":true,"y":"z');
+
+        const spec: ComposeSpec = {
+          services: {
+            app: { image: "${Q}" },
+          },
+        };
+
+        const result = interpolateSpec(spec, mockSettings);
+
+        expect(result.services.app).toEqual({
+          image: 'x","privileged":true,"y":"z',
+        });
+      });
+
+      it("should preserve arrays, nested objects, and non-string scalars when keyInterpolation is true", async () => {
+        mockSettings.keyInterpolation = true;
+
+        const spec = {
+          services: {
+            "${SERVICE_NAME}": {
+              image: "nginx:${IMAGE_TAG}",
+              ports: ["${PORT}:80", { target: 80, published: 8080 }],
+              deploy: { replicas: 2, labels: { enabled: true, gone: null } },
+            },
+          },
+        } as unknown as ComposeSpec;
+
+        const result = interpolateSpec(spec, mockSettings);
+
+        expect(result).toEqual({
+          services: {
+            "my-service": {
+              image: "nginx:v1.0.0",
+              ports: ["8080:80", { target: 80, published: 8080 }],
+              deploy: { replicas: 2, labels: { enabled: true, gone: null } },
+            },
+          },
+        });
+      });
+
+      it("should throw when interpolated keys collide", async () => {
+        mockSettings.keyInterpolation = true;
+
+        const spec: ComposeSpec = {
+          services: {
+            "my-service": { image: "nginx" },
+            "${SERVICE_NAME}": { image: "redis" },
+          },
+        };
+
+        expect(() => interpolateSpec(spec, mockSettings)).toThrow(
+          /"my-service" more than once in services/,
+        );
+      });
     });
 
     describe("secrets and configs", () => {
