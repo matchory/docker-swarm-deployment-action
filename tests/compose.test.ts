@@ -16,6 +16,7 @@ import {
 } from "../src/compose.js";
 import * as engine from "../src/engine";
 import { deployStack } from "../src/engine";
+import * as envFile from "../src/env-file.js";
 import { Tagged } from "../src/override-tags.js";
 import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
@@ -285,6 +286,23 @@ describe("Compose", () => {
       await expect(
         loadComposeSpecs(["docker-compose.yaml"], settings),
       ).resolves.toEqual([{ spec: composeSpec, baseDir: "." }]);
+    });
+
+    it("should inline env files after loading all compose files", async () => {
+      const composeSpec = defineComposeSpec({
+        services: { web: { image: "nginx", env_file: "app.env" } },
+      });
+      const onUndefined = vi.fn();
+      vi.spyOn(yaml, "load").mockReturnValue(composeSpec);
+      vi.spyOn(envFile, "inlineEnvFiles").mockResolvedValue();
+
+      await loadComposeSpecs(["docker/compose.yaml"], settings, onUndefined);
+
+      expect(envFile.inlineEnvFiles).toHaveBeenCalledExactlyOnceWith(
+        [{ spec: composeSpec, baseDir: "docker" }],
+        settings,
+        onUndefined,
+      );
     });
 
     it("should throw an error if the compose file does not have a services section", async () => {

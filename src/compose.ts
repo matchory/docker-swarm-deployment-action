@@ -9,6 +9,7 @@ import {
   mergeComposeFiles,
   normalizeStackSpecification,
 } from "./engine";
+import { inlineEnvFiles } from "./env-file.js";
 import {
   containsOverrideTag,
   findOverrideTag,
@@ -166,10 +167,16 @@ export async function resolveComposeFiles(
  * file version 3 format, and resolves all referenced variables.
  * It returns a set of normalized Compose specification objects that will be
  * usable to docker stack commands.
+ *
+ * @param composeFiles The Compose files to load, in merge order
+ * @param settings The settings to use for the deployment
+ * @param onUndefined Called with the name of each undefined variable used in
+ *   an env file
  */
 export async function loadComposeSpecs(
   composeFiles: Readonly<Array<string>>,
   settings: Readonly<Settings>,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   const specs = [];
 
@@ -191,6 +198,9 @@ export async function loadComposeSpecs(
         `block, or point the "compose-file" input at the correct file.`,
     );
   }
+
+  // Needs all files: explicit environment entries in any of them win.
+  await inlineEnvFiles(specs, settings, onUndefined);
 
   return specs;
 }
