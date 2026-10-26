@@ -171,15 +171,16 @@ jobs:
       # can never approve its own changes. Its pushes are also unsigned, which
       # the signed-commits ruleset rejects. Use a short-lived GitHub App token
       # for both instead, which also means the checks run on the pull request.
-      # Needs the repository variable PR_BOT_CLIENT_ID and secret
-      # PR_BOT_PRIVATE_KEY for an app with contents: write and
-      # pull-requests: write on this repository.
+      # This is the org-wide gh-actions-token-provider app (GH_AUTH_APP_ID and
+      # GH_AUTH_APP_PRIVATE_KEY are org-level), which needs contents: write and
+      # pull-requests: write. The token is scoped to this repository and to
+      # those two permissions. `client-id` also accepts the numeric app ID.
       - name: Mint App Token
         id: app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.PR_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.PR_BOT_PRIVATE_KEY }}
+          client-id: ${{ vars.GH_AUTH_APP_ID }}
+          private-key: ${{ secrets.GH_AUTH_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
 
