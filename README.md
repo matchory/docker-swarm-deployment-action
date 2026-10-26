@@ -135,6 +135,31 @@ jobs:
           DOCKER_CONTEXT: swarm
 ```
 
+The action talks to Docker exclusively through the `docker` CLI, so it honors whatever the CLI would use: the
+`DOCKER_CONTEXT` and `DOCKER_HOST` environment variables, or the context selected with `docker context use` in an
+earlier step. You can also create the context yourself, for example over SSH:
+
+```yaml
+- name: Set up SSH
+  run: |
+    install -m 700 -d ~/.ssh
+    echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+    chmod 600 ~/.ssh/id_ed25519
+    ssh-keyscan example.domain.tld >> ~/.ssh/known_hosts
+
+- name: Create Docker context
+  run: |
+    docker context create swarm --docker host=ssh://someone@example.domain.tld
+    docker context use swarm
+
+- name: Deploy to Docker Swarm
+  uses: matchory/docker-swarm-deployment-action@v1
+```
+
+Don't list `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, or `HOME` in `exclude-variables`: the action passes the
+merged variables to the Docker commands it runs, so excluding them would point some of those commands at a different
+daemon.
+
 ## ⚙ Configuration
 
 ### Inputs
