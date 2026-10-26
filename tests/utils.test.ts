@@ -423,72 +423,108 @@ describe("Utilities", () => {
       });
     });
 
-    describe("Recursive interpolation", () => {
-      it("should handle recursive interpolation scenarios", () => {
+    describe("Substituted values", () => {
+      it("should not interpolate variable references in values", () => {
         const variables = new Map([
           ["BASE", "Hello"],
           ["MESSAGE", "$BASE World"],
         ]);
-        expect(interpolateString("$MESSAGE", variables)).toBe("Hello World");
+        expect(interpolateString("$MESSAGE", variables)).toBe("$BASE World");
       });
 
-      it("should handle multiple levels of recursion", () => {
-        const variables = new Map([
-          ["A", "Hello"],
-          ["B", "$A World"],
-          ["C", "$B!"],
-        ]);
-        expect(interpolateString("$C", variables)).toBe("Hello World!");
-      });
-
-      it("should handle recursive interpolation with operators", () => {
+      it("should not interpolate operators in values", () => {
         const variables = new Map([
           ["BASE", "Hello"],
           ["MESSAGE", "${BASE:-Default} World"],
         ]);
-        expect(interpolateString("$MESSAGE", variables)).toBe("Hello World");
+        expect(interpolateString("$MESSAGE", variables)).toBe(
+          "${BASE:-Default} World",
+        );
       });
 
-      it("should handle recursion with undefined variables", () => {
-        const variables = new Map([["MESSAGE", "$UNDEFINED World"]]);
-        expect(interpolateString("$MESSAGE", variables)).toBe(" World");
-      });
-
-      it("should detect circular variable references", () => {
+      it("should keep self-referencing values literal", () => {
         const variables = new Map([
           ["A", "$B"],
           ["B", "$A"],
         ]);
-        expect(() => interpolateString("$A", variables)).toThrow(
-          "Circular variable reference detected: A → B → A",
-        );
+        expect(interpolateString("$A $B", variables)).toBe("$B $A");
       });
 
-      it("should detect self-referencing variables", () => {
-        const variables = new Map([["A", "$A"]]);
-        expect(() => interpolateString("$A", variables)).toThrow(
-          "Circular variable reference detected: A → A",
-        );
+      it("should keep escaped dollar signs in values intact", () => {
+        const variables = new Map([["DB_PASSWORD", "p@$$w0rd"]]);
+        expect(interpolateString("${DB_PASSWORD}", variables)).toBe("p@$$w0rd");
       });
 
-      it("should detect longer circular chains", () => {
+      it("should not treat replacement patterns in values as special", () => {
         const variables = new Map([
-          ["A", "$B"],
-          ["B", "$C"],
-          ["C", "$A"],
+          ["QUOTE", "a$'b"],
+          ["MATCH", "a$&b"],
+          ["PREFIX", "a$`b"],
         ]);
-        expect(() => interpolateString("$A", variables)).toThrow(
-          "Circular variable reference detected: A → B → C → A",
+        expect(interpolateString("x${QUOTE}y", variables)).toBe("xa$'by");
+        expect(interpolateString("x${MATCH}y", variables)).toBe("xa$&by");
+        expect(interpolateString("x${PREFIX}y", variables)).toBe("xa$`by");
+      });
+
+      it("should not interpolate a default value's substituted values", () => {
+        const variables = new Map([
+          ["BAR", "$BAZ"],
+          ["BAZ", "nope"],
+        ]);
+        expect(interpolateString("${FOO:-${BAR}}", variables)).toBe("$BAZ");
+      });
+    });
+
+    describe("Nested default values", () => {
+      it("should resolve nested defaults", () => {
+        const variables = new Map([["BAZ", "baz"]]);
+        expect(interpolateString("${FOO:-${BAR:-${BAZ}}}", variables)).toBe(
+          "baz",
         );
       });
 
-      it("should not flag non-circular chains through shared dependencies", () => {
+      it("should prefer the outermost defined variable", () => {
         const variables = new Map([
-          ["A", "$C"],
-          ["B", "$C"],
-          ["C", "value"],
+          ["FOO", "foo"],
+          ["BAZ", "baz"],
         ]);
-        expect(interpolateString("$A $B", variables)).toBe("value value");
+        expect(interpolateString("${FOO:-${BAR:-${BAZ}}}", variables)).toBe(
+          "foo",
+        );
+      });
+
+      it("should resolve nested alternative values", () => {
+        const variables = new Map([
+          ["FOO", "foo"],
+          ["BAR", "bar"],
+        ]);
+        expect(interpolateString("${FOO:+x-${BAR}-y}", variables)).toBe(
+          "x-bar-y",
+        );
+      });
+
+      it("should keep text around nested defaults", () => {
+        const variables = new Map([["BAR", "bar"]]);
+        expect(interpolateString("a ${FOO:-b $BAR c} d", variables)).toBe(
+          "a b bar c d",
+        );
+      });
+
+      it("should honor escaped dollar signs in defaults", () => {
+        const variables = new Map([["BAR", "bar"]]);
+        expect(interpolateString("${FOO:-$$BAR}", variables)).toBe("$BAR");
+      });
+
+      it("should not evaluate unused defaults", () => {
+        const variables = new Map([["FOO", "foo"]]);
+        expect(interpolateString("${FOO:-${BAR:?missing}}", variables)).toBe(
+          "foo",
+        );
+      });
+
+      it("should leave an unterminated nested default literal", () => {
+        const variables = new Map<string, string>();
+        expect(interpolateString("${FOO:-${BAR}", variables)).toBe("${FOO:-");
       });
     });
 

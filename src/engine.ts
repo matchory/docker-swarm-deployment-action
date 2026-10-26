@@ -3,6 +3,7 @@ import { exec } from "@actions/exec";
 import { dump, load } from "js-yaml";
 import type { ComposeSpec } from "./compose.js";
 import type { Settings } from "./settings.js";
+import { mapStrings } from "./utils.js";
 
 /**
  * Deploy the stack
@@ -25,7 +26,10 @@ export async function deployStack(
       stack,
     ],
     {
-      stdin: dump(spec),
+      // The spec is already interpolated, but `stack deploy` has no option to
+      // skip interpolation, so escape every `$` to keep it literal. Docker
+      // never interpolates keys, so mapStrings leaving them alone is correct.
+      stdin: dump(mapStrings(spec, (value) => value.replaceAll("$", "$$$$"))),
       env: Object.fromEntries(variables),
     },
   );

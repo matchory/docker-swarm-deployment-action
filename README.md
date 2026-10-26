@@ -335,6 +335,10 @@ allow for unlimited recursive interpolation, meaning that the following will wor
 - "${FOO:-${BAR:-${BAZ}}}"
 ```
 
+As in Compose, variable _values_ are inserted literally and never interpolated again: if `DB_PASSWORD` is `p@$$w0rd`,
+`${DB_PASSWORD}` becomes `p@$$w0rd`, and a value of `$OTHER` stays `$OTHER`. To get a literal `$` in the Compose file
+itself, escape it as `$$`.
+
 In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the following variables derived from the
 inputs are also available:

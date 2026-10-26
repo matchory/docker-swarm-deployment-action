@@ -80,6 +80,39 @@ describe("engine", () => {
         `Deployed stack ${settings.stack}`,
       );
     });
+
+    it("should escape dollar signs in values so docker keeps them literal", async () => {
+      const spec: ComposeSpec = {
+        services: {
+          web: {
+            image: "nginx",
+            healthcheck: { test: ["CMD-SHELL", "curl localhost:$PORT"] },
+            environment: { $KEY: "p@$$w0rd", OTHER: "a$'b" },
+          },
+        },
+      };
+
+      await engine.deployStack(spec, settings);
+
+      const { input } = mockedExec.mock.calls[0][2] ?? {};
+      expect(input?.toString()).toBe(
+        dump({
+          services: {
+            web: {
+              image: "nginx",
+              healthcheck: { test: ["CMD-SHELL", "curl localhost:$$PORT"] },
+              // Docker never interpolates keys, so they are left alone
+              environment: { $KEY: "p@$$$$w0rd", OTHER: "a$$'b" },
+            },
+          },
+        }),
+      );
+      // The caller's spec is not modified
+      expect(spec.services?.web.healthcheck?.test).toEqual([
+        "CMD-SHELL",
+        "curl localhost:$PORT",
+      ]);
+    });
   });
 
   describe("normalizeStackSpecification", () => {
