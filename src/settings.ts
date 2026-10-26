@@ -315,9 +315,21 @@ function parseVariableInput(input: string): Map<string, string> {
       // Skip the delimiter line
       i++;
     } else {
-      // Traditional key=value format
-      const [key, ...parts] = line.split("=").map((part) => part.trim());
-      variables.set(key, parts.join("="));
+      // Traditional key=value format: only the first `=` separates the key,
+      // and the value is kept exactly as written, including its whitespace,
+      // but without the carriage return of a CRLF line ending
+      const entry = lines[i].replace(/\r$/, "");
+      const separator = entry.indexOf("=");
+
+      if (separator === -1) {
+        variables.set(line, "");
+      } else {
+        variables.set(
+          entry.slice(0, separator).trim(),
+          entry.slice(separator + 1),
+        );
+      }
+
       i++;
     }
   }

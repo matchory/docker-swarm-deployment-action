@@ -543,6 +543,24 @@ describe("Variables", () => {
         );
       });
 
+      it("should warn once per undefined variable within content source", async () => {
+        const variable = defineVariable({
+          content: "a=${MISSING}\nb=$MISSING\nc=${OPTIONAL:-c}",
+        });
+
+        await processVariable("config", variable, settings);
+
+        expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+          'The "MISSING" variable used in the content of "config" is not ' +
+            "set. Defaulting to a blank string.",
+        );
+        expect(writeFile).toHaveBeenCalledWith(
+          expect.any(String),
+          "a=\nb=\nc=c",
+          { encoding: "utf8", mode: 0o600 },
+        );
+      });
+
       it("should not throw an error if a variable is explicitly defined empty", async () => {
         const variable = defineVariable({
           content: "",

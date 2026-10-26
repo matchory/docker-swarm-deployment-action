@@ -11,6 +11,7 @@ import { validateHealthChecks } from "./healthcheck.js";
 import { monitorDeployment } from "./monitoring.js";
 import type { Settings } from "./settings.js";
 import { assertOwnShares } from "./shares.js";
+import { warnAboutUndefinedVariables } from "./utils.js";
 import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
 
 /**
@@ -19,16 +20,19 @@ import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
 export async function deploy(settings: Readonly<Settings>) {
   let finalSpec: ComposeSpec;
 
+  // Shared, so a variable used in both passes is only reported once
+  const onUndefined = warnAboutUndefinedVariables();
+
   try {
     const composeFiles = await resolveComposeFiles(settings);
     const composeSpecs = (await loadComposeSpecs(composeFiles, settings)).map(
       (item) => ({
         ...item,
-        spec: interpolateTypedFields(item.spec, settings),
+        spec: interpolateTypedFields(item.spec, settings, onUndefined),
       }),
     );
     const composeSpec = await normalizeSpec(composeSpecs, settings);
-    finalSpec = interpolateSpec(composeSpec, settings);
+    finalSpec = interpolateSpec(composeSpec, settings, onUndefined);
 
     // After interpolation: volume names are often built from variables.
     assertOwnShares(finalSpec, settings.stack);
