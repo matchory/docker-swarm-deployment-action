@@ -39,7 +39,7 @@ vi.mock("node:crypto", {
 vi.mock("@actions/core");
 vi.mock("../src/engine.js");
 vi.mock("../src/utils.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("../src/utils.js")>();
   return {
     ...actual,
     exists: vi.fn(),
@@ -49,13 +49,17 @@ vi.mock("../src/utils.js", async (importOriginal) => {
 describe("Variables", () => {
   const settings = defineSettings({
     envVarPrefix: "APP",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test",
+    strictCompatibility: false,
     strictVariables: true,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "1.0.0",
   });
@@ -341,8 +345,8 @@ describe("Variables", () => {
           resolve(
             "server-config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
           ),
-          expectedContent,
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(expectedContent),
+          { mode: 0o600 },
         );
       });
 
@@ -364,7 +368,7 @@ describe("Variables", () => {
         });
         const expectedHash = hashVariable("secret");
 
-        readFile.mockResolvedValue("secret");
+        readFile.mockResolvedValue(Buffer.from("secret"));
         vi.spyOn(utils, "exists").mockResolvedValue(true);
 
         await expect(
@@ -390,7 +394,7 @@ describe("Variables", () => {
         });
         const expectedHash = hashVariable("secret\n");
 
-        readFile.mockResolvedValue("secret\n");
+        readFile.mockResolvedValue(Buffer.from("secret\n"));
         vi.spyOn(utils, "exists").mockResolvedValue(true);
 
         await expect(
@@ -400,6 +404,72 @@ describe("Variables", () => {
           file: resolve("path/to/file"),
           labels: { [hashLabel]: expectedHash },
         });
+      });
+
+      // Decoded as UTF-8, both bytes would become the same replacement
+      // character, so the secret would keep its name while its content changed.
+      it("should hash the raw bytes of a binary file", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+        });
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile
+          .mockResolvedValueOnce(Buffer.from([0xff]))
+          .mockResolvedValueOnce(Buffer.from([0xfe]));
+
+        const first = await processVariable("foo", variable, settings);
+        const second = await processVariable("foo", variable, settings);
+
+        expect(first.labels?.[hashLabel]).toBe(
+          hashVariable(Buffer.from([0xff])),
+        );
+        expect(second.labels?.[hashLabel]).toBe(
+          hashVariable(Buffer.from([0xfe])),
+        );
+      });
+
+      it("should encode the raw bytes of a binary file", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+          labels: { [encodeLabel]: "base64" },
+        });
+        const encoded = Buffer.from([0xff, 0x00]).toString("base64");
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from([0xff, 0x00]));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({
+          labels: { [hashLabel]: hashVariable(encoded) },
+        });
+        expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+          expect.any(String),
+          Buffer.from(encoded),
+          { mode: 0o600 },
+        );
+      });
+
+      it("should decode a file to raw bytes", async () => {
+        const variable = defineVariable({
+          file: "path/to/file",
+          labels: { [decodeLabel]: "hex" },
+        });
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from("ff00"));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({
+          labels: { [hashLabel]: hashVariable(Buffer.from([0xff, 0x00])) },
+        });
+        expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+          expect.any(String),
+          Buffer.from([0xff, 0x00]),
+          { mode: 0o600 },
+        );
       });
 
       it("should reject a file property that is not a path with a clear error", async () => {
@@ -430,7 +500,7 @@ describe("Variables", () => {
         });
 
         vi.spyOn(utils, "exists").mockResolvedValueOnce(true);
-        readFile.mockResolvedValueOnce("");
+        readFile.mockResolvedValueOnce(Buffer.from(""));
 
         await processVariable("foo", variable, settings);
         expect(core.warning).toHaveBeenCalledOnce();
@@ -499,8 +569,8 @@ describe("Variables", () => {
           resolve(
             "example-secret.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
           ),
-          expectedContent,
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(expectedContent),
+          { mode: 0o600 },
         );
       });
 
@@ -538,8 +608,8 @@ describe("Variables", () => {
           resolve(
             "config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
           ),
-          expectedContent,
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(expectedContent),
+          { mode: 0o600 },
         );
       });
 
@@ -556,8 +626,8 @@ describe("Variables", () => {
         );
         expect(writeFile).toHaveBeenCalledWith(
           expect.any(String),
-          "a=\nb=\nc=c",
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from("a=\nb=\nc=c"),
+          { mode: 0o600 },
         );
       });
 
@@ -811,8 +881,8 @@ describe("Variables", () => {
           resolve(
             "foo_config.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret",
           ),
-          expectedContent,
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(expectedContent),
+          { mode: 0o600 },
         );
       });
 
@@ -828,7 +898,7 @@ describe("Variables", () => {
         settings.variables.set("TEST_FOO_BAR", "stack uppercase");
 
         vi.spyOn(utils, "exists").mockResolvedValue(true);
-        readFile.mockResolvedValue("secret");
+        readFile.mockResolvedValue(Buffer.from("secret"));
 
         await expect(
           processVariable("foo_bAr", variable, settings),
@@ -887,8 +957,45 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          Buffer.from("secret").toString("base64"),
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(Buffer.from("secret").toString("base64")),
+          { mode: 0o600 },
+        );
+      });
+
+      // Only the encoded file is deployed, so the plaintext value must never be
+      // written to disk alongside it.
+      it("should write only the encoded file for an environment source", async () => {
+        const variable = defineVariable({
+          environment: "FOO_BAR",
+          labels: {
+            [encodeLabel]: "base64",
+          },
+        });
+        settings.variables.set("FOO_BAR", "secret");
+
+        await processVariable("foo", variable, settings);
+
+        expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+          expect.any(String),
+          Buffer.from(Buffer.from("secret").toString("base64")),
+          { mode: 0o600 },
+        );
+      });
+
+      it("should write only the encoded file for a content source", async () => {
+        const variable = defineVariable({
+          content: "secret",
+          labels: {
+            [encodeLabel]: "hex",
+          },
+        });
+
+        await processVariable("foo", variable, settings);
+
+        expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+          expect.any(String),
+          Buffer.from(Buffer.from("secret").toString("hex")),
+          { mode: 0o600 },
         );
       });
 
@@ -924,8 +1031,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          Buffer.from("secret").toString("base64url"),
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(Buffer.from("secret").toString("base64url")),
+          { mode: 0o600 },
         );
       });
 
@@ -962,8 +1069,8 @@ describe("Variables", () => {
 
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          Buffer.from("secret").toString("hex"),
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(Buffer.from("secret").toString("hex")),
+          { mode: 0o600 },
         );
       });
 
@@ -999,8 +1106,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          encodeURIComponent("some[secret]=value"),
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from(encodeURIComponent("some[secret]=value")),
+          { mode: 0o600 },
         );
       });
 
@@ -1049,8 +1156,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          "secret",
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from("secret"),
+          { mode: 0o600 },
         );
       });
 
@@ -1084,8 +1191,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          "secret",
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from("secret"),
+          { mode: 0o600 },
         );
       });
 
@@ -1119,8 +1226,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          "secret",
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from("secret"),
+          { mode: 0o600 },
         );
       });
 
@@ -1154,8 +1261,8 @@ describe("Variables", () => {
         });
         expect(writeFile).toHaveBeenCalledWith(
           resolve("foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret"),
-          "some[secret]=value",
-          { encoding: "utf8", mode: 0o600 },
+          Buffer.from("some[secret]=value"),
+          { mode: 0o600 },
         );
       });
 
@@ -1170,6 +1277,116 @@ describe("Variables", () => {
         await expect(
           processVariable("foo", variable, settings),
         ).rejects.toThrowError();
+      });
+
+      it("should decode binary content without altering its bytes", async () => {
+        const variable = defineVariable({
+          content: Buffer.from([0xff, 0x00]).toString("base64"),
+          labels: {
+            [decodeLabel]: "base64",
+          },
+        });
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({
+          labels: { [hashLabel]: hashVariable(Buffer.from([0xff, 0x00])) },
+        });
+        expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+          expect.any(String),
+          Buffer.from([0xff, 0x00]),
+          { mode: 0o600 },
+        );
+      });
+    });
+
+    // File paths pass through spec interpolation after processing, so a `$` in
+    // the working directory must be stored escaped to reach Docker intact.
+    describe("Working Directory With a Dollar Sign", () => {
+      const cwd = "/work/repo$x";
+      const escaped = "/work/repo$$x";
+
+      beforeEach(() => {
+        vi.spyOn(process, "cwd").mockReturnValue(cwd);
+        vi.spyOn(crypto, "randomUUID").mockImplementation(
+          () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
+        );
+      });
+
+      afterEach(() => {
+        vi.mocked(process.cwd).mockRestore();
+      });
+
+      it("should escape the path of a generated file", async () => {
+        const variable = defineVariable({ environment: "FOO_BAR" });
+        const generated =
+          "foo.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret";
+        settings.variables.set("FOO_BAR", "secret");
+
+        const { file } = (await processVariable("foo", variable, settings)) as {
+          file: string;
+        };
+
+        expect(file).toBe(`${escaped}/${generated}`);
+        expect(utils.interpolateString(file, new Map())).toBe(
+          `${cwd}/${generated}`,
+        );
+        expect(writeFile).toHaveBeenCalledWith(
+          `${cwd}/${generated}`,
+          expect.any(Buffer),
+          { mode: 0o600 },
+        );
+
+        await removeGeneratedVariableFiles();
+        expect(unlink).toHaveBeenCalledExactlyOnceWith(`${cwd}/${generated}`);
+      });
+
+      it("should read and deploy the same file for a file source", async () => {
+        const variable = defineVariable({ file: "path/$${A}/file" });
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from("secret"));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({ file: `${escaped}/path/$\${A}/file` });
+        expect(readFile).toHaveBeenCalledWith(`${cwd}/path/\${A}/file`);
+      });
+
+      it("should interpolate variables in the path of a file source", async () => {
+        const variable = defineVariable({ file: "${DIR}/file" });
+        settings.variables.set("DIR", "secrets");
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from("secret"));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({ file: `${escaped}/secrets/file` });
+        expect(readFile).toHaveBeenCalledWith(`${cwd}/secrets/file`);
+      });
+
+      it("should leave an absolute file source unchanged", async () => {
+        const variable = defineVariable({ file: "/run/$$secrets/file" });
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from("secret"));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({ file: "/run/$$secrets/file" });
+      });
+
+      it("should escape the path of an inferred secret file", async () => {
+        const variable = defineVariable({});
+
+        vi.spyOn(utils, "exists").mockResolvedValue(true);
+        readFile.mockResolvedValue(Buffer.from("secret"));
+
+        await expect(
+          processVariable("foo", variable, settings),
+        ).resolves.toMatchObject({ file: `${escaped}/foo.secret` });
+        expect(utils.exists).toHaveBeenCalledWith(`${cwd}/foo.secret`);
       });
     });
   });
@@ -1945,6 +2162,31 @@ describe("Variables", () => {
       expect(original.services).toEqual({
         app: { environment: { TOKEN: "s3cr3t-value-here" } },
       });
+    });
+
+    // A file path holds no secret value, but often contains a string that
+    // happens to equal one, such as the repository name in the workspace path.
+    it("should not redact the file paths of secrets and configs", () => {
+      const file = "/home/runner/work/acme-backend/acme-backend/db.secret";
+      const result = redactSecretValues(
+        defineComposeSpec({
+          version: "3.8",
+          services: {
+            app: { environment: { REPOSITORY: "acme-backend" } },
+          },
+          secrets: { db: { name: "acme-backend-db", file } },
+          configs: { app: { file } },
+        }),
+        new Map([["REPOSITORY", "acme-backend"]]),
+      );
+
+      expect(result.services).toEqual({
+        app: { environment: { REPOSITORY: "${REPOSITORY}" } },
+      });
+      expect(result.secrets).toEqual({
+        db: { name: "${REPOSITORY}-db", file },
+      });
+      expect(result.configs).toEqual({ app: { file } });
     });
 
     it("should ignore empty secret values", () => {

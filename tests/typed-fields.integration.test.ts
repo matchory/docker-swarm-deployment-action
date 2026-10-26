@@ -54,7 +54,7 @@ suite("typed fields against docker stack config", () => {
 
     const normalized = await normalize(interpolateTypedFields(spec, settings));
 
-    expect(normalized.services.main.deploy?.replicas).toBe(1);
+    expect(normalized.services.main).toHaveProperty("deploy.replicas", 1);
   });
 
   // A merge-tagged scalar keeps its source text, so the cast must reach inside
@@ -89,8 +89,8 @@ suite("typed fields against docker stack config", () => {
         { variables, strictCompatibility: false } as Settings,
       );
 
-      expect(normalized.services.main.deploy?.replicas).toBe(3);
-      expect(normalized.services.main.ports).toBeUndefined();
+      expect(normalized.services.main).toHaveProperty("deploy.replicas", 3);
+      expect(normalized.services.main).not.toHaveProperty("ports");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

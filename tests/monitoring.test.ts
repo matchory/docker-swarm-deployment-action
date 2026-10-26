@@ -25,13 +25,17 @@ describe("Monitoring", () => {
 
   const settings = defineSettings({
     envVarPrefix: "APP",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "testso",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "1.0.0",
   });
@@ -490,13 +494,17 @@ describe("Monitoring", () => {
 
     const noMonitorSettings = defineSettings({
       envVarPrefix: "APP",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
       monitorTimeout: 300,
+      secretValues: new Map(),
       stack: "test",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map(),
       version: "1.0.0",
     });
@@ -524,13 +532,17 @@ describe("Monitoring", () => {
       });
       const settings = defineSettings({
         envVarPrefix: "APP",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: true,
         monitor: true,
         monitorInterval: 1,
         monitorTimeout: 1,
+        secretValues: new Map(),
         stack: "test",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map(),
         version: "1.0.0",
       });
@@ -616,7 +628,10 @@ describe("Monitoring", () => {
           Name: "svc1",
           Replicas: "1/2",
           Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
-          UpdateStatus: { Message: "Service is updating" },
+          // Docker can omit State, which the Service type does not model
+          UpdateStatus: {
+            Message: "Service is updating",
+          } as ServiceWithMetadata["UpdateStatus"],
         }),
       ).toBe(false); // Should return false (still updating)
     });
@@ -632,7 +647,7 @@ describe("Monitoring", () => {
           UpdateStatus: {
             State: undefined,
             Message: "Service is updating",
-          },
+          } as unknown as ServiceWithMetadata["UpdateStatus"],
         }),
       ).toBe(false); // Should return false (still updating)
     });

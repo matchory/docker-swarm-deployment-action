@@ -8,7 +8,7 @@ import {
   isComposePluginAvailable,
   mergeComposeFiles,
   normalizeStackSpecification,
-} from "./engine";
+} from "./engine.js";
 import {
   containsOverrideTag,
   findOverrideTag,

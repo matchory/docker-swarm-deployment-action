@@ -3,7 +3,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
-import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
+import {
+  listConfigs,
+  listSecrets,
+  removeConfig,
+  removeSecret,
+} from "./engine.js";
 import type { Settings } from "./settings.js";
 import {
   exists,
@@ -66,16 +71,19 @@ export async function processVariable(
     return variable;
   }
 
-  let modifiedVariable: FileVariable | undefined;
-  let content: string | undefined;
+  // Set only while the variable can be deployed straight from its source file;
+  // any other value is written to a generated file once it is final.
+  let sourceVariable: FileVariable | undefined;
+  let content: Buffer | undefined;
 
   // If a variable names a file explicitly, we need to check if the file exists.
-  // The path is made absolute against the working directory, so the file we
-  // hash is the one deployed, wherever Docker writes the spec it resolves from.
+  // The path is interpolated and made absolute here, so the file we hash is the
+  // one deployed, wherever Docker writes the spec it resolves from.
   if ("file" in variable) {
     try {
-      content = await readFromFile(name, variable);
-      modifiedVariable = { ...variable, file: resolve(variable.file) };
+      let path: string;
+      [path, content] = await readFromFile(name, variable, variables);
+      sourceVariable = { ...variable, file: escapeInterpolation(path) };
     } catch (error) {
       if (strictVariables) {
         throw error;
@@ -83,21 +91,19 @@ export async function processVariable(
     }
   } else if ("environment" in variable) {
     content = readFromEnvironment(name, variable, variables);
-    modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
     content = readFromContent(name, variable, variables);
-    modifiedVariable = await transformVariable(content, name, variable);
   }
 
   if (content === undefined) {
-    [content, modifiedVariable] = await inferVariable(name, variable, {
+    [content, sourceVariable] = await inferVariable(name, variable, {
       envVarPrefix,
       stack,
       variables,
     });
   }
 
-  if (!content) {
+  if (content.length === 0) {
     core.warning(
       `Variable "${name}" resolved to an empty value; the secret or config ` +
         `will be created empty. If that is not intended, check the source ` +
@@ -110,12 +116,16 @@ export async function processVariable(
   // the content accordingly. This is useful for secrets that need to be passed
   // as environment variables or in a specific format.
   if (variable.labels && encodeLabel in variable.labels) {
-    content = await encodeVariable(content, name, variable);
-    modifiedVariable = await transformVariable(content, name, variable);
+    content = encodeVariable(content, name, variable);
+    sourceVariable = undefined;
   } else if (variable.labels && decodeLabel in variable.labels) {
-    content = await decodeVariable(content, name, variable);
-    modifiedVariable = await transformVariable(content, name, variable);
+    content = decodeVariable(content, name, variable);
+    sourceVariable = undefined;
   }
+
+  // Written only now, so the one file on disk is the one that is deployed
+  const modifiedVariable =
+    sourceVariable ?? (await transformVariable(content, name, variable));
 
   // Calculate hash of the variable value. If the value didn't change since the
   // last deployment, the hash will be the same, and we can reuse the existing
@@ -123,7 +133,7 @@ export async function processVariable(
   // services depending on the variable.
   const hash = hashVariable(content);
   const variableName =
-    modifiedVariable?.name ?? variable.name ?? `${stack}-${name}`;
+    modifiedVariable.name ?? variable.name ?? `${stack}-${name}`;
 
   const finalName = `${variableName}-${hash.substring(0, 7)}`;
 
@@ -138,10 +148,10 @@ export async function processVariable(
   }
 
   return {
-    ...(modifiedVariable ?? variable),
+    ...modifiedVariable,
     name: finalName,
     labels: {
-      ...(modifiedVariable?.labels ?? variable.labels),
+      ...modifiedVariable.labels,
       [nameLabel]: name,
       [hashLabel]: hash,
       [stackLabel]: stack,
@@ -151,12 +161,24 @@ export async function processVariable(
 }
 
 // region Content Loading
-async function readFromFile(name: string, variable: FileVariable) {
-  const filePath = variable.file;
+async function readFromFile(
+  name: string,
+  variable: FileVariable,
+  variables: Map<string, string>,
+): Promise<[string, Buffer]> {
+  // Interpolated now rather than with the rest of the spec, so the file read
+  // and hashed here is the one the path points Docker at.
+  const filePath = resolve(
+    interpolateString(
+      String(variable.file),
+      variables,
+      warnAboutUndefinedVariables(`the file path of "${name}"`),
+    ),
+  );
 
   if (!(await exists(filePath))) {
     throw new Error(
-      `Variable "${name}" specifies the file "${filePath}" as its ` +
+      `Variable "${name}" specifies the file "${variable.file}" as its ` +
         `source, but this file does not exist or is not readable. Ensure ` +
         `it exists, or remove the "file" property from the variable ` +
         `definition to let the action read the value from the build ` +
@@ -166,7 +188,9 @@ async function readFromFile(name: string, variable: FileVariable) {
 
   core.debug(`Loading variable ${name} from file: ${filePath}`);
 
-  return await readFile(filePath, "utf8");
+  // Read as bytes: decoding binary content as UTF-8 is lossy, so two
+  // different files could hash, and deploy, the same.
+  return [filePath, await readFile(filePath)];
 }
 
 function readFromEnvironment(
@@ -184,7 +208,7 @@ function readFromEnvironment(
     );
   }
 
-  return String(variables.get(variable));
+  return Buffer.from(String(variables.get(variable)));
 }
 
 /**
@@ -201,10 +225,12 @@ function readFromContent(
 ) {
   // Interpolate variables within the inline content
   try {
-    return interpolateString(
-      String(content),
-      variables,
-      warnAboutUndefinedVariables(`the content of "${name}"`),
+    return Buffer.from(
+      interpolateString(
+        String(content),
+        variables,
+        warnAboutUndefinedVariables(`the content of "${name}"`),
+      ),
     );
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -221,7 +247,7 @@ async function inferVariable(
     stack,
     variables,
   }: Pick<Settings, "envVarPrefix" | "stack" | "variables">,
-): Promise<[string, FileVariable]> {
+): Promise<[Buffer, FileVariable | undefined]> {
   const filePath = resolve(`${name}.secret`);
 
   // If the variable doesn't specify a source, we need to check if it exists;
@@ -230,8 +256,8 @@ async function inferVariable(
     core.debug(`Loading variable "${name}" from file: "${filePath}"`);
 
     return [
-      await readFile(filePath, "utf8"),
-      { ...variable, file: filePath },
+      await readFile(filePath),
+      { ...variable, file: escapeInterpolation(filePath) },
     ] as const;
   }
 
@@ -254,9 +280,7 @@ async function inferVariable(
         `Loading variable "${name}" from environment variable "${variant}"`,
       );
 
-      const value = variables.get(variant) ?? "";
-
-      return [value, await transformVariable(value, name, variable)] as const;
+      return [Buffer.from(variables.get(variant) ?? ""), undefined] as const;
     }
   }
 
@@ -271,20 +295,22 @@ async function inferVariable(
 // endregion
 
 // region Encoding/Decoding
+// Values stay bytes in both directions, so binary content passes through intact;
+// only url works on text, as percent-encoding is defined over UTF-8 here.
 const encoders = {
-  base64: (value) => Buffer.from(value, "utf8").toString("base64"),
-  base64url: (value) => Buffer.from(value, "utf8").toString("base64url"),
-  hex: (value) => Buffer.from(value, "utf8").toString("hex"),
-  url: (value) => encodeURIComponent(value),
-} satisfies Record<string, (value: string) => string>;
+  base64: (value) => Buffer.from(value.toString("base64")),
+  base64url: (value) => Buffer.from(value.toString("base64url")),
+  hex: (value) => Buffer.from(value.toString("hex")),
+  url: (value) => Buffer.from(encodeURIComponent(value.toString())),
+} satisfies Record<string, (value: Buffer) => Buffer>;
 const decoders = {
-  base64: (value) => Buffer.from(value, "base64").toString("utf8"),
-  base64url: (value) => Buffer.from(value, "base64url").toString("utf8"),
-  hex: (value) => Buffer.from(value, "hex").toString("utf8"),
-  url: (value) => decodeURIComponent(value),
-} satisfies Record<string, (value: string) => string>;
+  base64: (value) => Buffer.from(value.toString(), "base64"),
+  base64url: (value) => Buffer.from(value.toString(), "base64url"),
+  hex: (value) => Buffer.from(value.toString(), "hex"),
+  url: (value) => Buffer.from(decodeURIComponent(value.toString())),
+} satisfies Record<string, (value: Buffer) => Buffer>;
 
-function encodeVariable(content: string, name: string, variable: Variable) {
+function encodeVariable(content: Buffer, name: string, variable: Variable) {
   const format = variable.labels?.[
     encodeLabel
   ].toString() as keyof typeof encoders;
@@ -303,7 +329,7 @@ function encodeVariable(content: string, name: string, variable: Variable) {
   return encoders[format](content);
 }
 
-function decodeVariable(content: string, name: string, variable: Variable) {
+function decodeVariable(content: Buffer, name: string, variable: Variable) {
   const format = variable.labels?.[
     decodeLabel
   ].toString() as keyof typeof decoders;
@@ -366,7 +392,7 @@ export function redactSecretValues(
     .filter(([, value]) => value)
     .sort(([, a], [, b]) => b.length - a.length);
 
-  return mapStrings(spec, (value) => {
+  const redacted = mapStrings(spec, (value) => {
     for (const [name, secret] of redactable) {
       // Short secrets are replaced only where they make up the entire value.
       if (secret.length >= minSubstringRedactionLength || value === secret) {
@@ -376,10 +402,25 @@ export function redactSecretValues(
 
     return value;
   });
+
+  // Variable files hold the values, the paths to them don't. A path can still
+  // contain a string equal to a secret, such as the repository name in the
+  // workspace path, and rewriting it would point the artifact at no file.
+  for (const kind of ["secrets", "configs"] as const) {
+    for (const [name, variable] of Object.entries(spec[kind] ?? {})) {
+      const target = redacted[kind]?.[name];
+
+      if (target && "file" in variable && "file" in target) {
+        target.file = variable.file;
+      }
+    }
+  }
+
+  return redacted;
 }
 
 async function transformVariable(
-  value: string,
+  value: Buffer,
   name: string,
   variable: Variable,
 ): Promise<FileVariable> {
@@ -389,7 +430,7 @@ async function transformVariable(
   const path = resolve(`${name}.${randomUUID()}.generated.secret`);
 
   generatedFiles.add(path);
-  await writeFile(path, value, { encoding: "utf8", mode: 0o600 });
+  await writeFile(path, value, { mode: 0o600 });
 
   // Drop the existing value pointer from the variable to avoid multiple
   // source definition errors during the actual deployment
@@ -403,7 +444,7 @@ async function transformVariable(
   // will use it instead of the original value
   return {
     ...rest,
-    file: path,
+    file: escapeInterpolation(path),
     labels: {
       ...variable.labels,
     },
@@ -580,8 +621,18 @@ export function defineVariable<T extends Variable>(variable: T) {
   return variable;
 }
 
-export function hashVariable(value: string) {
+export function hashVariable(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * Escape a path for the spec, which is interpolated after variables are
+ * processed: a bare `$` in it would read as a variable reference, and the path
+ * would no longer point at the file. `deployStack` escapes the interpolated
+ * spec again, so Docker receives the path unchanged.
+ */
+function escapeInterpolation(path: string) {
+  return path.replaceAll("$", () => "$$");
 }
 
 function marshalLabels(labels: Record<string, string | number> | undefined) {

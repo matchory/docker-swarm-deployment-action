@@ -11,7 +11,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadComposeSpecs, normalizeSpec } from "../src/compose.js";
+import {
+  interpolateSpec,
+  loadComposeSpecs,
+  normalizeSpec,
+} from "../src/compose.js";
 import type { Settings } from "../src/settings.js";
 import { removeGeneratedVariableFiles } from "../src/variables.js";
 
@@ -29,9 +33,12 @@ const suite = composeAvailable() ? describe : describe.skip;
 
 // Run the action's load and normalize steps against the real Docker CLI, with
 // the compose files in `docker/` and the working directory at the project
-// root, as on a runner, and return the secret files the normalized spec uses.
-async function normalizeSecretFiles(override: string) {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "variable-files-")));
+// root, as on a runner, and return the secret files the interpolated spec uses.
+async function normalizeSecretFiles(
+  override: string,
+  prefix = "variable-files-",
+) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   const cwd = process.cwd();
   const savedWorkspace = process.env.GITHUB_WORKSPACE;
 
@@ -65,7 +72,10 @@ async function normalizeSecretFiles(override: string) {
       ["docker/compose.yaml", "docker/compose.override.yaml"],
       settings,
     );
-    const spec = await normalizeSpec(prepared, settings);
+    const spec = interpolateSpec(
+      await normalizeSpec(prepared, settings),
+      settings,
+    );
     const files = Object.values(spec.secrets ?? {}).map(
       (secret) => (secret as { file: string }).file,
     );
@@ -119,5 +129,18 @@ suite("variable files with a compose file in a subdirectory", () => {
     expect(exist).toEqual([true, true]);
     expect(files).toContain(join(dir, "api.secret"));
     expect(mode).toBe(0o600);
+  });
+});
+
+suite("variable files in a working directory containing a dollar sign", () => {
+  it("points at existing files after interpolation", async () => {
+    const { dir, files, exist } = await normalizeSecretFiles(
+      "services:\n  web:\n    deploy:\n      replicas: 2\n",
+      "variable-files-$HOME-",
+    );
+
+    expect(dir).toContain("$HOME");
+    expect(exist).toEqual([true, true]);
+    expect(files).toContain(join(dir, "api.secret"));
   });
 });

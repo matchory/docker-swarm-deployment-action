@@ -52,7 +52,10 @@ suite("default schema version against docker stack config", () => {
         true,
       );
 
-      expect(normalized.services.main.healthcheck?.start_interval).toBe("5s");
+      expect(normalized.services.main).toHaveProperty(
+        "healthcheck.start_interval",
+        "5s",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

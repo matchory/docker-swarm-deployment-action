@@ -14,8 +14,8 @@ import {
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
-import * as engine from "../src/engine";
-import { deployStack } from "../src/engine";
+import * as engine from "../src/engine.js";
+import { deployStack } from "../src/engine.js";
 import { Tagged } from "../src/override-tags.js";
 import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
@@ -49,13 +49,17 @@ describe("Compose", () => {
 
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test-stack",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "ebadf1",
   });
@@ -1574,7 +1578,7 @@ describe("Compose", () => {
 
         const result = interpolateSpec(spec, mockSettings);
 
-        expect(result.services.app.environment).toEqual({
+        expect(result.services.app).toHaveProperty("environment", {
           KEY: "-----BEGIN KEY-----\nabc\tdef\n-----END KEY-----\n",
         });
       });
@@ -2054,13 +2058,17 @@ describe("Compose", () => {
     const settings = defineSettings({
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
       monitorTimeout: 300,
+      secretValues: new Map(),
       stack: "test-stack",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map([
         ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
         ["MATCHORY_DEPLOYMENT_VERSION", "ebadf1"],
