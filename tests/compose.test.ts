@@ -6,6 +6,7 @@ import {
   type ComposeSpec,
   defineComposeSpec,
   interpolateSpec,
+  interpolateTypedFields,
   loadComposeSpecs,
   normalizeSpec,
   prepareSpec,
@@ -903,6 +904,106 @@ describe("Compose", () => {
         normalizeSpec(specs, { ...settings, strictCompatibility: false }),
       ).rejects.toThrow(/All services were removed during reconciliation/);
       expect(normalize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Typed Field Interpolation", () => {
+    const typedSettings = {
+      variables: new Map([
+        ["REPLICAS", "3"],
+        ["PORT", "8080"],
+        ["RATIO", "0.25"],
+        ["FILES", "65535"],
+        ["WORD", "many"],
+      ]),
+    };
+
+    it("should interpolate and cast integer fields", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            image: "nginx:${TAG}",
+            deploy: {
+              replicas: "${MAIN_REPLICAS:-1}",
+              update_config: { parallelism: "${REPLICAS}" },
+              restart_policy: { max_attempts: "5" },
+            },
+            ports: [{ target: "80", published: "${PORT}" }, "${PORT}:443"],
+            ulimits: { nproc: "${FILES}", nofile: { soft: "1024" } },
+          },
+        },
+      };
+
+      expect(interpolateTypedFields(spec, typedSettings)).toEqual({
+        services: {
+          app: {
+            image: "nginx:${TAG}",
+            deploy: {
+              replicas: 1,
+              update_config: { parallelism: 3 },
+              restart_policy: { max_attempts: 5 },
+            },
+            ports: [{ target: 80, published: 8080 }, "${PORT}:443"],
+            ulimits: { nproc: 65535, nofile: { soft: 1024 } },
+          },
+        },
+      });
+    });
+
+    it("should interpolate and cast float and boolean fields", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            read_only: "${READ_ONLY:-yes}",
+            deploy: { update_config: { max_failure_ratio: "${RATIO}" } },
+            volumes: [{ type: "bind", read_only: "Off" }],
+          },
+        },
+        networks: { backend: { external: "true" } },
+        secrets: { token: { external: "${EXTERNAL:-no}" } },
+      };
+
+      expect(interpolateTypedFields(spec, typedSettings)).toEqual({
+        services: {
+          app: {
+            read_only: true,
+            deploy: { update_config: { max_failure_ratio: 0.25 } },
+            volumes: [{ type: "bind", read_only: false }],
+          },
+        },
+        networks: { backend: { external: true } },
+        secrets: { token: { external: false } },
+      });
+    });
+
+    it("should leave values that are already typed untouched", () => {
+      const spec: ComposeSpec = {
+        services: { app: { deploy: { replicas: 2 }, tty: false } },
+      };
+
+      expect(interpolateTypedFields(spec, typedSettings)).toEqual(spec);
+    });
+
+    it("should name the field and expression when a value cannot be cast", () => {
+      const spec: ComposeSpec = {
+        services: { app: { deploy: { replicas: "${WORD}" } } },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        'services.app.deploy.replicas must be an integer, but "${WORD}" ' +
+          "does not resolve to one",
+      );
+    });
+
+    it("should reject booleans Docker does not accept", () => {
+      const spec: ComposeSpec = {
+        services: { app: { privileged: "1" } },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        'services.app.privileged must be a boolean, but "1" does not ' +
+          "resolve to one",
+      );
     });
   });
 
