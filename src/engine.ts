@@ -308,11 +308,14 @@ export async function listSecrets(filters: {
       { silent: true },
     );
 
-    return parseLineDelimitedJson<StoredVariable>(output).map<SecretMetadata>(
-      (secret) => ({
-        ...secret,
-        Labels: parseLabels(secret.Labels ?? ""),
-      }),
+    return await withExactTimestamps(
+      "secret",
+      parseLineDelimitedJson<StoredVariable>(output).map<SecretMetadata>(
+        (secret) => ({
+          ...secret,
+          Labels: parseLabels(secret.Labels ?? ""),
+        }),
+      ),
     );
   } catch (cause) {
     throw new Error(`Failed to list secrets: ${cause}`, { cause });
@@ -338,15 +341,48 @@ export async function listConfigs(filters: {
       { silent: true },
     );
 
-    return parseLineDelimitedJson<StoredVariable>(output).map<ConfigMetadata>(
-      (config) => ({
-        ...config,
-        Labels: parseLabels(config.Labels ?? ""),
-      }),
+    return await withExactTimestamps(
+      "config",
+      parseLineDelimitedJson<StoredVariable>(output).map<ConfigMetadata>(
+        (config) => ({
+          ...config,
+          Labels: parseLabels(config.Labels ?? ""),
+        }),
+      ),
     );
   } catch (cause) {
     throw new Error(`Failed to list configs: ${cause}`, { cause });
   }
+}
+
+/**
+ * `secret ls` and `config ls` only report relative times ("2 hours ago"),
+ * which cannot be parsed or compared, so read exact ones from `inspect`.
+ */
+async function withExactTimestamps<T extends SecretMetadata | ConfigMetadata>(
+  kind: "secret" | "config",
+  items: T[],
+) {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const output = await executeDockerCommand(
+    [
+      kind,
+      "inspect",
+      '--format={"ID":{{json .ID}},"CreatedAt":{{json .CreatedAt}},"UpdatedAt":{{json .UpdatedAt}}}',
+      ...items.map(({ ID }) => ID),
+    ],
+    { silent: true },
+  );
+  const timestamps = new Map(
+    parseLineDelimitedJson<Pick<T, "ID" | "CreatedAt" | "UpdatedAt">>(
+      output,
+    ).map(({ ID, CreatedAt, UpdatedAt }) => [ID, { CreatedAt, UpdatedAt }]),
+  );
+
+  return items.map((item) => ({ ...item, ...timestamps.get(item.ID) }));
 }
 
 /**
