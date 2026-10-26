@@ -76,10 +76,11 @@ inputs:
     default: "true"
   strict-variables:
     description: >-
-      Whether to disable automatic fallback to matching environment variables
-      for file variable sources that don't exist in the working directory. This
-      is useful for ensuring that the action fails if a file variable source is
-      not found.
+      Whether to fail if the `file` source of a secret or config cannot be
+      read, instead of falling back to automatic resolution (a `<name>.secret`
+      file or a matching environment variable). Undefined variables in the
+      Compose Specification are replaced with an empty string and logged as a
+      warning either way.
     default: "true"
   strict-compatibility:
     description: >-

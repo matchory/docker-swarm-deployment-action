@@ -148,7 +148,7 @@ To configure the action, you can use the following inputs:
 | `compose-file`          | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
 | `env-var-prefix`        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
 | `manage-variables`      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
-| `strict-variables`      | `true`                                | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
+| `strict-variables`      | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
 | `strict-compatibility`  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
 | `key-interpolation`     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
 | `variables`             | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
@@ -343,6 +343,15 @@ As in Compose, variable _values_ are inserted literally and never interpolated a
 `${DB_PASSWORD}` becomes `p@$$w0rd`, and a value of `$OTHER` stays `$OTHER`. To get a literal `$` in the Compose file
 itself, escape it as `$$`.
 
+Also as in Compose, a variable that is used without a default value but is not set is replaced with an empty string, and
+the action logs a warning such as `The "VERSION" variable is not set. Defaulting to a blank string.`, once per variable.
+The same applies to the `content` of secrets and configs, with one warning per variable and secret or config. Use
+`${VERSION:?message}` to fail instead.
+
+Values read from an `env_file` are interpolated too, as Compose does: `A=$B` gets the value of `B`, and `$$` becomes `$`.
+Unlike Compose, quotes around a value are kept as part of it (as `docker stack deploy` does), and the action interpolates
+inside single quotes, too.
+
 In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the following variables derived from the
 inputs are also available:
@@ -377,16 +386,16 @@ The action will automatically create files for these configs, and the resulting 
 ```yaml
 configs:
   app_url:
-    file: ./app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
+    file: /home/runner/work/app/app/app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
     # omitting rest for brevity
   database_username:
-    file: ./database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
+    file: /home/runner/work/app/app/database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
     # omitting rest for brevity
 ```
 
-The action will create the files in the working directory and append a unique identifier to the filename to avoid
-conflicts. The files are removed once the deployment no longer needs them — including when the deployment fails — so no
-plain variable values are left behind for a later job to read.
+The action will create the files in the working directory, readable only by the runner user, and append a unique
+identifier to the filename to avoid conflicts. The files are removed once the deployment no longer needs them —
+including when the deployment fails — so no plain variable values are left behind for a later job to read.
 
 #### Smart Variable Resolution
 
@@ -468,6 +477,9 @@ variables to include:
       DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
 ```
 
+Each line is split at its first `=`: the name is trimmed, and the value is kept exactly as written, including any further
+`=` and surrounding whitespace.
+
 ##### Variable priority and merging
 
 When using multiple input sources, variables are merged with the following priority (later sources override earlier
@@ -537,7 +549,7 @@ The action will transform it to:
 configs:
   database_username:
     name: YOUR_STACK-database_username-53175bc
-    file: ./database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
+    file: /home/runner/work/app/app/database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
     labels:
       com.matchory.deployment.name: database_username
       com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a

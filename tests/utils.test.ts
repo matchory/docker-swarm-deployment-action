@@ -381,6 +381,76 @@ describe("Utilities", () => {
       });
     });
 
+    describe("Undefined variable callback", () => {
+      it("should report each use of an undefined variable", () => {
+        const onUndefined = vi.fn();
+        const variables = new Map([["NAME", "John"]]);
+
+        expect(
+          interpolateString(
+            "$GREETING ${NAME} ${SURNAME} $GREETING",
+            variables,
+            false,
+            onUndefined,
+          ),
+        ).toBe(" John  ");
+        expect(onUndefined.mock.calls).toEqual([
+          ["GREETING"],
+          ["SURNAME"],
+          ["GREETING"],
+        ]);
+      });
+
+      it("should not report defined or empty variables", () => {
+        const onUndefined = vi.fn();
+        const variables = new Map([
+          ["NAME", "John"],
+          ["EMPTY", ""],
+        ]);
+
+        interpolateString("$NAME ${EMPTY}", variables, false, onUndefined);
+        expect(onUndefined).not.toHaveBeenCalled();
+      });
+
+      it("should not report variables whose unset value is handled", () => {
+        const onUndefined = vi.fn();
+
+        expect(
+          interpolateString(
+            "${A:-a} ${B-b} ${C:+c} ${D+d}",
+            new Map(),
+            false,
+            onUndefined,
+          ),
+        ).toBe("a b  ");
+        expect(onUndefined).not.toHaveBeenCalled();
+      });
+
+      it("should report undefined variables in nested default values", () => {
+        const onUndefined = vi.fn();
+        const variables = new Map([["SET", "1"]]);
+
+        expect(
+          interpolateString(
+            "${A:-${B}} ${SET:+${C}} ${SET:-${D}}",
+            variables,
+            false,
+            onUndefined,
+          ),
+        ).toBe("  1");
+        expect(onUndefined.mock.calls).toEqual([["B"], ["C"]]);
+      });
+
+      it("should not report escaped references", () => {
+        const onUndefined = vi.fn();
+
+        expect(
+          interpolateString("$$NAME $${NAME}", new Map(), false, onUndefined),
+        ).toBe("$NAME ${NAME}");
+        expect(onUndefined).not.toHaveBeenCalled();
+      });
+    });
+
     describe("Edge cases", () => {
       it("should handle empty strings", () => {
         const variables = new Map<string, string>();

@@ -117,6 +117,7 @@ describe("Deployment", () => {
           },
         },
         settings,
+        expect.any(Function),
       );
 
       expect(engine.deployStack).toHaveBeenCalledWith(

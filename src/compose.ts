@@ -22,6 +22,7 @@ import {
   findFirstExistingFile,
   interpolateString,
   mapStrings,
+  warnAboutUndefinedVariables,
 } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
@@ -453,6 +454,7 @@ function assertServicesRemain(...specs: ComposeSpec[]) {
  * @param composeSpec The Compose specification to interpolate
  * @param keyInterpolation Whether to interpolate variables in keys
  * @param variables The variables to use for interpolation
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export function interpolateSpec(
   composeSpec: ComposeSpec,
@@ -460,13 +462,18 @@ export function interpolateSpec(
     keyInterpolation,
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   if (keyInterpolation) {
-    return interpolateKeysAndValues(composeSpec, variables) as ComposeSpec;
+    return interpolateKeysAndValues(
+      composeSpec,
+      variables,
+      onUndefined,
+    ) as ComposeSpec;
   }
 
   return mapStrings(composeSpec, (value) =>
-    interpolateString(value, variables),
+    interpolateString(value, variables, false, onUndefined),
   );
 }
 
@@ -476,15 +483,16 @@ export function interpolateSpec(
 function interpolateKeysAndValues(
   node: unknown,
   variables: Map<string, string>,
+  onUndefined: (name: string) => void,
   path: Array<string | number> = [],
 ): unknown {
   if (typeof node === "string") {
-    return interpolateString(node, variables);
+    return interpolateString(node, variables, false, onUndefined);
   }
 
   if (Array.isArray(node)) {
     return node.map((item, index) =>
-      interpolateKeysAndValues(item, variables, [...path, index]),
+      interpolateKeysAndValues(item, variables, onUndefined, [...path, index]),
     );
   }
 
@@ -498,7 +506,7 @@ function interpolateKeysAndValues(
   // `__proto__` stays a key instead of replacing the prototype.
   return Object.fromEntries(
     Object.entries(node).map(([key, value]) => {
-      const name = interpolateString(key, variables);
+      const name = interpolateString(key, variables, false, onUndefined);
 
       if (seen.has(name)) {
         throw new Error(
@@ -512,7 +520,10 @@ function interpolateKeysAndValues(
 
       return [
         name,
-        interpolateKeysAndValues(value, variables, [...path, name]),
+        interpolateKeysAndValues(value, variables, onUndefined, [
+          ...path,
+          name,
+        ]),
       ];
     }),
   );
@@ -612,10 +623,12 @@ function findCast(path: Array<string | number>) {
  *
  * @param composeSpec The Compose specification to process
  * @param variables The variables to use for interpolation
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export function interpolateTypedFields(
   composeSpec: ComposeSpec,
   { variables }: Pick<Readonly<Settings>, "variables">,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   function walk(node: unknown, path: Array<string | number>): unknown {
     if (typeof node === "string") {
@@ -625,7 +638,9 @@ export function interpolateTypedFields(
         return node;
       }
 
-      const value = field.cast(interpolateString(node, variables));
+      const value = field.cast(
+        interpolateString(node, variables, false, onUndefined),
+      );
 
       // Report the expression rather than what it resolved to, which may be
       // a secret.
