@@ -242,7 +242,7 @@ To use multiple files, separate them with newlines:
       compose.override.yaml
 ```
 
-Only the files together need to define a service, so a file can contribute just shared configs, secrets, networks
+At least one of the files must define a service; the others can contribute just shared configs, secrets, networks
 or volumes.
 
 You can also use a custom delimiter (defaults to `:`) by setting the

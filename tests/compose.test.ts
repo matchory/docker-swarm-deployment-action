@@ -557,6 +557,39 @@ describe("Compose", () => {
         ),
       ).rejects.toThrow(/All services were removed during reconciliation/);
     });
+
+    it("accepts a file whose services are all removed when another file has services left", async () => {
+      const outputSpec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+      };
+      vi.spyOn(yaml, "load").mockReturnValue(outputSpec);
+      vi.mocked(exec).mockImplementationOnce(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("output that can be parsed"));
+
+        return 0;
+      });
+
+      await expect(
+        normalizeSpec(
+          [
+            {
+              spec: defineComposeSpec({
+                services: { web: { image: "nginx:latest" } },
+              }),
+              baseDir: ".",
+            },
+            {
+              spec: defineComposeSpec({
+                services: { ai: { provider: { type: "model-runner" } } },
+              }),
+              baseDir: ".",
+            },
+          ],
+          { ...settings, manageVariables: false, strictCompatibility: false },
+        ),
+      ).resolves.toEqual(outputSpec);
+    });
   });
 
   describe("Spec Normalization and Merging", () => {

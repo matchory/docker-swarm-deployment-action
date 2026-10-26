@@ -358,14 +358,11 @@ async function reconcileThenMerge(
   settings: Readonly<Settings>,
 ) {
   for (const { spec, baseDir } of prepared) {
-    const hadServices = Object.keys(spec.services).length > 0;
-
     await reconcileSwarmCompatibility(spec, settings, baseDir);
-
-    if (hadServices) {
-      assertServicesRemain(spec);
-    }
   }
+
+  // As when loading, only the files together need services left.
+  assertServicesRemain(...prepared.map(({ spec }) => spec));
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
@@ -433,8 +430,8 @@ async function mergeThenReconcile(
   }
 }
 
-function assertServicesRemain(spec: ComposeSpec) {
-  if (Object.keys(spec.services).length === 0) {
+function assertServicesRemain(...specs: ComposeSpec[]) {
+  if (specs.every((spec) => Object.keys(spec.services).length === 0)) {
     throw new Error(
       "All services were removed during reconciliation because they use " +
         "features Docker Swarm cannot run (e.g. provider services); " +
