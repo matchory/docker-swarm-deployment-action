@@ -401,8 +401,7 @@ rules, so they behave as with `docker compose`:
 - The long syntax (`- path: optional.env` with `required: false`) skips a file that does not exist. Its `format`
   attribute is not supported.
 
-Relative `env_file` paths resolve against the working directory, or against the directory of the first Compose file
-when a Compose file uses the `!reset` or `!override` tags.
+Relative `env_file` paths resolve against the working directory, like relative `file:` sources of configs and secrets.
 
 In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the following variables derived from the
@@ -620,7 +619,9 @@ This has two notable implications:
    not referenced in the Compose File anymore, it will be safely removed from the cluster. This is important to keep the
    cluster clean and avoid cluttering it with old variables. Variables referenced by the previous spec of one of the
    stack's services are kept, so a rollback (automatic or via `docker service rollback`) can still find them; all other
-   versions are removed.
+   versions are removed. Only this stack's services are checked: if another stack uses one of these variables through
+   `external`, Swarm still refuses to remove it while that stack's current spec references it, but not for its previous
+   spec.
 
 #### Configuring the Variable Name
 

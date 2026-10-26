@@ -313,7 +313,7 @@ describe("inlineEnvFiles", () => {
     ).resolves.toEqual([{ app: { environment: { A: "root" } } }]);
   });
 
-  it("resolves relative paths against the first file's directory with merge tags", async () => {
+  it("resolves relative paths against the working directory with merge tags", async () => {
     file("app.env", "A=root");
     file("docker/app.env", "A=docker");
 
@@ -330,7 +330,7 @@ describe("inlineEnvFiles", () => {
     expect(base).toEqual({ app: {} });
     expect(override.app).toEqual({
       deploy: new Tagged("!override", "mapping", new Map()),
-      environment: { A: "docker" },
+      environment: { A: "root" },
     });
   });
 

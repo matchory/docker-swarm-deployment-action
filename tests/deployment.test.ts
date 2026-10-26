@@ -111,6 +111,7 @@ describe("Deployment", () => {
           },
         ],
         settings,
+        expect.any(Function),
       );
       expect(compose.interpolateSpec).toHaveBeenCalledWith(
         {
@@ -193,6 +194,7 @@ describe("Deployment", () => {
       expect(compose.normalizeSpec).toHaveBeenCalledWith(
         [{ spec, baseDir: "." }],
         settings,
+        expect.any(Function),
       );
     });
 
@@ -311,6 +313,7 @@ describe("Deployment", () => {
           },
         ],
         settings,
+        expect.any(Function),
       );
       expect(engine.deployStack).toHaveBeenCalledWith(
         {

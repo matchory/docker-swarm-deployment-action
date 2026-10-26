@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ComposeSpec } from "./compose.js";
-import { containsOverrideTag, Tagged } from "./override-tags.js";
+import { Tagged } from "./override-tags.js";
 import type { Settings } from "./settings.js";
 import { interpolateString, warnAboutUndefinedVariables } from "./utils.js";
 
@@ -29,12 +29,10 @@ export async function inlineEnvFiles(
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
-  // Docker resolved relative paths against the first generated file, which the
-  // merge-tag path writes beside the first Compose file and the tag-free path
-  // writes to the working directory (see `normalizeSpec`).
-  const baseDir = prepared.some(({ spec }) => containsOverrideTag(spec))
-    ? prepared[0].baseDir
-    : ".";
+  // Relative paths resolve against the working directory, as they always have
+  // on the tag-free path, where the generated spec file is written there; the
+  // merge-tag path follows suit, like `file:` sources do.
+  const baseDir = ".";
   const names = new Set(
     prepared.flatMap(({ spec }) => fieldsOf(spec.services)?.keys() ?? []),
   );

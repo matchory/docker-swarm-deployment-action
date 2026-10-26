@@ -74,10 +74,10 @@ describe("engine", () => {
       expect(mockedExec).toHaveBeenCalledWith("docker", expectedArgs, {
         input: Buffer.from(expectedStdin),
         silent: false,
-        env: {
+        env: expect.objectContaining({
           MATCHORY_DEPLOYMENT_STACK: "test-stack",
           MATCHORY_DEPLOYMENT_VERSION: "1.0.0",
-        },
+        }),
         listeners: expect.any(Object),
       });
       expect(mockedCore.info).toHaveBeenCalledWith(
@@ -116,6 +116,42 @@ describe("engine", () => {
         "CMD-SHELL",
         "curl localhost:$PORT",
       ]);
+    });
+  });
+
+  describe("docker connection environment", () => {
+    // `exclude-variables` keeps a variable out of interpolation; it must not
+    // send these two commands to a different daemon than every other call.
+    it.each([
+      ["stack deploy", () => engine.deployStack({ services: {} }, settings)],
+      [
+        "stack config",
+        () =>
+          engine.normalizeStackSpecification(["compose.yaml"], settings, true),
+      ],
+    ])("keeps the process environment for %s", async (_, run) => {
+      vi.stubEnv("DOCKER_HOST", "ssh://deploy@swarm.example");
+      mockedExec.mockImplementation(async (_0, _1, options) => {
+        options?.listeners?.stdout?.(Buffer.from("services: {}\n"));
+        return 0;
+      });
+
+      try {
+        await run();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        expect.any(Array),
+        expect.objectContaining({
+          env: expect.objectContaining({
+            DOCKER_HOST: "ssh://deploy@swarm.example",
+            MATCHORY_DEPLOYMENT_STACK: "test-stack",
+          }),
+        }),
+      );
     });
   });
 
@@ -256,6 +292,47 @@ services:
         expect.any(Object),
       );
       expect(services).toEqual([{ ...mockServiceMetadata, ...mockService }]);
+    });
+
+    it("should inspect all services in one call, matching short IDs", async () => {
+      const metadata = [
+        { ...mockServiceMetadata, ID: "abc", Name: "service1" },
+        { ...mockServiceMetadata, ID: "def", Name: "service2" },
+      ];
+      // `service ls` prints short IDs, `service inspect` full ones, and the
+      // order of the inspect output is not relied upon.
+      const inspected = [
+        { ...mockService, ID: "def0000000000000000000000" },
+        { ...mockService, ID: "abc0000000000000000000000" },
+      ];
+
+      mockedExec.mockImplementation(async (_0, args, options) => {
+        const output = args?.includes("ls")
+          ? metadata.map((item) => JSON.stringify(item)).join("\n")
+          : JSON.stringify(inspected);
+        options?.listeners?.stdout?.(Buffer.from(`${output}\n`));
+        return 0;
+      });
+
+      const services = await engine.listServices({}, true);
+
+      expect(mockedExec).toHaveBeenCalledTimes(2);
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        ["service", "inspect", "--format=json", "abc", "def"],
+        expect.any(Object),
+      );
+      expect(services.map(({ ID, Name }) => [Name, ID])).toEqual([
+        ["service1", "abc0000000000000000000000"],
+        ["service2", "def0000000000000000000000"],
+      ]);
+    });
+
+    it("should not inspect when no services exist", async () => {
+      mockedExec.mockImplementation(async () => 0);
+
+      await expect(engine.listServices({}, true)).resolves.toEqual([]);
+      expect(mockedExec).toHaveBeenCalledTimes(1);
     });
 
     it("should handle filters correctly", async () => {

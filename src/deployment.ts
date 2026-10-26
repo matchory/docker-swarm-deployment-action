@@ -31,7 +31,11 @@ export async function deploy(settings: Readonly<Settings>) {
       ...item,
       spec: interpolateTypedFields(item.spec, settings, onUndefined),
     }));
-    const composeSpec = await normalizeSpec(composeSpecs, settings);
+    const composeSpec = await normalizeSpec(
+      composeSpecs,
+      settings,
+      onUndefined,
+    );
     finalSpec = interpolateSpec(composeSpec, settings, onUndefined);
 
     // After interpolation: volume names are often built from variables.

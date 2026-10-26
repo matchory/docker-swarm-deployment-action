@@ -344,13 +344,15 @@ function throwMergeTagError(
  * @param prepared The Compose specifications to normalize, each paired with
  *   the base directory it was loaded from
  * @param settings The settings to use for the deployment
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export async function normalizeSpec(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   const spec = prepared.some((item) => containsOverrideTag(item.spec))
-    ? await mergeThenReconcile(prepared, settings)
+    ? await mergeThenReconcile(prepared, settings, onUndefined)
     : await reconcileThenMerge(prepared, settings);
 
   if (!spec?.services || Object.keys(spec.services).length === 0) {
@@ -406,6 +408,7 @@ async function reconcileThenMerge(
 async function mergeThenReconcile(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
+  onUndefined: (name: string) => void,
 ) {
   if (!(await isComposePluginAvailable())) {
     throw new Error(
@@ -436,12 +439,18 @@ async function mergeThenReconcile(
         json: true,
       }) as ComposeSpec,
       settings,
+      onUndefined,
     );
 
     // `docker compose config` stamps a project name derived from the working
     // directory; drop it to match the tag-free path, where prepareSpec removes
     // the name from every input before merging.
     delete mergedSpec.name;
+
+    // It also drops `version`, which would leave `docker stack config` to
+    // validate against its own default schema instead of the one the inputs
+    // declare (loadComposeSpecs gives every input the same version).
+    mergedSpec.version = prepared[0].spec.version;
 
     await reconcileSwarmCompatibility(mergedSpec, settings);
     assertServicesRemain(mergedSpec);
