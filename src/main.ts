@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { env } from "node:process";
 import { DefaultArtifactClient } from "@actions/artifact";
 import * as core from "@actions/core";
-import type { ComposeSpec } from "./compose";
+import type { ComposeSpec } from "./compose.js";
 import { deploy } from "./deployment.js";
 import { parseSettings, type Settings } from "./settings.js";
 import { removeFileQuietly } from "./utils.js";

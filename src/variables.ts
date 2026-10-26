@@ -3,7 +3,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
-import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
+import {
+  listConfigs,
+  listSecrets,
+  removeConfig,
+  removeSecret,
+} from "./engine.js";
 import type { Settings } from "./settings.js";
 import {
   exists,
