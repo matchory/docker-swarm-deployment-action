@@ -8,7 +8,7 @@ import {
   isComposePluginAvailable,
   mergeComposeFiles,
   normalizeStackSpecification,
-} from "./engine";
+} from "./engine.js";
 import { inlineEnvFiles } from "./env-file.js";
 import {
   containsOverrideTag,
@@ -22,12 +22,11 @@ import {
   exists,
   findFirstExistingFile,
   interpolateString,
-  mapStrings,
   warnAboutUndefinedVariables,
 } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
-export const schemaVersion = "3.9";
+export const schemaVersion = "3.12";
 
 /**
  * YAML schema used to parse Compose files.
@@ -178,10 +177,23 @@ export async function loadComposeSpecs(
   settings: Readonly<Settings>,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
-  const specs = [];
+  const parsed = [];
 
   for (const filename of composeFiles) {
-    specs.push(await loadComposeSpec(filename, settings));
+    parsed.push({ filename, spec: await parseComposeFile(filename) });
+  }
+
+  // `docker stack config` rejects files whose versions differ, so a file
+  // without one takes the version another file declares.
+  const version =
+    parsed.find(({ spec }) => spec?.version)?.spec.version ?? schemaVersion;
+  const specs = [];
+
+  for (const { filename, spec } of parsed) {
+    specs.push({
+      spec: await prepareSpec(spec, settings, version),
+      baseDir: dirname(filename),
+    });
   }
 
   // A file may contribute only configs, secrets, networks or volumes, as long
@@ -205,16 +217,13 @@ export async function loadComposeSpecs(
   return specs;
 }
 
-async function loadComposeSpec(filename: string, settings: Settings) {
+async function parseComposeFile(filename: string) {
   const content = await readFile(filename, "utf8");
-  const parsedContent = load(content, {
+
+  return load(content, {
     filename,
     schema: composeSchema,
   }) as ComposeSpec;
-
-  const spec = await prepareSpec(parsedContent, settings);
-
-  return { spec, baseDir: dirname(filename) };
 }
 
 /**
@@ -226,13 +235,14 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
+  version = schemaVersion,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
   }
 
   if (!composeSpec.version) {
-    composeSpec.version = schemaVersion;
+    composeSpec.version = version;
   }
 
   // loadComposeSpecs checks that the files together define services.
@@ -416,10 +426,17 @@ async function mergeThenReconcile(
 
   try {
     const merged = await mergeComposeFiles(tempFiles);
-    const mergedSpec = load(merged, {
-      filename: "docker-compose.merged.yaml",
-      json: true,
-    }) as ComposeSpec;
+
+    // Compose only casts typed fields while interpolating, so with
+    // `--no-interpolate` it emits a merge-tagged scalar such as `!override 3`
+    // as the string "3", so cast typed fields again after the merge.
+    const mergedSpec = interpolateTypedFields(
+      load(merged, {
+        filename: "docker-compose.merged.yaml",
+        json: true,
+      }) as ComposeSpec,
+      settings,
+    );
 
     // `docker compose config` stamps a project name derived from the working
     // directory; drop it to match the tag-free path, where prepareSpec removes
@@ -474,35 +491,50 @@ export function interpolateSpec(
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
-  if (keyInterpolation) {
-    return interpolateKeysAndValues(
-      composeSpec,
-      variables,
-      onUndefined,
-    ) as ComposeSpec;
-  }
-
-  return mapStrings(composeSpec, (value) =>
-    interpolateString(value, variables, false, onUndefined),
-  );
+  return interpolateNode(
+    composeSpec,
+    variables,
+    onUndefined,
+    keyInterpolation,
+  ) as ComposeSpec;
 }
 
-// Interpolate keys and string values one at a time, so a value can never
-// change the structure around it. The spec comes from `docker stack config`
-// output, so it holds only plain JSON values (no `Tagged` carriers).
-function interpolateKeysAndValues(
+// Interpolate a string, naming where it is in the spec if that fails
+function interpolateAt(
+  value: string,
+  path: Array<string | number>,
+  variables: Map<string, string>,
+  onUndefined: (name: string) => void,
+) {
+  try {
+    return interpolateString(value, variables, onUndefined);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    throw new Error(`${path.join(".")}: ${message}`, { cause });
+  }
+}
+
+// Interpolate string values (and keys, if enabled) one at a time, so a value
+// can never change the structure around it. The spec comes from `docker stack
+// config` output, so it holds only plain JSON values (no `Tagged` carriers).
+function interpolateNode(
   node: unknown,
   variables: Map<string, string>,
   onUndefined: (name: string) => void,
+  keyInterpolation: boolean,
   path: Array<string | number> = [],
 ): unknown {
   if (typeof node === "string") {
-    return interpolateString(node, variables, false, onUndefined);
+    return interpolateAt(node, path, variables, onUndefined);
   }
 
   if (Array.isArray(node)) {
     return node.map((item, index) =>
-      interpolateKeysAndValues(item, variables, onUndefined, [...path, index]),
+      interpolateNode(item, variables, onUndefined, keyInterpolation, [
+        ...path,
+        index,
+      ]),
     );
   }
 
@@ -516,7 +548,9 @@ function interpolateKeysAndValues(
   // `__proto__` stays a key instead of replacing the prototype.
   return Object.fromEntries(
     Object.entries(node).map(([key, value]) => {
-      const name = interpolateString(key, variables, false, onUndefined);
+      const name = keyInterpolation
+        ? interpolateAt(key, [...path, key], variables, onUndefined)
+        : key;
 
       if (seen.has(name)) {
         throw new Error(
@@ -530,7 +564,7 @@ function interpolateKeysAndValues(
 
       return [
         name,
-        interpolateKeysAndValues(value, variables, onUndefined, [
+        interpolateNode(value, variables, onUndefined, keyInterpolation, [
           ...path,
           name,
         ]),
@@ -649,7 +683,7 @@ export function interpolateTypedFields(
       }
 
       const value = field.cast(
-        interpolateString(node, variables, false, onUndefined),
+        interpolateAt(node, path, variables, onUndefined),
       );
 
       // Report the expression rather than what it resolved to, which may be

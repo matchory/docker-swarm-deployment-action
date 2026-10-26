@@ -90,7 +90,7 @@ export async function inlineEnvFiles(
           files.push({
             path: resolve(
               baseDir,
-              interpolateString(path, variables, false, onUndefined),
+              interpolateString(path, variables, onUndefined),
             ),
             required: required !== false,
           });
@@ -126,7 +126,7 @@ export async function inlineEnvFiles(
       const result =
         value === null
           ? variables.get(key)
-          : interpolateString(value, variables, false);
+          : interpolateString(value, variables);
 
       if (result !== undefined) {
         resolved.set(key, result);
@@ -313,12 +313,7 @@ export function parseEnvFile(
     throw new Error(`line ${line}: ${message}`);
   };
   const expand = (value: string) =>
-    interpolateString(
-      value,
-      new Map([...values, ...lookup]),
-      false,
-      onUndefined,
-    );
+    interpolateString(value, new Map([...values, ...lookup]), onUndefined);
 
   while (true) {
     // Skip whitespace and comment lines up to the next statement.

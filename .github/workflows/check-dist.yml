@@ -45,6 +45,10 @@ jobs:
       - name: Compare Directories
         id: diff
         run: |
+          # `git diff` ignores untracked files, so mark new files in dist/
+          # as intended to be added; otherwise a newly generated, never
+          # committed file would go unnoticed.
+          git add --intent-to-add dist/
           if [ "$(git diff --ignore-space-at-eol --text dist/ | wc -l)" -gt 0 ]; then
             echo "Detected uncommitted changes after build. See diff below:"
             git diff --ignore-space-at-eol --text dist/

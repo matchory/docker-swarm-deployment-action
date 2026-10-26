@@ -26,13 +26,17 @@ describe("Deployment", () => {
     it("should perform an orderly deployment", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: true,
         monitor: false,
         monitorInterval: 0,
         monitorTimeout: 0,
+        secretValues: new Map(),
         stack: "test-stack",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map(),
         version: "1.2.3",
       });
@@ -149,13 +153,17 @@ describe("Deployment", () => {
     it("should cast variables in typed fields before normalizing", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: true,
         monitor: false,
         monitorInterval: 0,
         monitorTimeout: 0,
+        secretValues: new Map(),
         stack: "test-stack",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map([["REPLICAS", "2"]]),
         version: "1.2.3",
       });
@@ -191,13 +199,17 @@ describe("Deployment", () => {
     it("should not prune variables if variable management is disabled", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: false,
         monitor: false,
         monitorInterval: 0,
         monitorTimeout: 0,
+        secretValues: new Map(),
         stack: "test-stack",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map(),
         version: "1.2.3",
       });
@@ -222,13 +234,17 @@ describe("Deployment", () => {
     it("should monitor the deployed services post-deployment if enabled", async () => {
       const settings = defineSettings({
         envVarPrefix: "",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: true,
         monitor: true,
         monitorInterval: 0,
         monitorTimeout: 0,
+        secretValues: new Map(),
         stack: "test-stack",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map(),
         version: "1.2.3",
       });
@@ -332,13 +348,17 @@ describe("Deployment", () => {
   describe("Generated Variable Files", () => {
     const settings = defineSettings({
       envVarPrefix: "",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 0,
       monitorTimeout: 0,
+      secretValues: new Map(),
       stack: "test-stack",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map(),
       version: "1.2.3",
     });
@@ -375,13 +395,17 @@ describe("Deployment", () => {
   describe("Shared Volumes", () => {
     const settings = defineSettings({
       envVarPrefix: "",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 0,
       monitorTimeout: 0,
+      secretValues: new Map(),
       stack: "web",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map([
         ["MATCHORY_DEPLOYMENT_STACK", "web"],
         ["OTHER", "other"],

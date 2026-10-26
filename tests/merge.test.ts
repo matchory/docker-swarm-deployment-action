@@ -12,13 +12,17 @@ vi.mock("node:fs/promises", () => ({ readFile }));
 
 const settings = defineSettings({
   envVarPrefix: "DEPLOYMENT",
+  healthCheckWarnings: false,
   keyInterpolation: false,
   manageVariables: false,
   monitor: false,
   monitorInterval: 5,
   monitorTimeout: 300,
+  secretValues: new Map(),
   stack: "test-stack",
+  strictCompatibility: false,
   strictVariables: false,
+  uploadComposeSpec: false,
   variables: new Map(),
   version: "ebadf1",
 });

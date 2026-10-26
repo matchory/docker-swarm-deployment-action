@@ -25,7 +25,9 @@ const suite = dockerAvailable() ? describe : describe.skip;
 
 // The inlined values pass through the real `docker stack config` and the
 // action's interpolation, which must leave them as Compose would set them.
-suite("env_file against docker stack config", () => {
+// Docker's first invocation on a fresh CI runner can take several seconds,
+// so the default 5s per-test timeout is too tight for real CLI calls.
+suite("env_file against docker stack config", { timeout: 30_000 }, () => {
   it("produces the values Compose would", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "env-file-")));
     const cwd = process.cwd();

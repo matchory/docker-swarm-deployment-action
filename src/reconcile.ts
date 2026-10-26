@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import type { Settings } from "./settings.js";
-import { levenshtein } from "./utils";
+import { levenshtein } from "./utils.js";
 
 /**
  * Service-level keys that pass `docker stack config` but are ignored by

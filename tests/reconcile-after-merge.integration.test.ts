@@ -65,96 +65,102 @@ async function mergeAndReconcile(
   return spec;
 }
 
-suite("reconcile after merge (real docker compose)", () => {
-  it("deploy:!override + restart: both survive into deploy", async () => {
-    await withTempWorkspace(async (dir) => {
-      writeFileSync(
-        join(dir, "base.yaml"),
-        "services:\n  web:\n    image: nginx\n    restart: always\n" +
-          "    deploy:\n      replicas: 1\n",
-      );
-      writeFileSync(
-        join(dir, "over.yaml"),
-        "services:\n  web:\n    deploy: !override\n      replicas: 3\n",
-      );
+// Docker's first invocation on a fresh CI runner can take several seconds,
+// so the default 5s per-test timeout is too tight for real CLI calls.
+suite(
+  "reconcile after merge (real docker compose)",
+  { timeout: 30_000 },
+  () => {
+    it("deploy:!override + restart: both survive into deploy", async () => {
+      await withTempWorkspace(async (dir) => {
+        writeFileSync(
+          join(dir, "base.yaml"),
+          "services:\n  web:\n    image: nginx\n    restart: always\n" +
+            "    deploy:\n      replicas: 1\n",
+        );
+        writeFileSync(
+          join(dir, "over.yaml"),
+          "services:\n  web:\n    deploy: !override\n      replicas: 3\n",
+        );
 
-      const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
+        const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
 
-      const web = spec.services.web as Service;
-      expect(web.deploy?.replicas).toBe(3);
-      expect(web.deploy?.restart_policy).toEqual({ condition: "any" });
-      expect(web).not.toHaveProperty("restart");
+        const web = spec.services.web as Service;
+        expect(web.deploy?.replicas).toBe(3);
+        expect(web.deploy?.restart_policy).toEqual({ condition: "any" });
+        expect(web).not.toHaveProperty("restart");
+      });
     });
-  });
 
-  it("labels:!override + label_file: labels reconcile correctly", async () => {
-    await withTempWorkspace(async (dir) => {
-      writeFileSync(join(dir, "labels.env"), "FROM_FILE=filevalue\n");
-      writeFileSync(
-        join(dir, "base.yaml"),
-        "services:\n  web:\n    image: nginx\n" +
-          "    label_file:\n      - ./labels.env\n" +
-          "    labels:\n      base: baselabel\n",
-      );
-      writeFileSync(
-        join(dir, "over.yaml"),
-        "services:\n  web:\n    labels: !override\n      only: this\n",
-      );
+    it("labels:!override + label_file: labels reconcile correctly", async () => {
+      await withTempWorkspace(async (dir) => {
+        writeFileSync(join(dir, "labels.env"), "FROM_FILE=filevalue\n");
+        writeFileSync(
+          join(dir, "base.yaml"),
+          "services:\n  web:\n    image: nginx\n" +
+            "    label_file:\n      - ./labels.env\n" +
+            "    labels:\n      base: baselabel\n",
+        );
+        writeFileSync(
+          join(dir, "over.yaml"),
+          "services:\n  web:\n    labels: !override\n      only: this\n",
+        );
 
-      const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
+        const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
 
-      const web = spec.services.web as Service;
-      // !override replaced the labels map; label_file entries merge in under it.
-      expect(web.labels).toEqual({ FROM_FILE: "filevalue", only: "this" });
-      expect(web).not.toHaveProperty("label_file");
+        const web = spec.services.web as Service;
+        // !override replaced the labels map; label_file entries merge in under it.
+        expect(web.labels).toEqual({ FROM_FILE: "filevalue", only: "this" });
+        expect(web).not.toHaveProperty("label_file");
+      });
     });
-  });
 
-  it("depends_on:!override reconciles to a list", async () => {
-    await withTempWorkspace(async (dir) => {
-      writeFileSync(
-        join(dir, "base.yaml"),
-        "services:\n  web:\n    image: nginx\n" +
-          "    depends_on:\n      - db\n      - cache\n" +
-          "  db:\n    image: postgres\n  cache:\n    image: redis\n",
-      );
-      writeFileSync(
-        join(dir, "over.yaml"),
-        "services:\n  web:\n    depends_on: !override\n      - db\n",
-      );
+    it("depends_on:!override reconciles to a list", async () => {
+      await withTempWorkspace(async (dir) => {
+        writeFileSync(
+          join(dir, "base.yaml"),
+          "services:\n  web:\n    image: nginx\n" +
+            "    depends_on:\n      - db\n      - cache\n" +
+            "  db:\n    image: postgres\n  cache:\n    image: redis\n",
+        );
+        writeFileSync(
+          join(dir, "over.yaml"),
+          "services:\n  web:\n    depends_on: !override\n      - db\n",
+        );
 
-      const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
+        const spec = await mergeAndReconcile(dir, "base.yaml", "over.yaml");
 
-      const web = spec.services.web as Service;
-      expect(web.depends_on).toEqual(["db"]);
+        const web = spec.services.web as Service;
+        expect(web.depends_on).toEqual(["db"]);
+      });
     });
-  });
 
-  it("preserves an explicit secret name and labels through the merge", async () => {
-    await withTempWorkspace(async (dir) => {
-      writeFileSync(join(dir, "secret.txt"), "secretval\n");
-      writeFileSync(
-        join(dir, "base.yaml"),
-        "services:\n  web:\n    image: nginx\n" +
-          "    secrets:\n      - my_secret\n" +
-          "secrets:\n  my_secret:\n    file: ./secret.txt\n" +
-          "    name: myapp-my_secret-abc1234\n" +
-          "    labels:\n      com.matchory.deployment.stack: myapp\n",
-      );
-      writeFileSync(
-        join(dir, "over.yaml"),
-        'services:\n  web:\n    ports: !override\n      - "8080:80"\n',
-      );
+    it("preserves an explicit secret name and labels through the merge", async () => {
+      await withTempWorkspace(async (dir) => {
+        writeFileSync(join(dir, "secret.txt"), "secretval\n");
+        writeFileSync(
+          join(dir, "base.yaml"),
+          "services:\n  web:\n    image: nginx\n" +
+            "    secrets:\n      - my_secret\n" +
+            "secrets:\n  my_secret:\n    file: ./secret.txt\n" +
+            "    name: myapp-my_secret-abc1234\n" +
+            "    labels:\n      com.matchory.deployment.stack: myapp\n",
+        );
+        writeFileSync(
+          join(dir, "over.yaml"),
+          'services:\n  web:\n    ports: !override\n      - "8080:80"\n',
+        );
 
-      const merged = await mergeComposeFiles([
-        join(dir, "base.yaml"),
-        join(dir, "over.yaml"),
-      ]);
-      const spec = load(merged, { json: true }) as ComposeSpec;
+        const merged = await mergeComposeFiles([
+          join(dir, "base.yaml"),
+          join(dir, "over.yaml"),
+        ]);
+        const spec = load(merged, { json: true }) as ComposeSpec;
 
-      const secret = (spec.secrets as Record<string, Secret>).my_secret;
-      expect(secret.name).toBe("myapp-my_secret-abc1234");
-      expect(secret.labels?.["com.matchory.deployment.stack"]).toBe("myapp");
+        const secret = (spec.secrets as Record<string, Secret>).my_secret;
+        expect(secret.name).toBe("myapp-my_secret-abc1234");
+        expect(secret.labels?.["com.matchory.deployment.stack"]).toBe("myapp");
+      });
     });
-  });
-});
+  },
+);

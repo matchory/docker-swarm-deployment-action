@@ -135,6 +135,36 @@ jobs:
           DOCKER_CONTEXT: swarm
 ```
 
+The action talks to Docker exclusively through the `docker` CLI, so it honors whatever the CLI would use: the
+`DOCKER_CONTEXT` and `DOCKER_HOST` environment variables, or the context selected with `docker context use` in an
+earlier step. You can also create the context yourself, for example over SSH. Store the host's public key in
+`SSH_KNOWN_HOSTS` (the `ssh-keyscan` output, verified out of band) rather than scanning it during the job, which would
+trust whichever host answers:
+
+```yaml
+- name: Set up SSH
+  env:
+    SSH_KEY: ${{ secrets.SSH_KEY }}
+    SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+  run: |
+    install -m 700 -d ~/.ssh
+    printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+    chmod 600 ~/.ssh/id_ed25519
+    printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+
+- name: Create Docker context
+  run: |
+    docker context create swarm --docker host=ssh://someone@example.domain.tld
+    docker context use swarm
+
+- name: Deploy to Docker Swarm
+  uses: matchory/docker-swarm-deployment-action@v1
+```
+
+Don't list `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, `HOME`, `PATH`, or `SSH_AUTH_SOCK` in
+`exclude-variables`: the action passes the merged variables to the Docker commands it runs, so excluding them would
+point some of those commands at a different daemon or keep them from reaching it over SSH.
+
 ## ⚙ Configuration
 
 ### Inputs
@@ -261,6 +291,11 @@ the old v3 format or the new Compose Specification. Instead, it:
 This ensures that regardless of the exact format you use (even mixing them), the final configuration passed to
 `docker stack deploy` is valid and correctly interpreted by Docker Swarm.
 
+A Compose file without a `version` key, as the Compose Specification recommends, is validated against stack file version
+`3.12`, so recent fields like `healthcheck.start_interval` are accepted. This requires Docker 25 or later on the runner;
+with an older version, set an explicit `version` in your Compose file. If you deploy several Compose files and another
+of them sets a `version`, a file without one uses that version instead, since Docker rejects files whose versions differ.
+
 #### Compose-Spec to Swarm Reconciliation
 
 Modern Compose Specification constructs (like `develop`, `gpus`, or `label_file`) aren't understood by
@@ -341,7 +376,10 @@ allow for unlimited nesting in default and alternative values, meaning that the 
 
 As in Compose, variable _values_ are inserted literally and never interpolated again: if `DB_PASSWORD` is `p@$$w0rd`,
 `${DB_PASSWORD}` becomes `p@$$w0rd`, and a value of `$OTHER` stays `$OTHER`. To get a literal `$` in the Compose file
-itself, escape it as `$$`.
+itself, escape it as `$$`. A `$` followed by anything other than `$`, `{` or a variable name is kept as it is.
+
+As Compose does, a `${` that does not start a valid reference, such as `${FOO.bar}` or an unterminated
+`${FOO:-bar`, fails the deployment with an `Invalid interpolation format` error naming the reference and where it is.
 
 Also as in Compose, a variable that is used without a default value but is not set is replaced with an empty string, and
 the action logs a warning such as `The "VERSION" variable is not set. Defaulting to a blank string.`, once per variable.
@@ -562,11 +600,11 @@ The action will transform it to:
 ```yaml
 configs:
   database_username:
-    name: YOUR_STACK-database_username-53175bc
+    name: YOUR_STACK-database_username-4813494
     file: /home/runner/work/app/app/database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
     labels:
       com.matchory.deployment.name: database_username
-      com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a
+      com.matchory.deployment.hash: 4813494d137e1631bba301d5acab6e7bb7aa74ce1185d456565ef51d737677b2
       com.matchory.deployment.stack: YOUR_STACK
       com.matchory.deployment.version: VERSION
 ```
