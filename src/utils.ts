@@ -112,61 +112,6 @@ export function mapStrings<T>(value: T, map: (value: string) => string): T {
   ) as T;
 }
 
-const variableRefPattern =
-  /\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)[^{}]*)?})/gi;
-
-/**
- * Extract all variable names referenced in a string.
- */
-function extractVariableRefs(value: string): string[] {
-  const refs: string[] = [];
-
-  for (const match of value.matchAll(variableRefPattern)) {
-    refs.push(match[1] || match[2]);
-  }
-
-  return refs;
-}
-
-/**
- * Detect circular references in the variable dependency graph reachable from
- * the given input string. Throws with the cycle path if one is found.
- */
-function detectCycles(str: string, variables: Map<string, string>): void {
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-
-  function visit(key: string, path: string[]): void {
-    if (visited.has(key)) return;
-
-    if (visiting.has(key)) {
-      const cycleStart = path.indexOf(key);
-      const cycle = [...path.slice(cycleStart), key].join(" → ");
-
-      throw new Error(`Circular variable reference detected: ${cycle}`);
-    }
-
-    const value = variables.get(key);
-
-    if (value === undefined) return;
-
-    visiting.add(key);
-    path.push(key);
-
-    for (const ref of extractVariableRefs(value)) {
-      visit(ref, path);
-    }
-
-    path.pop();
-    visiting.delete(key);
-    visited.add(key);
-  }
-
-  for (const ref of extractVariableRefs(str)) {
-    visit(ref, []);
-  }
-}
-
 /**
  * Interpolate a string with variables from a Map.
  *
@@ -182,8 +127,11 @@ function detectCycles(str: string, variables: Map<string, string>): void {
  *   variable is required. Unlike the other operators, the trailing text is not a default value.
  * - If the variable is present, it returns the variable's value.
  *
- * Further, it supports both `${VARIABLE_NAME}` and `$VARIABLE_NAME` formats, recursive interpolation, and escaping of
- * dollar signs (e.g., `$$VARIABLE_NAME` will become `$VARIABLE_NAME`).
+ * Further, it supports both `${VARIABLE_NAME}` and `$VARIABLE_NAME` formats, nested references in default and
+ * alternative values (e.g., `${FOO:-${BAR}}`), and escaping of dollar signs (e.g., `$$VARIABLE_NAME` will become
+ * `$VARIABLE_NAME`).
+ * Like Compose, it substitutes in a single pass: substituted values are never interpolated again, so a `$` in a
+ * variable's value is kept literally.
  * When strict mode is enabled, it will throw an error if a variable is used, has no default value, and is not defined in
  * the variable map.
  *
@@ -196,15 +144,6 @@ export function interpolateString(
   variables: Map<string, string>,
   strict = false,
 ): string {
-  // First, replace escaped dollar signs with a placeholder to protect them
-  // during variable interpolation
-  const placeholder = "\u0000ESCAPED_DOLLAR\u0000";
-  str = str.replace(/\$\$/g, placeholder);
-
-  detectCycles(str, variables);
-
-  let match: RegExpMatchArray | null;
-
   type Operator = ":-" | ":+" | ":?" | "?" | "-" | "+";
 
   function resolveMatch(
@@ -220,7 +159,8 @@ export function interpolateString(
       (operator === "+" && value !== undefined) ||
       (operator === ":+" && value)
     ) {
-      return defaultValue ?? "";
+      // Only the default text itself is interpolated, and only when used
+      return interpolateString(defaultValue ?? "", variables, strict);
     }
 
     // Alternative value substitution: If the variable is PRESENT, return
@@ -248,34 +188,68 @@ export function interpolateString(
     return value;
   }
 
-  do {
-    // Match the next variable in the string in any of the following formats:
-    //  1. `$VAR`
-    //  2. `${VAR}`
-    //  3. `${VAR:-default}`
-    //  4. `${VAR-default}`
-    //  5. `${VAR:+default}`
-    //  6. `${VAR+default}`
-    //  7. `${VAR:?default}`
-    //  8. `${VAR?default}`
-    match = str.match(
-      /\$(?:([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:(:?[-+?]|\?)([^{}]*))?})/i,
-    );
+  // Match the next variable or escape at the current position in any of the
+  // following formats:
+  //  1. `$$` (an escaped dollar sign)
+  //  2. `$VAR`
+  //  3. `${VAR}`
+  //  4. `${VAR` followed by an operator: `:-`, `-`, `:+`, `+`, `:?` or `?`
+  const pattern =
+    /\$(?:(\$)|([a-zA-Z_][a-zA-Z0-9_]*)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?:\}|(:?[-+?])))/y;
+  let result = "";
+  let index = 0;
 
-    // If we don't have any more matches, break out of the loop. This can happen
-    // if we have replaced all variables in the string, and the match variable
-    // was still populated with the last match.
-    if (!match) {
+  while (index < str.length) {
+    const dollar = str.indexOf("$", index);
+
+    if (dollar === -1) {
       break;
     }
 
-    const [fullMatch, key1, key2, operator, defaultValue] = match;
-    const key = key1 || key2;
+    result += str.slice(index, dollar);
+    pattern.lastIndex = dollar;
+    const match = pattern.exec(str);
+    let end = match ? pattern.lastIndex : -1;
+    let defaultValue: string | undefined;
+
+    // An operator is followed by a default value that may contain nested
+    // `${...}` references, so find its closing brace by counting them.
+    if (match?.[4]) {
+      let depth = 1;
+
+      for (; end < str.length; end++) {
+        if (str.startsWith("${", end)) {
+          depth++;
+          end++;
+        } else if (str[end] === "}" && --depth === 0) {
+          break;
+        }
+      }
+
+      defaultValue = str.slice(pattern.lastIndex, end);
+      end = depth === 0 ? end + 1 : -1;
+    }
+
+    // Not a valid reference: keep the dollar sign literally and move on
+    if (!match || end === -1) {
+      result += "$";
+      index = dollar + 1;
+      continue;
+    }
+
+    index = end;
+
+    if (match[1]) {
+      result += "$";
+      continue;
+    }
+
+    const key = match[2] || match[3];
     const value = variables.get(key);
     let replacement: string | undefined;
 
     try {
-      replacement = resolveMatch(value, operator as Operator, defaultValue);
+      replacement = resolveMatch(value, match[4] as Operator, defaultValue);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
 
@@ -292,13 +266,11 @@ export function interpolateString(
       );
     }
 
-    str = str.replace(fullMatch, replacement ?? "");
-  } while (match);
+    // Appended to the output and never scanned again, so values are literal
+    result += replacement ?? "";
+  }
 
-  // Finally, replace the placeholder back with single dollar signs
-  str = str.replace(new RegExp(placeholder, "g"), "$");
-
-  return str;
+  return result + str.slice(index);
 }
 
 /**

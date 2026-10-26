@@ -1848,6 +1848,42 @@ describe("Compose", () => {
           },
         });
       });
+
+      it("should interpolate keys and values separately when keyInterpolation is enabled", () => {
+        const settings = {
+          ...mockSettings,
+          keyInterpolation: true,
+          variables: new Map([
+            ["NAME", "app"],
+            ["PASSWORD", 'p"a\\ss\nword'],
+          ]),
+        };
+        const spec: ComposeSpec = {
+          services: {
+            "${NAME}": {
+              image: "nginx",
+              environment: {
+                PASSWORD: "${PASSWORD}",
+                BROKEN: "${NAME:-x",
+                AFTER: "}",
+              },
+            },
+          },
+        };
+
+        expect(interpolateSpec(spec, settings)).toEqual({
+          services: {
+            app: {
+              image: "nginx",
+              environment: {
+                PASSWORD: 'p"a\\ss\nword',
+                BROKEN: "${NAME:-x",
+                AFTER: "}",
+              },
+            },
+          },
+        });
+      });
     });
   });
 
