@@ -1,6 +1,7 @@
 import {
   type ComposeSpec,
   interpolateSpec,
+  interpolateTypedFields,
   loadComposeSpecs,
   normalizeSpec,
   resolveComposeFiles,
@@ -20,7 +21,12 @@ export async function deploy(settings: Readonly<Settings>) {
 
   try {
     const composeFiles = await resolveComposeFiles(settings);
-    const composeSpecs = await loadComposeSpecs(composeFiles, settings);
+    const composeSpecs = (await loadComposeSpecs(composeFiles, settings)).map(
+      (item) => ({
+        ...item,
+        spec: interpolateTypedFields(item.spec, settings),
+      }),
+    );
     const composeSpec = await normalizeSpec(composeSpecs, settings);
     finalSpec = interpolateSpec(composeSpec, settings);
 
