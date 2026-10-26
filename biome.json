@@ -1,7 +1,13 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["src/**/*.ts", "tests/**/*.ts", "*.config.*", "*.json"]
+    "includes": [
+      "src/**/*.ts",
+      "tests/**/*.ts",
+      "script/**/*.mjs",
+      "*.config.*",
+      "*.json"
+    ]
   },
   "formatter": { "indentStyle": "space" },
   "linter": {

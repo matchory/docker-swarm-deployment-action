@@ -176,6 +176,21 @@ export async function loadComposeSpecs(
     specs.push(await loadComposeSpec(filename, settings));
   }
 
+  // A file may contribute only configs, secrets, networks or volumes, as long
+  // as another file supplies the services.
+  if (!specs.some(({ spec }) => Object.keys(spec.services).length > 0)) {
+    const where =
+      composeFiles.length === 1
+        ? `Compose file "${composeFiles[0]}" has no`
+        : `None of the Compose files (${composeFiles.join(", ")}) have any`;
+
+    throw new Error(
+      `${where} services to deploy: the "services:" section is missing or ` +
+        `empty. A stack needs at least one service. Add a "services:" ` +
+        `block, or point the "compose-file" input at the correct file.`,
+    );
+  }
+
   return specs;
 }
 
@@ -186,7 +201,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  const spec = await prepareSpec(parsedContent, settings, filename);
+  const spec = await prepareSpec(parsedContent, settings);
 
   return { spec, baseDir: dirname(filename) };
 }
@@ -200,7 +215,6 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
-  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -210,16 +224,8 @@ export async function prepareSpec(
     composeSpec.version = schemaVersion;
   }
 
-  if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
-    const where = filename ? `Compose file "${filename}"` : "The Compose file";
-
-    throw new Error(
-      `${where} has no services to deploy: its "services:" section is ` +
-        `missing or empty. A stack needs at least one service. Add a ` +
-        `"services:" block, or point the "compose-file" input at the ` +
-        `correct file.`,
-    );
-  }
+  // loadComposeSpecs checks that the files together define services.
+  composeSpec.services ??= {};
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
@@ -353,8 +359,10 @@ async function reconcileThenMerge(
 ) {
   for (const { spec, baseDir } of prepared) {
     await reconcileSwarmCompatibility(spec, settings, baseDir);
-    assertServicesRemain(spec);
   }
+
+  // As when loading, only the files together need services left.
+  assertServicesRemain(...prepared.map(({ spec }) => spec));
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
@@ -422,8 +430,8 @@ async function mergeThenReconcile(
   }
 }
 
-function assertServicesRemain(spec: ComposeSpec) {
-  if (Object.keys(spec.services).length === 0) {
+function assertServicesRemain(...specs: ComposeSpec[]) {
+  if (specs.every((spec) => Object.keys(spec.services).length === 0)) {
     throw new Error(
       "All services were removed during reconciliation because they use " +
         "features Docker Swarm cannot run (e.g. provider services); " +
@@ -453,36 +461,60 @@ export function interpolateSpec(
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
 ) {
-  // mapStrings leaves keys alone, so interpolating them needs its own walk.
-  // Each key and value is interpolated on its own, so a value is never
-  // spliced into serialized JSON and a template cannot span two strings.
   if (keyInterpolation) {
-    const walk = (node: unknown): unknown => {
-      if (typeof node === "string") {
-        return interpolateString(node, variables);
-      }
-
-      if (Array.isArray(node)) {
-        return node.map(walk);
-      }
-
-      if (node && typeof node === "object") {
-        return Object.fromEntries(
-          Object.entries(node).map(([key, value]) => [
-            interpolateString(key, variables),
-            walk(value),
-          ]),
-        );
-      }
-
-      return node;
-    };
-
-    return walk(composeSpec) as ComposeSpec;
+    return interpolateKeysAndValues(composeSpec, variables) as ComposeSpec;
   }
 
   return mapStrings(composeSpec, (value) =>
     interpolateString(value, variables),
+  );
+}
+
+// Interpolate keys and string values one at a time, so a value can never
+// change the structure around it. The spec comes from `docker stack config`
+// output, so it holds only plain JSON values (no `Tagged` carriers).
+function interpolateKeysAndValues(
+  node: unknown,
+  variables: Map<string, string>,
+  path: Array<string | number> = [],
+): unknown {
+  if (typeof node === "string") {
+    return interpolateString(node, variables);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((item, index) =>
+      interpolateKeysAndValues(item, variables, [...path, index]),
+    );
+  }
+
+  if (node === null || typeof node !== "object") {
+    return node;
+  }
+
+  const seen = new Set<string>();
+
+  // `Object.fromEntries` defines own properties, so a key that interpolates to
+  // `__proto__` stays a key instead of replacing the prototype.
+  return Object.fromEntries(
+    Object.entries(node).map(([key, value]) => {
+      const name = interpolateString(key, variables);
+
+      if (seen.has(name)) {
+        throw new Error(
+          `Key interpolation produced the key "${name}" more than once in ` +
+            `${path.length ? path.join(".") : "the top level"} (from ` +
+            `"${key}"); rename the keys or variables so they are unique.`,
+        );
+      }
+
+      seen.add(name);
+
+      return [
+        name,
+        interpolateKeysAndValues(value, variables, [...path, name]),
+      ];
+    }),
   );
 }
 

@@ -17,7 +17,7 @@ extensive error handling.
 **Main Languages**: TypeScript, YAML, Bash  
 **Package Manager**: npm (v10.8.2+)  
 **Key Dependencies**: @actions/core, @actions/exec, js-yaml  
-**Build Tools**: unbuild, @vercel/ncc, vitest, biome
+**Build Tools**: esbuild, vitest, biome
 
 ## Build and Validation Commands
 
@@ -27,9 +27,8 @@ project is built via the `.github/workflows/copilot-setup-steps.yml` workflow.
 ### Available Commands (No Setup Required)
 
 ```bash
-npm run build    # TypeScript compilation via unbuild → creates /out directory
-npm run bundle   # Bundle for Action distribution → creates /dist directory
-npm run package  # Combined build + bundle (shortcut for both above)
+npm run bundle   # esbuild bundle for Action distribution → creates /dist directory
+npm run package  # Alias for bundle
 ```
 
 **Critical**: The `/dist` directory contains the final bundled Action code that
@@ -86,7 +85,7 @@ npm run local-action   # Test action locally with .env file
 - **`tsconfig.json`**, **`tsconfig.base.json`**, **`tsconfig.node.json`**:
   TypeScript configuration
 - **`biome.json`**: Biome code formatting and linting configuration
-- **`build.config.ts`**: unbuild configuration for TypeScript compilation
+- **`script/bundle.mjs`**: esbuild bundler that writes `dist/`
 - **`vitest.config.ts`**: Test runner configuration with coverage settings
 - **`.node-version`**: Specifies Node.js 23.10.0 requirement
 
@@ -156,7 +155,7 @@ coverage:
 
 - `@actions/*` packages: Core GitHub Actions functionality
 - `js-yaml`: Critical for Compose file parsing
-- Build tools (unbuild, @vercel/ncc): Changes may affect action bundling
+- Build tools (esbuild): Changes may affect action bundling
 
 ### Files to Modify Based on Task Type
 

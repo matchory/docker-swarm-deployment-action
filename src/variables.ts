@@ -54,6 +54,16 @@ export async function processVariable(
     variable = {};
   }
 
+  // An external variable already exists in the swarm, so there is nothing to
+  // create; adding a source would conflict with `external`.
+  const external = variable.external;
+
+  if (external === true || (external && typeof external === "object")) {
+    core.debug(`Variable "${name}" is external. Skipping.`);
+
+    return variable;
+  }
+
   let modifiedVariable: FileVariable | undefined;
   let content: string | undefined;
 
