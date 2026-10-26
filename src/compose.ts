@@ -176,6 +176,21 @@ export async function loadComposeSpecs(
     specs.push(await loadComposeSpec(filename, settings));
   }
 
+  // A file may contribute only configs, secrets, networks or volumes, as long
+  // as another file supplies the services.
+  if (!specs.some(({ spec }) => Object.keys(spec.services).length > 0)) {
+    const where =
+      composeFiles.length === 1
+        ? `Compose file "${composeFiles[0]}" has no`
+        : `None of the Compose files (${composeFiles.join(", ")}) have any`;
+
+    throw new Error(
+      `${where} services to deploy: the "services:" section is missing or ` +
+        `empty. A stack needs at least one service. Add a "services:" ` +
+        `block, or point the "compose-file" input at the correct file.`,
+    );
+  }
+
   return specs;
 }
 
@@ -186,7 +201,7 @@ async function loadComposeSpec(filename: string, settings: Settings) {
     schema: composeSchema,
   }) as ComposeSpec;
 
-  const spec = await prepareSpec(parsedContent, settings, filename);
+  const spec = await prepareSpec(parsedContent, settings);
 
   return { spec, baseDir: dirname(filename) };
 }
@@ -200,7 +215,6 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
-  filename?: string,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
@@ -210,16 +224,8 @@ export async function prepareSpec(
     composeSpec.version = schemaVersion;
   }
 
-  if (!composeSpec.services || Object.keys(composeSpec.services).length === 0) {
-    const where = filename ? `Compose file "${filename}"` : "The Compose file";
-
-    throw new Error(
-      `${where} has no services to deploy: its "services:" section is ` +
-        `missing or empty. A stack needs at least one service. Add a ` +
-        `"services:" block, or point the "compose-file" input at the ` +
-        `correct file.`,
-    );
-  }
+  // loadComposeSpecs checks that the files together define services.
+  composeSpec.services ??= {};
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {
@@ -353,8 +359,10 @@ async function reconcileThenMerge(
 ) {
   for (const { spec, baseDir } of prepared) {
     await reconcileSwarmCompatibility(spec, settings, baseDir);
-    assertServicesRemain(spec);
   }
+
+  // As when loading, only the files together need services left.
+  assertServicesRemain(...prepared.map(({ spec }) => spec));
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
@@ -422,8 +430,8 @@ async function mergeThenReconcile(
   }
 }
 
-function assertServicesRemain(spec: ComposeSpec) {
-  if (Object.keys(spec.services).length === 0) {
+function assertServicesRemain(...specs: ComposeSpec[]) {
+  if (specs.every((spec) => Object.keys(spec.services).length === 0)) {
     throw new Error(
       "All services were removed during reconciliation because they use " +
         "features Docker Swarm cannot run (e.g. provider services); " +
@@ -464,6 +472,162 @@ export function interpolateSpec(
   return mapStrings(composeSpec, (value) =>
     interpolateString(value, variables),
   );
+}
+
+type Cast = { type: string; cast: (value: string) => unknown };
+
+const toInt: Cast = {
+  type: "an integer",
+  cast: (value) => (/^[+-]?\d+$/.test(value) ? Number(value) : undefined),
+};
+const toFloat: Cast = {
+  type: "a number",
+  cast: (value) =>
+    /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(value)
+      ? Number(value)
+      : undefined,
+};
+const toBoolean: Cast = {
+  type: "a boolean",
+  cast: (value) => {
+    const normalized = value.toLowerCase();
+
+    if (["y", "yes", "true", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["n", "no", "false", "off"].includes(normalized)) {
+      return false;
+    }
+
+    return undefined;
+  },
+};
+
+// The fields Docker casts after interpolating them, mirrored from
+// `interpolateTypeCastMapping` in docker/cli's cli/compose/loader. `*` matches
+// any mapping key, `[]` any list item.
+const typedFields: Array<[path: string[], cast: Cast]> = [
+  [["services", "*", "configs", "[]", "mode"], toInt],
+  [["services", "*", "secrets", "[]", "mode"], toInt],
+  [["services", "*", "healthcheck", "retries"], toInt],
+  [["services", "*", "healthcheck", "disable"], toBoolean],
+  [["services", "*", "deploy", "replicas"], toInt],
+  [["services", "*", "deploy", "update_config", "parallelism"], toInt],
+  [["services", "*", "deploy", "update_config", "max_failure_ratio"], toFloat],
+  [["services", "*", "deploy", "rollback_config", "parallelism"], toInt],
+  [
+    ["services", "*", "deploy", "rollback_config", "max_failure_ratio"],
+    toFloat,
+  ],
+  [["services", "*", "deploy", "restart_policy", "max_attempts"], toInt],
+  [["services", "*", "deploy", "placement", "max_replicas_per_node"], toInt],
+  [["services", "*", "ports", "[]", "target"], toInt],
+  [["services", "*", "ports", "[]", "published"], toInt],
+  [["services", "*", "ulimits", "*"], toInt],
+  [["services", "*", "ulimits", "*", "hard"], toInt],
+  [["services", "*", "ulimits", "*", "soft"], toInt],
+  [["services", "*", "privileged"], toBoolean],
+  [["services", "*", "oom_score_adj"], toInt],
+  [["services", "*", "read_only"], toBoolean],
+  [["services", "*", "stdin_open"], toBoolean],
+  [["services", "*", "tty"], toBoolean],
+  [["services", "*", "volumes", "[]", "read_only"], toBoolean],
+  [["services", "*", "volumes", "[]", "volume", "nocopy"], toBoolean],
+  [["networks", "*", "external"], toBoolean],
+  [["networks", "*", "internal"], toBoolean],
+  [["networks", "*", "attachable"], toBoolean],
+  [["volumes", "*", "external"], toBoolean],
+  [["secrets", "*", "external"], toBoolean],
+  [["configs", "*", "external"], toBoolean],
+];
+
+function findCast(path: Array<string | number>) {
+  return typedFields.find(
+    ([pattern]) =>
+      pattern.length === path.length &&
+      pattern.every((segment, index) =>
+        segment === "[]"
+          ? typeof path[index] === "number"
+          : segment === "*"
+            ? typeof path[index] === "string"
+            : segment === path[index],
+      ),
+  )?.[1];
+}
+
+/**
+ * Interpolate and cast the fields Docker expects to be numbers or booleans
+ *
+ * `docker stack config` runs with `--skip-interpolation`, because the action
+ * interpolates by itself, so it validates the schema while a value like
+ * `replicas: ${REPLICAS:-1}` is still a string, and rejects it. Docker's own
+ * loader interpolates these fields and casts the result before validating;
+ * this does the same ahead of normalization. All other strings are left for
+ * `interpolateSpec`, which runs on the normalized spec.
+ *
+ * @param composeSpec The Compose specification to process
+ * @param variables The variables to use for interpolation
+ */
+export function interpolateTypedFields(
+  composeSpec: ComposeSpec,
+  { variables }: Pick<Readonly<Settings>, "variables">,
+) {
+  function walk(node: unknown, path: Array<string | number>): unknown {
+    if (typeof node === "string") {
+      const field = findCast(path);
+
+      if (!field) {
+        return node;
+      }
+
+      const value = field.cast(interpolateString(node, variables));
+
+      // Report the expression rather than what it resolved to, which may be
+      // a secret.
+      if (value === undefined) {
+        throw new Error(
+          `${path.join(".")} must be ${field.type}, but "${node}" does not ` +
+            "resolve to one",
+        );
+      }
+
+      return value;
+    }
+
+    // Keep `!reset`/`!override` carriers intact, so `normalizeSpec` still
+    // routes the spec through the tag-aware merge, but cast what they wrap.
+    if (node instanceof Tagged) {
+      const value =
+        node.value instanceof Map
+          ? new Map(
+              [...node.value].map(([key, item]) => [
+                key,
+                walk(item, [...path, String(key)]),
+              ]),
+            )
+          : walk(node.value, path);
+
+      return new Tagged(node.tag, node.kind, value);
+    }
+
+    if (Array.isArray(node)) {
+      return node.map((item, index) => walk(item, [...path, index]));
+    }
+
+    if (node && typeof node === "object") {
+      return Object.fromEntries(
+        Object.entries(node).map(([key, value]) => [
+          key,
+          walk(value, [...path, key]),
+        ]),
+      );
+    }
+
+    return node;
+  }
+
+  return walk(composeSpec, []) as ComposeSpec;
 }
 
 export function defineComposeSpec<T extends ComposeSpec>(spec: T) {

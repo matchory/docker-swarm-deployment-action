@@ -1,6 +1,7 @@
 import {
   type ComposeSpec,
   interpolateSpec,
+  interpolateTypedFields,
   loadComposeSpecs,
   normalizeSpec,
   resolveComposeFiles,
@@ -9,6 +10,7 @@ import { deployStack } from "./engine.js";
 import { validateHealthChecks } from "./healthcheck.js";
 import { monitorDeployment } from "./monitoring.js";
 import type { Settings } from "./settings.js";
+import { assertOwnShares } from "./shares.js";
 import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
 
 /**
@@ -19,10 +21,17 @@ export async function deploy(settings: Readonly<Settings>) {
 
   try {
     const composeFiles = await resolveComposeFiles(settings);
-    const composeSpecs = await loadComposeSpecs(composeFiles, settings);
+    const composeSpecs = (await loadComposeSpecs(composeFiles, settings)).map(
+      (item) => ({
+        ...item,
+        spec: interpolateTypedFields(item.spec, settings),
+      }),
+    );
     const composeSpec = await normalizeSpec(composeSpecs, settings);
     finalSpec = interpolateSpec(composeSpec, settings);
 
+    // After interpolation: volume names are often built from variables.
+    assertOwnShares(finalSpec, settings.stack);
     validateHealthChecks(finalSpec, settings);
 
     await deployStack(finalSpec, settings);
