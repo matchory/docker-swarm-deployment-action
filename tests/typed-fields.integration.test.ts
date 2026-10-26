@@ -48,6 +48,6 @@ suite("typed fields against docker stack config", () => {
 
     const normalized = await normalize(interpolateTypedFields(spec, settings));
 
-    expect(normalized.services.main.deploy?.replicas).toBe(1);
+    expect(normalized.services.main).toHaveProperty("deploy.replicas", 1);
   });
 });
