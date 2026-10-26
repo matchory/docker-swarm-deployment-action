@@ -14,10 +14,10 @@
 # dist/` already builds in.
 #
 # Even so, `npm ci` runs install scripts from newly merged dependencies, so the
-# job that does it never sees the GitHub App's private key. `build` prepares
-# the commit as a JSON payload and hands it over as an artifact; `publish`
-# runs none of the repository's code, refuses any path outside `dist/` and
-# `.licenses/`, and only then mints the app token.
+# job that does it never sees the GitHub App's private key. `build` hands the
+# changes over as a commit payload, and the org's signed-pull-request workflow
+# turns it into a signed commit and a pull request. It runs none of this
+# repository's code and refuses any path outside `dist/` and `.licenses/`.
 
 name: Regenerate Artifacts
 
@@ -91,170 +91,37 @@ jobs:
         id: licensed-status
         run: licensed status
 
-
-      # `createCommitOnBranch` takes the file contents inline, base64-encoded.
-      # NUL-separated so git does not quote unusual paths, which would make
-      # `base64` fail inside the process substitution unnoticed and commit the
-      # file empty.
       - name: Prepare Commit Payload
         id: payload
-        run: |
-          set -o pipefail
-          mkdir -p "$RUNNER_TEMP/payload"
-          git add --all dist .licenses
-
-          if git diff --cached --quiet; then
-            echo "changed=false" >>"$GITHUB_OUTPUT"
-            echo "Generated artifacts are already up to date."
-            exit 0
-          fi
-
-          git diff --cached --name-only -z --no-renames --diff-filter=d |
-            while IFS= read -r -d '' path; do
-              jq --null-input --arg path "$path" \
-                --rawfile contents <(base64 --wrap=0 "$path") \
-                '{path: $path, contents: $contents}'
-            done | jq --slurp . >"$RUNNER_TEMP/payload/additions.json"
-          git diff --cached --name-only -z --no-renames --diff-filter=D |
-            jq --raw-input --slurp 'split("\u0000") | map(select(. != "") | {path: .})' \
-            >"$RUNNER_TEMP/payload/deletions.json"
-
-          echo "changed=true" >>"$GITHUB_OUTPUT"
-
-      - name: Upload Commit Payload
-        id: upload
-        if: ${{ steps.payload.outputs.changed == 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: matchory/.github/actions/prepare-signed-commit@ab76df36c2b1279661d6c5efed815456d25e7aaf # main
         with:
-          name: commit-payload
-          path: ${{ runner.temp }}/payload
-          retention-days: 1
+          paths: |
+            dist
+            .licenses
 
   publish:
     name: Open Pull Request
     needs: build
     if: ${{ needs.build.outputs.changed == 'true' }}
-    runs-on: ubuntu-latest
-    env:
-      GH_REPO: ${{ github.repository }}
+    uses: matchory/.github/.github/workflows/signed-pull-request.yml@ab76df36c2b1279661d6c5efed815456d25e7aaf # main
+    permissions: {}
+    with:
+      app-id: ${{ vars.GH_AUTH_APP_ID }}
+      branch: chore/regenerate-artifacts
+      title: "chore: regenerate dist and license cache"
+      allowed-paths: |
+        dist
+        .licenses
+      body: |
+        `dist/` and `.licenses/` are derived from `package-lock.json`, and a
+        dependency change landed on `main` without them. This pull request was
+        opened automatically to bring them back in sync.
 
-    steps:
-      - name: Download Commit Payload
-        id: download
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: commit-payload
-          path: ${{ runner.temp }}/payload
+        `dist/` was rebuilt from a clean `npm ci`, so it reflects the current
+        lockfile rather than a stale `node_modules`, and `licensed status`
+        passed before this branch was updated.
 
-      # The payload comes from a job that ran unreviewed install scripts, so
-      # it must not be able to touch anything but the generated artifacts,
-      # such as the workflows themselves.
-      - name: Check Commit Payload
-        id: check
-        working-directory: ${{ runner.temp }}/payload
-        run: |
-          outside=$(jq --raw-output --slurp \
-            'add | map(.path)
-              | map(select((test("^(dist|\\.licenses)/") | not)
-                or test("(^|/)\\.\\.(/|$)")))
-              | .[]' \
-            additions.json deletions.json)
-
-          if [ -n "$outside" ]; then
-            echo "::error::Payload touches paths outside dist/ and .licenses/:"
-            echo "$outside"
-            exit 1
-          fi
-
-      # `GITHUB_TOKEN` cannot open pull requests: the org policy "Allow GitHub
-      # Actions to create and approve pull requests" is off, so that a workflow
-      # can never approve its own changes. Its pushes are also unsigned, which
-      # the signed-commits ruleset rejects. Use a short-lived GitHub App token
-      # for both instead, which also means the checks run on the pull request.
-      # This is the org-wide gh-actions-token-provider app (GH_AUTH_APP_ID and
-      # GH_AUTH_APP_PRIVATE_KEY are org-level), which needs contents: write and
-      # pull-requests: write. The token is scoped to this repository and to
-      # those two permissions. `client-id` also accepts the numeric app ID.
-      - name: Mint App Token
-        id: app
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.GH_AUTH_APP_ID }}
-          private-key: ${{ secrets.GH_AUTH_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-
-      - name: Open Pull Request
-        id: pull-request
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          BRANCH: chore/regenerate-artifacts
-          HEAD: ${{ github.sha }}
-          PAYLOAD: ${{ runner.temp }}/payload
-        run: |
-          # GitHub only signs commits an app creates through the API, not ones
-          # it pushes, so the commit is built with `createCommitOnBranch`
-          # rather than `git commit`. That mutation only appends to an
-          # existing branch, so build the commit on a throwaway branch cut
-          # from the commit `build` ran on, then move the real branch onto it
-          # in one update. Resetting the real branch first would briefly leave
-          # an open pull request with no changes, which GitHub closes.
-          set -o pipefail
-          repo="repos/$GITHUB_REPOSITORY/git"
-          staging="$BRANCH-$GITHUB_RUN_ID"
-
-          gh api "$repo/refs" \
-            -f ref="refs/heads/$staging" -f sha="$HEAD" >/dev/null
-          trap 'gh api --method DELETE "$repo/refs/heads/$staging" >/dev/null' EXIT
-
-          jq --null-input \
-            --arg repository "$GITHUB_REPOSITORY" \
-            --arg branch "$staging" \
-            --arg head "$HEAD" \
-            --slurpfile additions "$PAYLOAD/additions.json" \
-            --slurpfile deletions "$PAYLOAD/deletions.json" \
-            '{
-              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
-              variables: {input: {
-                branch: {repositoryNameWithOwner: $repository, branchName: $branch},
-                expectedHeadOid: $head,
-                message: {headline: "chore: regenerate dist and license cache"},
-                fileChanges: {additions: $additions[0], deletions: $deletions[0]}
-              }}
-            }' >"$RUNNER_TEMP/commit.json"
-          commit=$(gh api graphql --input "$RUNNER_TEMP/commit.json" \
-            --jq '.data.createCommitOnBranch.commit.oid')
-
-          # `git/ref/` (singular) matches exactly; `git/refs/` would also
-          # answer 200 for other branches that merely share this prefix.
-          if gh api "$repo/ref/heads/$BRANCH" >/dev/null 2>&1; then
-            gh api --method PATCH "$repo/refs/heads/$BRANCH" \
-              -f sha="$commit" -F force=true >/dev/null
-          else
-            gh api "$repo/refs" \
-              -f ref="refs/heads/$BRANCH" -f sha="$commit" >/dev/null
-          fi
-
-          open=$(gh pr list --head "$BRANCH" --state open --json number \
-            --jq '.[].number')
-
-          if [ -n "$open" ]; then
-            echo "Updated existing pull request #$open."
-            exit 0
-          fi
-
-          gh pr create --base main --head "$BRANCH" \
-            --title "chore: regenerate dist and license cache" \
-            --body "$(cat <<'BODY'
-          `dist/` and `.licenses/` are derived from `package-lock.json`, and a
-          dependency change landed on `main` without them. This pull request was
-          opened automatically to bring them back in sync.
-
-          `dist/` was rebuilt from a clean `npm ci`, so it reflects the current
-          lockfile rather than a stale `node_modules`, and `licensed status`
-          passed before this branch was updated.
-
-          Close this pull request if the change is not wanted; it will be
-          recreated the next time a dependency changes.
-          BODY
-          )"
+        Close this pull request if the change is not wanted; it will be
+        recreated the next time a dependency changes.
+    secrets:
+      app-private-key: ${{ secrets.GH_AUTH_APP_PRIVATE_KEY }}
