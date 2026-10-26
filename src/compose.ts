@@ -17,7 +17,6 @@ import {
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import type { Settings } from "./settings.js";
-import { assertOwnShares } from "./shares.js";
 import {
   exists,
   findFirstExistingFile,
@@ -221,8 +220,6 @@ export async function prepareSpec(
         `correct file.`,
     );
   }
-
-  assertOwnShares(composeSpec, settings.stack);
 
   if (settings.manageVariables) {
     if (composeSpec.secrets) {

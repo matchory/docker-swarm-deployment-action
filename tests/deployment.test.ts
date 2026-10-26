@@ -295,4 +295,55 @@ describe("Deployment", () => {
       expect(variables.removeGeneratedVariableFiles).toHaveBeenCalled();
     });
   });
+
+  describe("Shared Volumes", () => {
+    const settings = defineSettings({
+      envVarPrefix: "",
+      keyInterpolation: false,
+      manageVariables: true,
+      monitor: false,
+      monitorInterval: 0,
+      monitorTimeout: 0,
+      stack: "web",
+      strictVariables: false,
+      variables: new Map([
+        ["MATCHORY_DEPLOYMENT_STACK", "web"],
+        ["OTHER", "other"],
+      ]),
+      version: "1.2.3",
+    });
+
+    const withVolumeName = (name: string) => {
+      const spec = {
+        version: "3.8",
+        services: { web: { image: "nginx:latest" } },
+        volumes: { data: { name } },
+      };
+      vi.spyOn(compose, "resolveComposeFiles").mockResolvedValue([
+        "docker-compose.yaml",
+      ]);
+      vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
+        { spec, baseDir: "." },
+      ]);
+      vi.spyOn(compose, "normalizeSpec").mockResolvedValue(spec);
+      vi.spyOn(engine, "deployStack").mockResolvedValue(undefined);
+      vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
+      vi.spyOn(variables, "removeGeneratedVariableFiles").mockResolvedValue();
+    };
+
+    it("should check the volume name after interpolation", async () => {
+      withVolumeName("${MATCHORY_DEPLOYMENT_STACK}_shared");
+
+      await expect(deploy(settings)).resolves.toBeDefined();
+    });
+
+    it("should reject an interpolated name of another stack's share", async () => {
+      withVolumeName("${OTHER}_shared");
+
+      await expect(deploy(settings)).rejects.toThrowError(
+        /names "other_shared"/,
+      );
+      expect(engine.deployStack).not.toHaveBeenCalled();
+    });
+  });
 });
