@@ -161,6 +161,19 @@ describe("Variables", () => {
       );
     });
 
+    it.each([
+      [{ external: true }],
+      [{ external: { name: "shared-db" } }],
+      [{ name: "shared-db", external: true }],
+    ])("should not process external variables: %j", async (definition) => {
+      // A matching environment variable must not turn it into a file source.
+      settings.variables.set("db", "secret");
+
+      await expect(
+        processVariable("db", defineVariable(definition), settings),
+      ).resolves.toEqual(definition);
+    });
+
     it("should treat null variables as empty objects", async () => {
       vi.spyOn(crypto, "randomUUID").mockImplementation(
         () => "36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34",
