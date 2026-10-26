@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 # Two dependency merges in quick succession would otherwise race for the same
 # branch. Queue instead of cancelling, so the later run sees the newer lockfile.
@@ -39,11 +39,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Credentials are persisted on purpose here, unlike the other workflows:
-      # this job has to push the regenerated artifacts back to the repository.
       - name: Checkout
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
 
       - name: Setup Node.js
         id: setup-node
@@ -95,12 +95,13 @@ jobs:
 
       # `GITHUB_TOKEN` cannot open pull requests: the org policy "Allow GitHub
       # Actions to create and approve pull requests" is off, so that a workflow
-      # can never approve its own changes. Open the pull request with a
-      # short-lived GitHub App token instead, which also means the checks run
-      # on it. Needs the repository variable PR_BOT_APP_ID and secret
-      # PR_BOT_PRIVATE_KEY for an app with pull-requests: write on this
-      # repository. The branch itself is still pushed with `GITHUB_TOKEN`.
-      - name: Mint Pull Request Token
+      # can never approve its own changes. Its pushes are also unsigned, which
+      # the signed-commits ruleset rejects. Use a short-lived GitHub App token
+      # for both instead, which also means the checks run on the pull request.
+      # Needs the repository variable PR_BOT_APP_ID and secret
+      # PR_BOT_PRIVATE_KEY for an app with contents: write and
+      # pull-requests: write on this repository.
+      - name: Mint App Token
         id: app
         if: ${{ steps.changes.outputs.changed == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -115,14 +116,49 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: chore/regenerate-artifacts
         run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
+          # GitHub only signs commits an app creates through the API, not ones
+          # it pushes, so the commit is built with `createCommitOnBranch`
+          # rather than `git commit`. Reset the branch onto the checked-out
+          # commit first, creating it if needed, so the commit lands on top.
+          set -o pipefail
+          head=$(git rev-parse HEAD)
+          ref="repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
 
-          git switch --create "$BRANCH"
+          if gh api "$ref" >/dev/null 2>&1; then
+            gh api --method PATCH "$ref" -f sha="$head" -F force=true >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/heads/$BRANCH" -f sha="$head" >/dev/null
+          fi
+
           git add --all dist .licenses
-          git commit --message "chore: regenerate dist and license cache"
-          git push --force origin "$BRANCH"
+          git diff --cached --name-only --no-renames --diff-filter=d |
+            while read -r path; do
+              jq --null-input --arg path "$path" \
+                --rawfile contents <(base64 --wrap=0 "$path") \
+                '{path: $path, contents: $contents}'
+            done | jq --slurp . >"$RUNNER_TEMP/additions.json"
+          git diff --cached --name-only --no-renames --diff-filter=D |
+            jq --raw-input --slurp 'split("\n") | map(select(. != "") | {path: .})' \
+            >"$RUNNER_TEMP/deletions.json"
+
+          jq --null-input \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg branch "$BRANCH" \
+            --arg head "$head" \
+            --slurpfile additions "$RUNNER_TEMP/additions.json" \
+            --slurpfile deletions "$RUNNER_TEMP/deletions.json" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repository, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: "chore: regenerate dist and license cache"},
+                fileChanges: {additions: $additions[0], deletions: $deletions[0]}
+              }}
+            }' >"$RUNNER_TEMP/commit.json"
+          gh api graphql --input "$RUNNER_TEMP/commit.json" \
+            --jq '.data.createCommitOnBranch.commit.url'
 
           open=$(gh pr list --head "$BRANCH" --state open --json number \
             --jq '.[].number')
