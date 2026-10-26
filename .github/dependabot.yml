@@ -19,6 +19,13 @@ updates:
         update-types:
           - "version-update:semver-major"
     groups:
+      # The @vitest/* packages pin vitest as an exact peer dependency, so
+      # bumping either alone breaks `npm ci`. Listed first because Dependabot
+      # assigns a dependency to the first group it matches.
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
       npm-development:
         dependency-type: development
         update-types:
