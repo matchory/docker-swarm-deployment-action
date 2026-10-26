@@ -242,6 +242,9 @@ To use multiple files, separate them with newlines:
       compose.override.yaml
 ```
 
+At least one of the files must define a service; the others can contribute just shared configs, secrets, networks
+or volumes.
+
 You can also use a custom delimiter (defaults to `:`) by setting the
 `COMPOSE_PATH_SEPARATOR` environment variable.
 
@@ -719,7 +722,7 @@ Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tes
 
 Two things are easy to miss:
 
-- **The `dist/` directory is committed.** [@vercel/ncc](https://github.com/vercel/ncc) bundles the TypeScript sources
+- **The `dist/` directory is committed.** [esbuild](https://esbuild.github.io) bundles the TypeScript sources
   into a single file that the Actions runner executes, so `npm run package` has to run after any change under `src/`.
   A dedicated CI workflow fails the build if `dist/` is out of date.
 - **`npm run all` should pass locally.** It chains formatting, linting, type-checking, tests, the coverage badge, and
