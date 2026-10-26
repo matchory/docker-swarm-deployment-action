@@ -453,16 +453,53 @@ export function interpolateSpec(
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
 ) {
-  // Interpolating keys means interpolating the serialized JSON as one string,
-  // which the per-string walk cannot express.
   if (keyInterpolation) {
-    return JSON.parse(
-      interpolateString(JSON.stringify(composeSpec), variables),
-    ) as ComposeSpec;
+    return interpolateKeysAndValues(composeSpec, variables) as ComposeSpec;
   }
 
   return mapStrings(composeSpec, (value) =>
     interpolateString(value, variables),
+  );
+}
+
+// Interpolate keys and string values one at a time, so a value can never
+// change the structure around it. The spec comes from `docker stack config`
+// output, so it holds only plain JSON values (no `Tagged` carriers).
+function interpolateKeysAndValues(
+  node: unknown,
+  variables: Map<string, string>,
+): unknown {
+  if (typeof node === "string") {
+    return interpolateString(node, variables);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((item) => interpolateKeysAndValues(item, variables));
+  }
+
+  if (node === null || typeof node !== "object") {
+    return node;
+  }
+
+  const seen = new Set<string>();
+
+  // `Object.fromEntries` defines own properties, so a key that interpolates to
+  // `__proto__` stays a key instead of replacing the prototype.
+  return Object.fromEntries(
+    Object.entries(node).map(([key, value]) => {
+      const name = interpolateString(key, variables);
+
+      if (seen.has(name)) {
+        throw new Error(
+          `Key interpolation produced the key "${name}" more than once ` +
+            `(from "${key}"); rename the keys or variables so they are unique.`,
+        );
+      }
+
+      seen.add(name);
+
+      return [name, interpolateKeysAndValues(value, variables)];
+    }),
   );
 }
 
