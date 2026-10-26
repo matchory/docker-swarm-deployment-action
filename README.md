@@ -578,11 +578,11 @@ The action will transform it to:
 ```yaml
 configs:
   database_username:
-    name: YOUR_STACK-database_username-53175bc
+    name: YOUR_STACK-database_username-4813494
     file: /home/runner/work/app/app/database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
     labels:
       com.matchory.deployment.name: database_username
-      com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a
+      com.matchory.deployment.hash: 4813494d137e1631bba301d5acab6e7bb7aa74ce1185d456565ef51d737677b2
       com.matchory.deployment.stack: YOUR_STACK
       com.matchory.deployment.version: VERSION
 ```
