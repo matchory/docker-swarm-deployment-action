@@ -1087,7 +1087,7 @@ describe("Variables", () => {
   });
 
   describe("Pruning", () => {
-    it("should prune configs", async () => {
+    it("should prune configs, keeping the newest previous version", async () => {
       const spec = defineComposeSpec({
         services: {},
         configs: {
@@ -1107,7 +1107,7 @@ describe("Variables", () => {
       vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
         {
           ID: "1",
-          CreatedAt: new Date().toISOString(),
+          CreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
           UpdatedAt: new Date().toISOString(),
           Name: "test-foo-bf07a7f",
           Labels: {
@@ -1149,12 +1149,11 @@ describe("Variables", () => {
       await pruneConfigs(spec, settings);
 
       expect(engine.listConfigs).toHaveBeenCalledOnce();
-      expect(engine.removeConfig).toHaveBeenCalledTimes(2);
+      expect(engine.removeConfig).toHaveBeenCalledTimes(1);
       expect(engine.removeConfig).toHaveBeenCalledWith("1");
-      expect(engine.removeConfig).toHaveBeenCalledWith("2");
     });
 
-    it("should prune secrets", async () => {
+    it("should prune secrets, keeping the newest previous version", async () => {
       const spec = defineComposeSpec({
         services: {},
         secrets: {
@@ -1174,7 +1173,7 @@ describe("Variables", () => {
       vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
         {
           ID: "1",
-          CreatedAt: new Date().toISOString(),
+          CreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
           UpdatedAt: new Date().toISOString(),
           Name: "test-foo-bf07a7f",
           Labels: {
@@ -1216,9 +1215,55 @@ describe("Variables", () => {
       await pruneSecrets(spec, settings);
 
       expect(engine.listSecrets).toHaveBeenCalledOnce();
-      expect(engine.removeSecret).toHaveBeenCalledTimes(2);
+      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
       expect(engine.removeSecret).toHaveBeenCalledWith("1");
-      expect(engine.removeSecret).toHaveBeenCalledWith("2");
+    });
+
+    it("should keep only the newest previous version of variables in the spec", async () => {
+      const labels = (name: string, hash: string) => ({
+        [nameLabel]: name,
+        [hashLabel]: hash.padEnd(64, "0"),
+        [stackLabel]: "test",
+        [versionLabel]: "1.0.0",
+      });
+      const secret = (
+        id: string,
+        createdAt: string,
+        name: string,
+        hash: string,
+      ) => ({
+        ID: id,
+        CreatedAt: createdAt,
+        UpdatedAt: createdAt,
+        Name: `test-${name}-${hash}`,
+        Labels: labels(name, hash),
+      });
+      const spec = defineComposeSpec({
+        services: {},
+        secrets: {
+          foo: {
+            name: "test-foo-ccc",
+            file: "./foo.generated.secret",
+            labels: labels("foo", "ccc"),
+          },
+        },
+      });
+      vi.spyOn(engine, "listSecrets").mockResolvedValueOnce([
+        secret("1", "2026-03-01T00:00:00Z", "foo", "aaa"),
+        secret("2", "2026-04-01T00:00:00Z", "foo", "bbb"),
+        secret("3", "2026-05-01T00:00:00Z", "foo", "ccc"),
+        secret("4", "2026-02-01T00:00:00Z", "foo", "ddd"),
+        secret("5", "2026-04-01T00:00:00Z", "retired", "aaa"),
+        secret("6", "2026-03-01T00:00:00Z", "retired", "bbb"),
+      ]);
+
+      await pruneSecrets(spec, settings);
+
+      expect(engine.removeSecret).toHaveBeenCalledTimes(4);
+      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("4");
+      expect(engine.removeSecret).toHaveBeenCalledWith("5");
+      expect(engine.removeSecret).toHaveBeenCalledWith("6");
     });
 
     it("should issue a warning for secrets that have not been rotated for a long time", async () => {
@@ -1271,8 +1316,7 @@ describe("Variables", () => {
       await pruneSecrets(spec, settings);
 
       expect(engine.listSecrets).toHaveBeenCalledOnce();
-      expect(engine.removeSecret).toHaveBeenCalledTimes(2);
-      expect(engine.removeSecret).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledTimes(1);
       expect(engine.removeSecret).toHaveBeenCalledWith("2");
       expect(core.warning).toHaveBeenCalledOnce();
     });
@@ -1370,6 +1414,19 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         },
+        {
+          ID: "4",
+          CreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-bar-7d865e9",
+          Labels: {
+            [nameLabel]: "bar",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
       ]);
       vi.spyOn(engine, "listConfigs").mockResolvedValueOnce([
         {
@@ -1411,6 +1468,19 @@ describe("Variables", () => {
             [versionLabel]: "1.0.0",
           },
         },
+        {
+          ID: "4",
+          CreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          UpdatedAt: new Date().toISOString(),
+          Name: "test-foo-7d865e9",
+          Labels: {
+            [nameLabel]: "foo",
+            [hashLabel]:
+              "7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730",
+            [stackLabel]: "test",
+            [versionLabel]: "1.0.0",
+          },
+        },
       ]);
 
       await pruneVariables(spec, settings);
@@ -1419,8 +1489,8 @@ describe("Variables", () => {
       expect(engine.listConfigs).toHaveBeenCalledOnce();
       expect(engine.removeSecret).toHaveBeenCalledTimes(1);
       expect(engine.removeConfig).toHaveBeenCalledTimes(1);
-      expect(engine.removeSecret).toHaveBeenCalledWith("1");
-      expect(engine.removeConfig).toHaveBeenCalledWith("1");
+      expect(engine.removeSecret).toHaveBeenCalledWith("4");
+      expect(engine.removeConfig).toHaveBeenCalledWith("4");
     });
 
     it("should still prune if no secrets or configs are present in the spec", async () => {

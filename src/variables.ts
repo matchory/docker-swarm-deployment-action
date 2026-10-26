@@ -473,18 +473,47 @@ async function pruneStoredVariables({
     hash: string;
   }) => v.stack + v.name + v.hash;
 
-  const specIdentifiers = specVariables
+  const specLabels = specVariables
     ? Object.values(specVariables)
         .map(({ labels }) => marshalLabels(labels))
         .filter((labels) => labels !== undefined)
-        .map((labels) => variableIdentifier(labels))
     : [];
+  const specIdentifiers = specLabels.map((labels) =>
+    variableIdentifier(labels),
+  );
+  const specNames = new Set(specLabels.map(({ name }) => name));
 
   const items = await list();
 
   if (items.length === 0) {
     return;
   }
+
+  // Swarm only refuses to remove variables referenced by a service's current
+  // spec, not by its previous one. Keep the newest previous version of each
+  // variable still in the spec, so a rollback can find it.
+  const previousVersions = new Map<string, { ID: string; created: number }>();
+
+  for (const { CreatedAt, ID, Labels } of items) {
+    const labels = marshalLabels(Labels);
+
+    if (
+      !labels ||
+      !specNames.has(labels.name) ||
+      specIdentifiers.includes(variableIdentifier(labels))
+    ) {
+      continue;
+    }
+
+    const created = new Date(CreatedAt ?? 0).getTime();
+    const newest = previousVersions.get(labels.name);
+
+    if (!newest || created > newest.created) {
+      previousVersions.set(labels.name, { ID, created });
+    }
+  }
+
+  const keptIds = new Set([...previousVersions.values()].map(({ ID }) => ID));
 
   core.info(
     `Checking ${items.length} ${kind}${items.length !== 1 ? "s" : ""} ` +
@@ -505,7 +534,12 @@ async function pruneStoredVariables({
       continue;
     }
 
-    if (!specIdentifiers.includes(variableIdentifier(labels))) {
+    if (keptIds.has(ID)) {
+      core.info(
+        `Keeping previous version "${labels.hash.substring(0, 7)}" of ` +
+          `${kind} "${labels.name}" for rollbacks: ${name}`,
+      );
+    } else if (!specIdentifiers.includes(variableIdentifier(labels))) {
       const hash = labels.hash.substring(0, 7);
 
       core.notice(
