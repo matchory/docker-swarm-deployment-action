@@ -200,12 +200,17 @@ function readFromContent(
   variables: Map<string, string>,
 ) {
   // Interpolate variables within the inline content
-  return interpolateString(
-    String(content),
-    variables,
-    false,
-    warnAboutUndefinedVariables(`the content of "${name}"`),
-  );
+  try {
+    return interpolateString(
+      String(content),
+      variables,
+      warnAboutUndefinedVariables(`the content of "${name}"`),
+    );
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    throw new Error(`The content of "${name}": ${message}`, { cause });
+  }
 }
 
 async function inferVariable(

@@ -2,10 +2,16 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dump } from "js-yaml";
+import { dump, load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { type ComposeSpec, interpolateTypedFields } from "../src/compose.js";
+import {
+  type ComposeSpec,
+  composeSchema,
+  interpolateTypedFields,
+  normalizeSpec,
+} from "../src/compose.js";
 import { normalizeStackSpecification } from "../src/engine.js";
+import type { Settings } from "../src/settings.js";
 
 function dockerAvailable(): boolean {
   try {
@@ -49,5 +55,44 @@ suite("typed fields against docker stack config", () => {
     const normalized = await normalize(interpolateTypedFields(spec, settings));
 
     expect(normalized.services.main.deploy?.replicas).toBe(1);
+  });
+
+  // A merge-tagged scalar keeps its source text, so the cast must reach inside
+  // the tag for the tag-aware merge to hand Docker a number.
+  it("casts a merge-tagged typed field and still honors the tag", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "typed-fields-"));
+    const variables = new Map([["REPLICAS", "3"]]);
+    const parse = (source: string) =>
+      interpolateTypedFields(
+        load(source, { schema: composeSchema }) as ComposeSpec,
+        { variables },
+      );
+
+    try {
+      const normalized = await normalizeSpec(
+        [
+          {
+            spec: parse(
+              "services:\n  main:\n    image: nginx\n    deploy:\n" +
+                "      replicas: 1\n    ports: ['8080:80']\n",
+            ),
+            baseDir: dir,
+          },
+          {
+            spec: parse(
+              "services:\n  main:\n    deploy:\n" +
+                "      replicas: !override ${REPLICAS}\n    ports: !reset []\n",
+            ),
+            baseDir: dir,
+          },
+        ],
+        { variables, strictCompatibility: false } as Settings,
+      );
+
+      expect(normalized.services.main.deploy?.replicas).toBe(3);
+      expect(normalized.services.main.ports).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
