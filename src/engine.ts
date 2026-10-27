@@ -26,17 +26,34 @@ export async function deployStack(
       stack,
     ],
     {
-      // The spec is already interpolated, but `stack deploy` has no option to
-      // skip interpolation, so escape every `$` to keep it literal. Docker
-      // never interpolates keys, so mapStrings leaving them alone is correct.
-      stdin: dump(
-        mapStrings(spec, (value) => value.replaceAll("$", () => "$$")),
-      ),
-      env: Object.fromEntries(variables),
+      stdin: serializeForDeploy(spec),
+      env: dockerEnvironment(variables),
     },
   );
 
   core.info(`Deployed stack ${stack}`);
+}
+
+/**
+ * Serialize an interpolated spec for `docker stack deploy`
+ *
+ * `stack deploy` has no option to skip interpolation, so every `$` is escaped
+ * to keep it literal. Docker never interpolates keys, so mapStrings leaving
+ * them alone is correct.
+ */
+export function serializeForDeploy(spec: ComposeSpec) {
+  return dump(mapStrings(spec, (value) => value.replaceAll("$", () => "$$")));
+}
+
+// Extends the process environment rather than replacing it: every other
+// docker call inherits it, and excluding a variable from interpolation must
+// not point these two at a different daemon by dropping DOCKER_HOST,
+// DOCKER_CONTEXT or PATH.
+function dockerEnvironment(variables: Map<string, string>) {
+  return { ...process.env, ...Object.fromEntries(variables) } as Record<
+    string,
+    string
+  >;
 }
 
 export async function normalizeStackSpecification(
@@ -53,7 +70,7 @@ export async function normalizeStackSpecification(
       skipInterpolation ? "--skip-interpolation" : "",
     ],
     {
-      env: Object.fromEntries(variables),
+      env: dockerEnvironment(variables),
       silent: true,
     },
   );
@@ -160,15 +177,27 @@ export async function listServices(
       return services;
     }
 
-    const inspectedServices: ServiceWithMetadata[] = [];
-
-    for (const metadata of services) {
-      const service = await inspectService(metadata.ID);
-
-      inspectedServices.push({ ...metadata, ...service });
+    if (services.length === 0) {
+      return [];
     }
 
-    return inspectedServices;
+    // One call for all services: this runs on every monitoring poll, and once
+    // more while pruning.
+    const inspected = await inspectServices(services.map(({ ID }) => ID));
+
+    // `service ls` reports short IDs, `service inspect` full ones.
+    return services.map((metadata) => {
+      const service = inspected.find(({ ID }) => ID.startsWith(metadata.ID));
+
+      if (!service) {
+        throw new Error(
+          `Service "${metadata.Name}" was not found on the Swarm. It may ` +
+            "have been removed while it was being inspected.",
+        );
+      }
+
+      return { ...metadata, ...service };
+    });
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
 
@@ -176,9 +205,9 @@ export async function listServices(
   }
 }
 
-export async function inspectService(id: string) {
+async function inspectServices(ids: string[]) {
   const output = await executeDockerCommand(
-    ["service", "inspect", "--format=json", id],
+    ["service", "inspect", "--format=json", ...ids],
     { silent: true },
   );
 
@@ -188,25 +217,14 @@ export async function inspectService(id: string) {
     result = JSON.parse(output) as Service | Service[];
   } catch (cause) {
     throw new Error(
-      `Failed to inspect service "${id}": Docker returned output that could ` +
-        "not be parsed as JSON. This is most likely a bug in the deployment " +
-        "action. Please report it to the action issues.",
+      `Failed to inspect service "${ids.join('", "')}": Docker returned ` +
+        "output that could not be parsed as JSON. This is most likely a bug " +
+        "in the deployment action. Please report it to the action issues.",
       { cause },
     );
   }
 
-  if (Array.isArray(result)) {
-    if (result.length === 0) {
-      throw new Error(
-        `Service "${id}" was not found on the Swarm. It may have been ` +
-          "removed, or the deployment may not have created it.",
-      );
-    }
-
-    return result[0];
-  }
-
-  return result;
+  return Array.isArray(result) ? result : [result];
 }
 
 export type TaskStatus = {
@@ -308,11 +326,14 @@ export async function listSecrets(filters: {
       { silent: true },
     );
 
-    return parseLineDelimitedJson<StoredVariable>(output).map<SecretMetadata>(
-      (secret) => ({
-        ...secret,
-        Labels: parseLabels(secret.Labels ?? ""),
-      }),
+    return await withExactTimestamps(
+      "secret",
+      parseLineDelimitedJson<StoredVariable>(output).map<SecretMetadata>(
+        (secret) => ({
+          ...secret,
+          Labels: parseLabels(secret.Labels ?? ""),
+        }),
+      ),
     );
   } catch (cause) {
     throw new Error(`Failed to list secrets: ${cause}`, { cause });
@@ -338,14 +359,64 @@ export async function listConfigs(filters: {
       { silent: true },
     );
 
-    return parseLineDelimitedJson<StoredVariable>(output).map<ConfigMetadata>(
-      (config) => ({
-        ...config,
-        Labels: parseLabels(config.Labels ?? ""),
-      }),
+    return await withExactTimestamps(
+      "config",
+      parseLineDelimitedJson<StoredVariable>(output).map<ConfigMetadata>(
+        (config) => ({
+          ...config,
+          Labels: parseLabels(config.Labels ?? ""),
+        }),
+      ),
     );
   } catch (cause) {
     throw new Error(`Failed to list configs: ${cause}`, { cause });
+  }
+}
+
+/**
+ * `secret ls` and `config ls` only report relative times ("2 hours ago"),
+ * which cannot be parsed or compared, so read exact ones from `inspect`.
+ */
+async function withExactTimestamps<T extends SecretMetadata | ConfigMetadata>(
+  kind: "secret" | "config",
+  items: T[],
+) {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const output = await executeDockerCommand(
+    [
+      kind,
+      "inspect",
+      '--format={"ID":{{json .ID}},"CreatedAt":{{json .CreatedAt}},"UpdatedAt":{{json .UpdatedAt}}}',
+      ...items.map(({ ID }) => ID),
+    ],
+    { silent: true },
+  );
+  const timestamps = new Map(
+    parseLineDelimitedJson<Pick<T, "ID" | "CreatedAt" | "UpdatedAt">>(
+      output,
+    ).map(({ ID, CreatedAt, UpdatedAt }) => [ID, { CreatedAt, UpdatedAt }]),
+  );
+
+  return items.map((item) => ({ ...item, ...timestamps.get(item.ID) }));
+}
+
+/**
+ * Remove a stack
+ *
+ * Removes the stack's services, networks, configs and secrets, and waits until
+ * they are gone. Volumes are kept. A stack that does not exist is not an error.
+ *
+ * @param stack Name of the stack to remove
+ */
+export async function removeStack(stack: string) {
+  try {
+    // "--" keeps a name starting with a dash from being read as a flag
+    await executeDockerCommand(["stack", "rm", "--detach=false", "--", stack]);
+  } catch (cause) {
+    throw new Error(`Failed to remove stack "${stack}": ${cause}`, { cause });
   }
 }
 
@@ -543,16 +614,8 @@ export type Service = {
   Version: {
     Index: number;
   };
-  Spec?: {
-    Name: string;
-    Labels: Record<string, string>;
-    TaskTemplate: Record<string, unknown>;
-  };
-  PreviousSpec?: {
-    Name: string;
-    Labels: Record<string, string>;
-    TaskTemplate: Record<string, unknown>;
-  };
+  Spec?: ServiceSpec;
+  PreviousSpec?: ServiceSpec;
   Endpoint: Record<string, unknown>;
   UpdateStatus?: {
     StartedAt?: string | undefined;
@@ -565,6 +628,16 @@ export type Service = {
       | "rollback_started"
       | "rollback_paused"
       | "rollback_completed";
+  };
+};
+export type ServiceSpec = {
+  Name: string;
+  Labels: Record<string, string>;
+  TaskTemplate: Record<string, unknown> & {
+    ContainerSpec?: {
+      Secrets?: Array<{ SecretID: string; SecretName: string }>;
+      Configs?: Array<{ ConfigID: string; ConfigName: string }>;
+    };
   };
 };
 export type ServiceWithMetadata = ServiceMetadata & Service;

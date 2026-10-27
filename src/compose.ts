@@ -8,24 +8,26 @@ import {
   isComposePluginAvailable,
   mergeComposeFiles,
   normalizeStackSpecification,
-} from "./engine";
+} from "./engine.js";
+import { inlineEnvFiles } from "./env-file.js";
 import {
   containsOverrideTag,
   findOverrideTag,
   overrideTagDefinitions,
   Tagged,
 } from "./override-tags.js";
+import { selectProfiles } from "./profiles.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
-import type { Settings } from "./settings.js";
+import { type Settings, stackSettingsKey } from "./settings.js";
 import {
   exists,
   findFirstExistingFile,
   interpolateString,
-  mapStrings,
+  warnAboutUndefinedVariables,
 } from "./utils.js";
 import { processVariable, type Variable } from "./variables.js";
 
-export const schemaVersion = "3.9";
+export const schemaVersion = "3.12";
 
 /**
  * YAML schema used to parse Compose files.
@@ -165,15 +167,38 @@ export async function resolveComposeFiles(
  * file version 3 format, and resolves all referenced variables.
  * It returns a set of normalized Compose specification objects that will be
  * usable to docker stack commands.
+ *
+ * @param composeFiles The Compose files to load, in merge order
+ * @param settings The settings to use for the deployment
+ * @param onUndefined Called with the name of each undefined variable used in
+ *   an env file
  */
 export async function loadComposeSpecs(
   composeFiles: Readonly<Array<string>>,
   settings: Readonly<Settings>,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
-  const specs = [];
+  const parsed = [];
 
   for (const filename of composeFiles) {
-    specs.push(await loadComposeSpec(filename, settings));
+    parsed.push({ filename, spec: await parseComposeFile(filename) });
+  }
+
+  if (settings.profiles) {
+    selectProfiles(parsed, settings.profiles, settings.variables);
+  }
+
+  // `docker stack config` rejects files whose versions differ, so a file
+  // without one takes the version another file declares.
+  const version =
+    parsed.find(({ spec }) => spec?.version)?.spec.version ?? schemaVersion;
+  const specs = [];
+
+  for (const { filename, spec } of parsed) {
+    specs.push({
+      spec: await prepareSpec(spec, settings, version),
+      baseDir: dirname(filename),
+    });
   }
 
   // A file may contribute only configs, secrets, networks or volumes, as long
@@ -191,19 +216,52 @@ export async function loadComposeSpecs(
     );
   }
 
+  // Needs all files: explicit environment entries in any of them win.
+  await inlineEnvFiles(specs, settings, onUndefined);
+
   return specs;
 }
 
-async function loadComposeSpec(filename: string, settings: Settings) {
+/**
+ * Read the stack settings block of the Compose files
+ *
+ * The settings govern how the files are loaded, so the block is read from the
+ * files as written, before anything else, and its values are not interpolated.
+ * A later file's settings win over an earlier file's, as in a merge.
+ *
+ * @param composeFiles The Compose files to load, in merge order
+ * @returns The merged settings block
+ */
+export async function readStackSettings(composeFiles: Readonly<Array<string>>) {
+  const settings: Record<string, unknown> = {};
+
+  for (const filename of composeFiles) {
+    const block = (await parseComposeFile(filename))?.[stackSettingsKey];
+
+    if (block === undefined || block === null) {
+      continue;
+    }
+
+    if (typeof block !== "object" || Array.isArray(block)) {
+      throw new Error(
+        `"${stackSettingsKey}" in Compose file "${filename}" must be a ` +
+          `mapping of settings.`,
+      );
+    }
+
+    Object.assign(settings, block);
+  }
+
+  return settings;
+}
+
+async function parseComposeFile(filename: string) {
   const content = await readFile(filename, "utf8");
-  const parsedContent = load(content, {
+
+  return load(content, {
     filename,
     schema: composeSchema,
   }) as ComposeSpec;
-
-  const spec = await prepareSpec(parsedContent, settings);
-
-  return { spec, baseDir: dirname(filename) };
 }
 
 /**
@@ -215,13 +273,14 @@ async function loadComposeSpec(filename: string, settings: Settings) {
 export async function prepareSpec(
   composeSpec: ComposeSpec,
   settings: Settings,
+  version = schemaVersion,
 ) {
   if (composeSpec.name) {
     delete composeSpec.name;
   }
 
   if (!composeSpec.version) {
-    composeSpec.version = schemaVersion;
+    composeSpec.version = version;
   }
 
   // loadComposeSpecs checks that the files together define services.
@@ -323,13 +382,15 @@ function throwMergeTagError(
  * @param prepared The Compose specifications to normalize, each paired with
  *   the base directory it was loaded from
  * @param settings The settings to use for the deployment
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export async function normalizeSpec(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
-  const spec = prepared.some((item) => containsOverrideTag(item.spec))
-    ? await mergeThenReconcile(prepared, settings)
+  const spec = prepared.some(({ spec }) => needsComposeMerge(spec))
+    ? await mergeThenReconcile(prepared, settings, onUndefined)
     : await reconcileThenMerge(prepared, settings);
 
   if (!spec?.services || Object.keys(spec.services).length === 0) {
@@ -341,6 +402,18 @@ export async function normalizeSpec(
   }
 
   return spec;
+}
+
+// Merge tags and `extends` need `docker compose config`: `docker stack config`
+// ignores the tags, and rejects `extends` as a forbidden property
+function needsComposeMerge(spec: ComposeSpec) {
+  return (
+    containsOverrideTag(spec) ||
+    Object.values(spec.services ?? {}).some(
+      (service) =>
+        typeof service === "object" && service !== null && "extends" in service,
+    )
+  );
 }
 
 // Write a spec to a uniquely-named temp file in `dir`, so the docker merge tool
@@ -366,7 +439,7 @@ async function reconcileThenMerge(
 
   // Write to the working directory (not baseDir) to preserve the released
   // behavior: `docker stack config` resolves any remaining relative paths
-  // (env_file, secrets `file:`) against the generated file's location, and
+  // (secrets `file:`) against the generated file's location, and
   // reconcile has already inlined label_file with the correct baseDir above.
   const files = await Promise.all(
     prepared.map(({ spec }) => writeSpecFile(spec, ".")),
@@ -380,23 +453,25 @@ async function reconcileThenMerge(
 }
 
 // Tag path: merge with `docker compose config` (which honors the
-// !reset/!override tags and emits a tag-free spec), reconcile the merged
+// !reset/!override tags, resolves `extends`, and emits a tag-free spec),
+// reconcile the merged
 // spec for Swarm, then normalize via `docker stack config`.
 async function mergeThenReconcile(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
   settings: Readonly<Settings>,
+  onUndefined: (name: string) => void,
 ) {
   if (!(await isComposePluginAvailable())) {
     throw new Error(
-      'Compose file uses the "!reset"/"!override" merge tags, which ' +
-        "require the Docker Compose v2 plugin ('docker compose') on the " +
-        "runner. Install it (it ships with GitHub-hosted runners) or " +
+      'Compose file uses "extends" or the "!reset"/"!override" merge ' +
+        "tags, which require the Docker Compose v2 plugin ('docker compose') " +
+        "on the runner. Install it (it ships with GitHub-hosted runners) or " +
         "inline the override.",
     );
   }
 
   // Write each spec beside the compose file it came from so `docker compose
-  // config` resolves its relative paths (env_file, label_file) against the
+  // config` resolves its relative paths (label_file) against the
   // right directory. Unlike the non-tag path, reconcile has not run yet, so
   // label_file is still relative here and must resolve during the merge.
   const tempFiles = await Promise.all(
@@ -405,15 +480,40 @@ async function mergeThenReconcile(
 
   try {
     const merged = await mergeComposeFiles(tempFiles);
-    const mergedSpec = load(merged, {
-      filename: "docker-compose.merged.yaml",
-      json: true,
-    }) as ComposeSpec;
+
+    // Compose only casts typed fields while interpolating, so with
+    // `--no-interpolate` it emits a merge-tagged scalar such as `!override 3`
+    // as the string "3", so cast typed fields again after the merge.
+    const mergedSpec = interpolateTypedFields(
+      load(merged, {
+        filename: "docker-compose.merged.yaml",
+        json: true,
+      }) as ComposeSpec,
+      settings,
+      onUndefined,
+    );
 
     // `docker compose config` stamps a project name derived from the working
     // directory; drop it to match the tag-free path, where prepareSpec removes
     // the name from every input before merging.
+    // It also names the default network after the project, which would make
+    // every stack deployed from the same repository share one network. Drop
+    // that name, so Swarm names the network after the stack instead.
+    const network = (
+      mergedSpec.networks as Record<string, { name?: string }> | undefined
+    )?.default;
+
+    if (network?.name === `${mergedSpec.name}_default`) {
+      delete network.name;
+    }
+
     delete mergedSpec.name;
+
+    // It also drops `version`, which would leave `docker stack config` to
+    // validate against its own default schema instead of the one the inputs
+    // declare (loadComposeSpecs gives inputs without one the first declared
+    // version; if inputs declare different versions, the first file's wins).
+    mergedSpec.version = prepared[0].spec.version;
 
     await reconcileSwarmCompatibility(mergedSpec, settings);
     assertServicesRemain(mergedSpec);
@@ -453,6 +553,7 @@ function assertServicesRemain(...specs: ComposeSpec[]) {
  * @param composeSpec The Compose specification to interpolate
  * @param keyInterpolation Whether to interpolate variables in keys
  * @param variables The variables to use for interpolation
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export function interpolateSpec(
   composeSpec: ComposeSpec,
@@ -460,31 +561,52 @@ export function interpolateSpec(
     keyInterpolation,
     variables,
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
-  if (keyInterpolation) {
-    return interpolateKeysAndValues(composeSpec, variables) as ComposeSpec;
-  }
-
-  return mapStrings(composeSpec, (value) =>
-    interpolateString(value, variables),
-  );
+  return interpolateNode(
+    composeSpec,
+    variables,
+    onUndefined,
+    keyInterpolation,
+  ) as ComposeSpec;
 }
 
-// Interpolate keys and string values one at a time, so a value can never
-// change the structure around it. The spec comes from `docker stack config`
-// output, so it holds only plain JSON values (no `Tagged` carriers).
-function interpolateKeysAndValues(
+// Interpolate a string, naming where it is in the spec if that fails
+function interpolateAt(
+  value: string,
+  path: Array<string | number>,
+  variables: Map<string, string>,
+  onUndefined: (name: string) => void,
+) {
+  try {
+    return interpolateString(value, variables, onUndefined);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    throw new Error(`${path.join(".")}: ${message}`, { cause });
+  }
+}
+
+// Interpolate string values (and keys, if enabled) one at a time, so a value
+// can never change the structure around it. The spec comes from `docker stack
+// config` output, so it holds only plain JSON values (no `Tagged` carriers).
+function interpolateNode(
   node: unknown,
   variables: Map<string, string>,
+  onUndefined: (name: string) => void,
+  keyInterpolation: boolean,
   path: Array<string | number> = [],
 ): unknown {
   if (typeof node === "string") {
-    return interpolateString(node, variables);
+    return interpolateAt(node, path, variables, onUndefined);
   }
 
   if (Array.isArray(node)) {
     return node.map((item, index) =>
-      interpolateKeysAndValues(item, variables, [...path, index]),
+      interpolateNode(item, variables, onUndefined, keyInterpolation, [
+        ...path,
+        index,
+      ]),
     );
   }
 
@@ -498,7 +620,9 @@ function interpolateKeysAndValues(
   // `__proto__` stays a key instead of replacing the prototype.
   return Object.fromEntries(
     Object.entries(node).map(([key, value]) => {
-      const name = interpolateString(key, variables);
+      const name = keyInterpolation
+        ? interpolateAt(key, [...path, key], variables, onUndefined)
+        : key;
 
       if (seen.has(name)) {
         throw new Error(
@@ -512,7 +636,10 @@ function interpolateKeysAndValues(
 
       return [
         name,
-        interpolateKeysAndValues(value, variables, [...path, name]),
+        interpolateNode(value, variables, onUndefined, keyInterpolation, [
+          ...path,
+          name,
+        ]),
       ];
     }),
   );
@@ -612,10 +739,12 @@ function findCast(path: Array<string | number>) {
  *
  * @param composeSpec The Compose specification to process
  * @param variables The variables to use for interpolation
+ * @param onUndefined Called with the name of each undefined variable used
  */
 export function interpolateTypedFields(
   composeSpec: ComposeSpec,
   { variables }: Pick<Readonly<Settings>, "variables">,
+  onUndefined = warnAboutUndefinedVariables(),
 ) {
   function walk(node: unknown, path: Array<string | number>): unknown {
     if (typeof node === "string") {
@@ -625,7 +754,9 @@ export function interpolateTypedFields(
         return node;
       }
 
-      const value = field.cast(interpolateString(node, variables));
+      const value = field.cast(
+        interpolateAt(node, path, variables, onUndefined),
+      );
 
       // Report the expression rather than what it resolved to, which may be
       // a secret.

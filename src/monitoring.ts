@@ -13,6 +13,7 @@ import {
   formatHealthCheck,
   type HealthCheck,
 } from "./healthcheck.js";
+import { monitorTimeoutLabel, type ServiceOptions } from "./labels.js";
 import type { Settings } from "./settings.js";
 import { sleep } from "./utils.js";
 
@@ -25,12 +26,35 @@ import { sleep } from "./utils.js";
  * errors encountered after the containers are started.
  *
  * @param settings Deployment settings
+ * @param spec Deployed Compose spec
+ * @param serviceOptions Per-service options, keyed by the service name in the
+ *   spec; services without an entry use the stack-wide settings
  */
 export async function monitorDeployment(
   settings: Readonly<Settings>,
   spec?: ComposeSpec,
+  serviceOptions: ReadonlyMap<
+    string,
+    Pick<ServiceOptions, "monitor" | "monitorTimeout">
+  > = new Map(),
 ) {
-  if (!settings.monitor) {
+  const optionsOf = (
+    service: Pick<ServiceWithMetadata, "Spec" | "Name" | "ID">,
+  ) => {
+    const name = displayName(service);
+    const prefix = `${settings.stack}_`;
+
+    return (
+      serviceOptions.get(
+        name.startsWith(prefix) ? name.slice(prefix.length) : name,
+      ) ?? settings
+    );
+  };
+  const monitored = (
+    serviceOptions.size > 0 ? [...serviceOptions.values()] : [settings]
+  ).filter(({ monitor }) => monitor);
+
+  if (monitored.length === 0) {
     core.info("Post-Deployment Monitoring is disabled");
 
     return;
@@ -42,7 +66,7 @@ export async function monitorDeployment(
   const baseInterval = settings.monitorInterval * 1_000;
   const maxInterval = Math.min(
     baseInterval * 6,
-    settings.monitorTimeout * 1_000,
+    ...monitored.map(({ monitorTimeout }) => monitorTimeout * 1_000),
   );
   let currentInterval = baseInterval;
   const completedServices = new Set<string>();
@@ -50,20 +74,22 @@ export async function monitorDeployment(
 
   do {
     const elapsed = Date.now() - startTime.getTime();
+    const pendingOnTimeout = services.filter(
+      (s) =>
+        !completedServices.has(s.ID) &&
+        elapsed >= optionsOf(s).monitorTimeout * 1_000,
+    );
 
-    if (elapsed >= settings.monitorTimeout * 1_000) {
-      // On timeout, report diagnostics for all non-converged services.
-      // Prefetch tasks in parallel, then build reports sequentially to
-      // avoid interleaving job summary output.
-      const pendingOnTimeout = services.filter(
-        (s) => !completedServices.has(s.ID),
-      );
+    if (pendingOnTimeout.length > 0) {
+      // On timeout, report diagnostics for every service past its own
+      // timeout. Prefetch tasks in parallel, then build reports sequentially
+      // to avoid interleaving job summary output.
       const prefetchedTasks = await Promise.all(
         pendingOnTimeout.map((s) => fetchTasks(s.ID)),
       );
       for (let i = 0; i < pendingOnTimeout.length; i++) {
         const service = pendingOnTimeout[i];
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         const healthcheck = findServiceHealthCheck(spec, name);
         await buildFailureReport(
           service.ID,
@@ -76,10 +102,10 @@ export async function monitorDeployment(
 
       const convergedNames = services
         .filter((s) => completedServices.has(s.ID))
-        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
+        .map(displayName);
       const pendingNames = services
         .filter((s) => !completedServices.has(s.ID))
-        .map((s) => s.Spec?.Name ?? s.Name ?? s.ID);
+        .map(displayName);
 
       // Job summary table for partial success
       core.summary.addHeading("Deployment timeout summary", 2);
@@ -105,19 +131,26 @@ export async function monitorDeployment(
         core.info(`Services not converged: ${pendingNames.join(", ")}`);
       }
 
+      const timeout = Math.max(
+        ...pendingOnTimeout.map((s) => optionsOf(s).monitorTimeout),
+      );
+
       throw new Error(
-        `Deployment timed out after ${settings.monitorTimeout}s: ` +
+        `Deployment timed out after ${timeout}s: ` +
           `${completedServices.size}/${services.length} services converged. ` +
           `See the per-service failure reports above for why the remaining ` +
           `services did not become healthy, or raise the "monitor-timeout" ` +
-          `input if they simply need more time.`,
+          `input or the "${monitorTimeoutLabel}" service label if they ` +
+          `simply need more time.`,
       );
     }
 
-    services = await listServices(
-      { labels: { "com.docker.stack.namespace": settings.stack } },
-      true,
-    );
+    services = (
+      await listServices(
+        { labels: { "com.docker.stack.namespace": settings.stack } },
+        true,
+      )
+    ).filter((service) => optionsOf(service).monitor);
 
     core.debug(
       `Waiting for services to finish updating: ` +
@@ -168,7 +201,7 @@ export async function monitorDeployment(
     // Process completions first
     for (const [service, result] of checks) {
       if (result.kind === "complete") {
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         core.info(`Service "${name}" has been deployed successfully`);
         completedServices.add(service.ID);
       }
@@ -190,7 +223,7 @@ export async function monitorDeployment(
     );
     if (failures.length > 0) {
       for (const [service, result] of failures) {
-        const name = service.Spec?.Name ?? service.Name ?? service.ID;
+        const name = displayName(service);
         const healthcheck = findServiceHealthCheck(spec, name);
         if (result.kind === "stuck") {
           await buildFailureReport(
@@ -218,8 +251,7 @@ export async function monitorDeployment(
       }
 
       const [firstService, firstResult] = failures[0];
-      const firstName =
-        firstService.Spec?.Name ?? firstService.Name ?? firstService.ID;
+      const firstName = displayName(firstService);
       if (firstResult.kind === "stuck") {
         throw new Error(
           `Service "${firstName}" failed: all tasks are in a failed state`,
@@ -261,6 +293,30 @@ export function isServiceUpdateComplete(
   const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
+  // A job service is done once its tasks have completed: a running task is
+  // still working, and a finished job has no running tasks at all. A global
+  // job stops counting a task that failed, so "0/0 completed" is a failed run,
+  // not a finished one; stuck detection reports it.
+  const job = parseJobProgress(service.Replicas);
+
+  if (job) {
+    if (job.total > 0 && job.completed >= job.total) {
+      core.info(
+        `Job service "${name}" has completed ` +
+          `(${job.completed}/${job.total} tasks)`,
+      );
+
+      return true;
+    }
+
+    core.info(
+      `Job service "${name}" is still running ` +
+        `(${job.completed}/${job.total} tasks completed)`,
+    );
+
+    return false;
+  }
+
   // Handle missing UpdateStatus
   if (!service.UpdateStatus) {
     if (isServiceRunning(service)) {
@@ -298,6 +354,24 @@ export function isServiceUpdateComplete(
   throw new Error(`Update of service "${name}" failed: ${reason}`, {
     cause: service.UpdateStatus,
   });
+}
+
+/**
+ * Parse the progress of a job service
+ *
+ * Docker reports it in the Replicas field of a job service, after the running
+ * and desired task counts: "0/1 (1/1 completed)". The completions count only
+ * the current run of the job, which every deployment starts anew.
+ *
+ * @param replicas Replicas field of the service
+ * @returns Completed and total tasks, or undefined if not a job service
+ */
+function parseJobProgress(replicas: string | undefined) {
+  const match = replicas?.match(/\((\d+)\/(\d+) completed\)/);
+
+  return match
+    ? { completed: Number(match[1]), total: Number(match[2]) }
+    : undefined;
 }
 
 /**
@@ -351,6 +425,12 @@ export function isServiceRunning(
   return false;
 }
 
+function displayName(
+  service: Pick<ServiceWithMetadata, "Spec" | "Name" | "ID">,
+) {
+  return service.Spec?.Name ?? service.Name ?? service.ID;
+}
+
 async function fetchTasks(serviceId: string): Promise<TaskStatus[] | null> {
   try {
     return await listServiceTasks(serviceId);
@@ -367,11 +447,17 @@ async function fetchTasks(serviceId: string): Promise<TaskStatus[] | null> {
  * never recover on its own.
  */
 export function isServiceStuck(tasks: TaskStatus[]): boolean {
-  if (tasks.length === 0) {
+  // Completed tasks are finished work, such as an earlier run of a job
+  // service, so they say nothing about whether the service can still recover.
+  const unfinished = tasks.filter(
+    (t) => !t.CurrentState.startsWith("Complete"),
+  );
+
+  if (unfinished.length === 0) {
     return false;
   }
 
-  return tasks.every(
+  return unfinished.every(
     (t) =>
       t.CurrentState.startsWith("Failed") ||
       t.CurrentState.startsWith("Rejected"),
@@ -589,19 +675,6 @@ const errorPatterns: Array<{
     headline: (e) => `Image could not be pulled: ${e}`,
   },
   {
-    test: (e) => /non-zero exit \(137\)/.test(e),
-    category: "oom_kill",
-    headline: () => "Container killed (likely OOM): exit code 137",
-  },
-  {
-    test: (e) => /non-zero exit \((\d+)\)/.test(e),
-    category: "container_crash",
-    headline: (e) => {
-      const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
-      return `Container exited with code ${code}`;
-    },
-  },
-  {
     test: (e) => /unhealthy container/.test(e),
     category: "health_check",
     headline: () => "Container failed health check",
@@ -656,6 +729,22 @@ const errorPatterns: Array<{
     test: (e) => /host-mode port already in use/.test(e),
     category: "port_conflict",
     headline: (e) => `Host port already in use: ${e}`,
+  },
+  // Exit codes last: they say how a task died, not why. Swarm prefixes other
+  // causes with one, e.g. "task: non-zero exit (137): dockerexec: unhealthy
+  // container", so any cause listed after them would never match.
+  {
+    test: (e) => /non-zero exit \(137\)/.test(e),
+    category: "oom_kill",
+    headline: () => "Container killed (likely OOM): exit code 137",
+  },
+  {
+    test: (e) => /non-zero exit \((\d+)\)/.test(e),
+    category: "container_crash",
+    headline: (e) => {
+      const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
+      return `Container exited with code ${code}`;
+    },
   },
 ];
 

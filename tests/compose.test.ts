@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import * as core from "@actions/core";
 import { exec } from "@actions/exec";
 import * as yaml from "js-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,11 +11,13 @@ import {
   loadComposeSpecs,
   normalizeSpec,
   prepareSpec,
+  readStackSettings,
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
-import * as engine from "../src/engine";
-import { deployStack } from "../src/engine";
+import * as engine from "../src/engine.js";
+import { deployStack } from "../src/engine.js";
+import * as envFile from "../src/env-file.js";
 import { Tagged } from "../src/override-tags.js";
 import * as reconcile from "../src/reconcile.js";
 import { defineSettings } from "../src/settings.js";
@@ -48,13 +51,17 @@ describe("Compose", () => {
 
   const settings = defineSettings({
     envVarPrefix: "DEPLOYMENT",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: false,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "test-stack",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "ebadf1",
   });
@@ -286,6 +293,23 @@ describe("Compose", () => {
       ).resolves.toEqual([{ spec: composeSpec, baseDir: "." }]);
     });
 
+    it("should inline env files after loading all compose files", async () => {
+      const composeSpec = defineComposeSpec({
+        services: { web: { image: "nginx", env_file: "app.env" } },
+      });
+      const onUndefined = vi.fn();
+      vi.spyOn(yaml, "load").mockReturnValue(composeSpec);
+      vi.spyOn(envFile, "inlineEnvFiles").mockResolvedValue();
+
+      await loadComposeSpecs(["docker/compose.yaml"], settings, onUndefined);
+
+      expect(envFile.inlineEnvFiles).toHaveBeenCalledExactlyOnceWith(
+        [{ spec: composeSpec, baseDir: "docker" }],
+        settings,
+        onUndefined,
+      );
+    });
+
     it("should throw an error if the compose file does not have a services section", async () => {
       vi.spyOn(utils, "exists").mockResolvedValue(true);
       vi.mocked(exec).mockResolvedValue(0);
@@ -318,6 +342,18 @@ describe("Compose", () => {
           baseDir: ".",
         },
       ]);
+    });
+
+    it("should give a file without a version the version another file declares", async () => {
+      vi.spyOn(utils, "exists").mockResolvedValue(true);
+      vi.mocked(exec).mockResolvedValue(0);
+      vi.spyOn(yaml, "load")
+        .mockReturnValueOnce({ services: { web: { image: "nginx" } } })
+        .mockReturnValueOnce({ version: "3.9", services: {} });
+
+      const specs = await loadComposeSpecs(["a.yaml", "b.yaml"], settings);
+
+      expect(specs.map(({ spec }) => spec.version)).toEqual(["3.9", "3.9"]);
     });
 
     it("should throw an error if none of the compose files have services", async () => {
@@ -759,6 +795,56 @@ describe("Compose", () => {
   describe("normalizeSpec override-tag merge", () => {
     beforeEach(() => vi.clearAllMocks());
 
+    it("restores the declared version and reports through the caller's warner", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // `docker compose config` drops `version` and leaves typed fields as
+      // strings when interpolation is off.
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "${N}" } } },
+      });
+      const reconcileSpy = vi
+        .spyOn(reconcile, "reconcileSwarmCompatibility")
+        .mockResolvedValue(undefined);
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+      const onUndefined = vi.fn();
+
+      const specs = [
+        {
+          spec: {
+            version: "3.12",
+            services: {
+              web: {
+                image: "nginx",
+                ports: new Tagged("!override", "sequence", []),
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await expect(normalizeSpec(specs, settings, onUndefined)).rejects.toThrow(
+        /replicas must be an integer/,
+      );
+
+      expect(onUndefined).toHaveBeenCalledWith("N");
+      expect(reconcileSpy).not.toHaveBeenCalled();
+
+      vi.mocked(yaml.load).mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "2" } } },
+      });
+
+      await normalizeSpec(specs, settings, onUndefined);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ version: "3.12" }),
+        settings,
+      );
+    });
+
     it("merges via docker compose then reconciles + normalizes when tags are present", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
       vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue(
@@ -813,6 +899,40 @@ describe("Compose", () => {
       );
     });
 
+    it("casts typed fields the merge emitted as strings", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // `docker compose config --no-interpolate` emits `!override 3` as "3".
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { web: { image: "nginx", deploy: { replicas: "3" } } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: {
+                image: "nginx",
+                deploy: { replicas: new Tagged("!override", "scalar", 3) },
+              },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+
+      await normalizeSpec(specs, settings);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        { services: { web: { image: "nginx", deploy: { replicas: 3 } } } },
+        settings,
+      );
+    });
+
     it("throws when tags are present but the compose plugin is missing", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(false);
       const merge = vi.spyOn(engine, "mergeComposeFiles");
@@ -846,6 +966,70 @@ describe("Compose", () => {
 
       expect(merge).not.toHaveBeenCalled();
       expect(engine.normalizeStackSpecification).toHaveBeenCalled();
+    });
+
+    // Compose names the default network after the project, which is the
+    // working directory, so stacks deployed from one repository would share it
+    it.each([
+      ["drops the network name Compose derives", "app_default", {}],
+      ["keeps a network name the files set", "shared", { name: "shared" }],
+    ])("%s", async (_, name, expected) => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      vi.spyOn(yaml, "load").mockReturnValue({
+        name: "app",
+        networks: { default: { name } },
+        services: { web: { image: "nginx" } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: { ports: new Tagged("!override", "sequence", []) },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ networks: { default: expected } }),
+        settings,
+      );
+    });
+
+    // `docker stack config` rejects `extends` as a forbidden property
+    it("merges with docker compose config when a service uses extends", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      const merge = vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // The merged spec, with `extends` resolved
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { base: { image: "nginx" }, web: { image: "nginx" } },
+      });
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { base: { image: "nginx" }, web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              base: { image: "nginx" },
+              web: { extends: "base" },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(merge).toHaveBeenCalled();
     });
 
     it("writes the input spec beside its compose file so relative paths resolve", async () => {
@@ -1130,6 +1314,17 @@ describe("Compose", () => {
       });
     });
 
+    it("should name where a malformed reference in a typed field is", () => {
+      const spec: ComposeSpec = {
+        services: { app: { deploy: { replicas: "${REPLICAS" } } },
+      };
+
+      expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
+        "services.app.deploy.replicas: Invalid interpolation format " +
+          '"${REPLICAS"',
+      );
+    });
+
     it("should reject numbers Docker does not parse as floats", () => {
       const spec: ComposeSpec = {
         services: {
@@ -1150,6 +1345,86 @@ describe("Compose", () => {
       expect(() => interpolateTypedFields(spec, typedSettings)).toThrow(
         'services.app.privileged must be a boolean, but "1" does not ' +
           "resolve to one",
+      );
+    });
+  });
+
+  describe("Undefined Variables", () => {
+    const undefinedSettings = {
+      keyInterpolation: false,
+      variables: new Map([["TAG", "1.0"]]),
+    };
+
+    it("should warn once per undefined variable in the spec", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            image: "app:${UNSET_TAG}",
+            environment: {
+              A: "$UNSET_TAG",
+              B: "${UNSET_TAG}-${TAG}",
+              C: "${OTHER}",
+            },
+          },
+        },
+      };
+
+      expect(interpolateSpec(spec, undefinedSettings)).toEqual({
+        services: {
+          app: {
+            image: "app:",
+            environment: { A: "", B: "-1.0", C: "" },
+          },
+        },
+      });
+      expect(vi.mocked(core.warning).mock.calls).toEqual([
+        ['The "UNSET_TAG" variable is not set. Defaulting to a blank string.'],
+        ['The "OTHER" variable is not set. Defaulting to a blank string.'],
+      ]);
+    });
+
+    it("should not warn for variables with a default or alternative", () => {
+      const spec: ComposeSpec = {
+        services: {
+          app: {
+            image: "app:${VERSION:-latest}",
+            command: "${A-a} ${B:+b} ${C+c} $${D}",
+          },
+        },
+      };
+
+      interpolateSpec(spec, undefinedSettings);
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("should warn for undefined variables in keys", () => {
+      const spec: ComposeSpec = {
+        services: { "app${SUFFIX}": { image: "app" } },
+      };
+
+      interpolateSpec(spec, { ...undefinedSettings, keyInterpolation: true });
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'The "SUFFIX" variable is not set. Defaulting to a blank string.',
+      );
+    });
+
+    it("should warn once across typed field and spec interpolation", () => {
+      const onUndefined = utils.warnAboutUndefinedVariables();
+      const spec = interpolateTypedFields(
+        {
+          services: {
+            app: { image: "app:${X}", deploy: { replicas: "1${X}" } },
+          },
+        },
+        undefinedSettings,
+        onUndefined,
+      );
+
+      expect(interpolateSpec(spec, undefinedSettings, onUndefined)).toEqual({
+        services: { app: { image: "app:", deploy: { replicas: 1 } } },
+      });
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'The "X" variable is not set. Defaulting to a blank string.',
       );
     });
   });
@@ -1436,7 +1711,7 @@ describe("Compose", () => {
 
         const result = interpolateSpec(spec, mockSettings);
 
-        expect(result.services.app.environment).toEqual({
+        expect(result.services.app).toHaveProperty("environment", {
           KEY: "-----BEGIN KEY-----\nabc\tdef\n-----END KEY-----\n",
         });
       });
@@ -1849,6 +2124,33 @@ describe("Compose", () => {
         });
       });
 
+      it.each([false, true])(
+        "should name where a malformed reference is with keyInterpolation %s",
+        (keyInterpolation) => {
+          const spec: ComposeSpec = {
+            services: {
+              app: { image: "nginx", environment: { BROKEN: "a ${A.b}" } },
+            },
+          };
+
+          expect(() =>
+            interpolateSpec(spec, { ...mockSettings, keyInterpolation }),
+          ).toThrow(
+            'services.app.environment.BROKEN: Invalid interpolation format "${A.b}"',
+          );
+        },
+      );
+
+      it("should name where a malformed reference in a key is", () => {
+        const spec: ComposeSpec = {
+          services: { "${NAME": { image: "nginx" } },
+        };
+
+        expect(() =>
+          interpolateSpec(spec, { ...mockSettings, keyInterpolation: true }),
+        ).toThrow('services.${NAME: Invalid interpolation format "${NAME"');
+      });
+
       it("should interpolate keys and values separately when keyInterpolation is enabled", () => {
         const settings = {
           ...mockSettings,
@@ -1864,7 +2166,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: "${PASSWORD}",
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
@@ -1877,7 +2178,6 @@ describe("Compose", () => {
               image: "nginx",
               environment: {
                 PASSWORD: 'p"a\\ss\nword',
-                BROKEN: "${NAME:-x",
                 AFTER: "}",
               },
             },
@@ -1891,13 +2191,17 @@ describe("Compose", () => {
     const settings = defineSettings({
       composeFiles: ["docker-compose.yaml"],
       envVarPrefix: "DEPLOYMENT",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
       monitorTimeout: 300,
+      secretValues: new Map(),
       stack: "test-stack",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map([
         ["MATCHORY_DEPLOYMENT_STACK", "test-stack"],
         ["MATCHORY_DEPLOYMENT_VERSION", "ebadf1"],
@@ -1940,10 +2244,10 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "test-stack",
             MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -1979,10 +2283,10 @@ describe("Compose", () => {
           "test-stack",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "test-stack",
             MATCHORY_DEPLOYMENT_VERSION: "ebadf1",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -2029,11 +2333,11 @@ describe("Compose", () => {
           "different-name",
         ],
         {
-          env: {
+          env: expect.objectContaining({
             MATCHORY_DEPLOYMENT_STACK: "different-name",
             MATCHORY_DEPLOYMENT_VERSION: "abcd123",
             CUSTOM_VAR: "custom_value",
-          },
+          }),
           input: Buffer.from(
             "version: '3.8'\nservices:\n  web:\n    image: nginx:latest\n",
           ),
@@ -2043,6 +2347,104 @@ describe("Compose", () => {
           },
           silent: false,
         },
+      );
+    });
+  });
+
+  describe("loadComposeSpecs with profiles", () => {
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof yaml>("js-yaml");
+      vi.mocked(yaml.load).mockImplementation(actual.load);
+    });
+
+    it("should skip inactive services before reading their env files", async () => {
+      readFile.mockImplementation(async (filename: string) => {
+        if (filename === "compose.yaml") {
+          return (
+            "services:\n" +
+            "  web:\n    image: nginx\n" +
+            "  debug:\n    image: busybox\n    profiles: [debug]\n" +
+            "    env_file: debug.env\n"
+          );
+        }
+
+        throw Object.assign(new Error(`ENOENT: ${filename}`), {
+          code: "ENOENT",
+        });
+      });
+
+      const specs = await loadComposeSpecs(
+        ["compose.yaml"],
+        defineSettings({
+          envVarPrefix: "APP",
+          healthCheckWarnings: false,
+          keyInterpolation: false,
+          manageVariables: false,
+          monitor: false,
+          monitorInterval: 5,
+          monitorTimeout: 300,
+          profiles: ["prod"],
+          secretValues: new Map(),
+          stack: "test",
+          strictCompatibility: false,
+          strictVariables: false,
+          uploadComposeSpec: false,
+          variables: new Map(),
+          version: "1.0.0",
+        }),
+      );
+
+      expect(Object.keys(specs[0].spec.services)).toEqual(["web"]);
+    });
+  });
+
+  describe("readStackSettings", () => {
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof yaml>("js-yaml");
+      vi.mocked(yaml.load).mockImplementation(actual.load);
+    });
+
+    it("should merge the settings blocks, later files winning", async () => {
+      readFile.mockImplementation(
+        async (filename: string) =>
+          ({
+            "base.yaml":
+              "x-matchory-deployment:\n  monitor: true\n  monitor-timeout: 60\n" +
+              "services:\n  web:\n    image: nginx\n",
+            "override.yaml": "x-matchory-deployment:\n  monitor-timeout: 600\n",
+            "plain.yaml": "services: {}\n",
+          })[filename],
+      );
+
+      await expect(
+        readStackSettings(["base.yaml", "override.yaml", "plain.yaml"]),
+      ).resolves.toEqual({ monitor: true, "monitor-timeout": 600 });
+    });
+
+    it("should read the block without interpolating it", async () => {
+      readFile.mockResolvedValue(
+        "x-matchory-deployment:\n  env-var-prefix: ${PREFIX}\nservices: {}\n",
+      );
+
+      await expect(readStackSettings(["compose.yaml"])).resolves.toEqual({
+        "env-var-prefix": "${PREFIX}",
+      });
+    });
+
+    it("should ignore an empty block", async () => {
+      readFile.mockResolvedValue("x-matchory-deployment:\nservices: {}\n");
+
+      await expect(readStackSettings(["compose.yaml"])).resolves.toEqual({});
+    });
+
+    it("should reject a block that is not a mapping", async () => {
+      readFile.mockResolvedValue(
+        "x-matchory-deployment: [monitor]\nservices: {}\n",
+      );
+
+      await expect(readStackSettings(["compose.yaml"])).rejects.toThrow(
+        '"x-matchory-deployment" in Compose file "compose.yaml" must be a ' +
+          "mapping of settings.",
       );
     });
   });

@@ -1,14 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
-import { listConfigs, listSecrets, removeConfig, removeSecret } from "./engine";
+import {
+  listConfigs,
+  listSecrets,
+  listServices,
+  removeConfig,
+  removeSecret,
+  type Service,
+  type ServiceSpec,
+} from "./engine.js";
 import type { Settings } from "./settings.js";
 import {
   exists,
   interpolateString,
   mapStrings,
   removeFileQuietly,
+  warnAboutUndefinedVariables,
 } from "./utils.js";
 
 export const nameLabel = "com.matchory.deployment.name";
@@ -64,13 +74,19 @@ export async function processVariable(
     return variable;
   }
 
-  let modifiedVariable: FileVariable | undefined;
-  let content: string | undefined;
+  // Set only while the variable can be deployed straight from its source file;
+  // any other value is written to a generated file once it is final.
+  let sourceVariable: FileVariable | undefined;
+  let content: Buffer | undefined;
 
   // If a variable names a file explicitly, we need to check if the file exists.
+  // The path is interpolated and made absolute here, so the file we hash is the
+  // one deployed, wherever Docker writes the spec it resolves from.
   if ("file" in variable) {
     try {
-      content = await readFromFile(name, variable);
+      let path: string;
+      [path, content] = await readFromFile(name, variable, variables);
+      sourceVariable = { ...variable, file: escapeInterpolation(path) };
     } catch (error) {
       if (strictVariables) {
         throw error;
@@ -78,21 +94,19 @@ export async function processVariable(
     }
   } else if ("environment" in variable) {
     content = readFromEnvironment(name, variable, variables);
-    modifiedVariable = await transformVariable(content, name, variable);
   } else if ("content" in variable) {
     content = readFromContent(name, variable, variables);
-    modifiedVariable = await transformVariable(content, name, variable);
   }
 
   if (content === undefined) {
-    [content, modifiedVariable] = await inferVariable(name, variable, {
+    [content, sourceVariable] = await inferVariable(name, variable, {
       envVarPrefix,
       stack,
       variables,
     });
   }
 
-  if (!content) {
+  if (content.length === 0) {
     core.warning(
       `Variable "${name}" resolved to an empty value; the secret or config ` +
         `will be created empty. If that is not intended, check the source ` +
@@ -105,12 +119,16 @@ export async function processVariable(
   // the content accordingly. This is useful for secrets that need to be passed
   // as environment variables or in a specific format.
   if (variable.labels && encodeLabel in variable.labels) {
-    content = await encodeVariable(content, name, variable);
-    modifiedVariable = await transformVariable(content, name, variable);
+    content = encodeVariable(content, name, variable);
+    sourceVariable = undefined;
   } else if (variable.labels && decodeLabel in variable.labels) {
-    content = await decodeVariable(content, name, variable);
-    modifiedVariable = await transformVariable(content, name, variable);
+    content = decodeVariable(content, name, variable);
+    sourceVariable = undefined;
   }
+
+  // Written only now, so the one file on disk is the one that is deployed
+  const modifiedVariable =
+    sourceVariable ?? (await transformVariable(content, name, variable));
 
   // Calculate hash of the variable value. If the value didn't change since the
   // last deployment, the hash will be the same, and we can reuse the existing
@@ -118,7 +136,7 @@ export async function processVariable(
   // services depending on the variable.
   const hash = hashVariable(content);
   const variableName =
-    modifiedVariable?.name ?? variable.name ?? `${stack}-${name}`;
+    modifiedVariable.name ?? variable.name ?? `${stack}-${name}`;
 
   const finalName = `${variableName}-${hash.substring(0, 7)}`;
 
@@ -133,10 +151,10 @@ export async function processVariable(
   }
 
   return {
-    ...(modifiedVariable ?? variable),
+    ...modifiedVariable,
     name: finalName,
     labels: {
-      ...(modifiedVariable?.labels ?? variable.labels),
+      ...modifiedVariable.labels,
       [nameLabel]: name,
       [hashLabel]: hash,
       [stackLabel]: stack,
@@ -146,12 +164,24 @@ export async function processVariable(
 }
 
 // region Content Loading
-async function readFromFile(name: string, variable: FileVariable) {
-  const filePath = variable.file;
+async function readFromFile(
+  name: string,
+  variable: FileVariable,
+  variables: Map<string, string>,
+): Promise<[string, Buffer]> {
+  // Interpolated now rather than with the rest of the spec, so the file read
+  // and hashed here is the one the path points Docker at.
+  const filePath = resolve(
+    interpolateString(
+      String(variable.file),
+      variables,
+      warnAboutUndefinedVariables(`the file path of "${name}"`),
+    ),
+  );
 
   if (!(await exists(filePath))) {
     throw new Error(
-      `Variable "${name}" specifies the file "${filePath}" as its ` +
+      `Variable "${name}" specifies the file "${variable.file}" as its ` +
         `source, but this file does not exist or is not readable. Ensure ` +
         `it exists, or remove the "file" property from the variable ` +
         `definition to let the action read the value from the build ` +
@@ -161,7 +191,9 @@ async function readFromFile(name: string, variable: FileVariable) {
 
   core.debug(`Loading variable ${name} from file: ${filePath}`);
 
-  return await readFile(filePath, "utf8");
+  // Read as bytes: decoding binary content as UTF-8 is lossy, so two
+  // different files could hash, and deploy, the same.
+  return [filePath, await readFile(filePath)];
 }
 
 function readFromEnvironment(
@@ -179,7 +211,7 @@ function readFromEnvironment(
     );
   }
 
-  return String(variables.get(variable));
+  return Buffer.from(String(variables.get(variable)));
 }
 
 /**
@@ -190,12 +222,24 @@ function readFromEnvironment(
  * by now.
  */
 function readFromContent(
-  _name: string,
+  name: string,
   { content }: ContentVariable,
   variables: Map<string, string>,
 ) {
   // Interpolate variables within the inline content
-  return interpolateString(String(content), variables);
+  try {
+    return Buffer.from(
+      interpolateString(
+        String(content),
+        variables,
+        warnAboutUndefinedVariables(`the content of "${name}"`),
+      ),
+    );
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
+    throw new Error(`The content of "${name}": ${message}`, { cause });
+  }
 }
 
 async function inferVariable(
@@ -206,8 +250,8 @@ async function inferVariable(
     stack,
     variables,
   }: Pick<Settings, "envVarPrefix" | "stack" | "variables">,
-): Promise<[string, FileVariable]> {
-  const filePath = `./${name}.secret`;
+): Promise<[Buffer, FileVariable | undefined]> {
+  const filePath = resolve(`${name}.secret`);
 
   // If the variable doesn't specify a source, we need to check if it exists;
   // first as a file, then as an environment variable in several variants.
@@ -215,8 +259,8 @@ async function inferVariable(
     core.debug(`Loading variable "${name}" from file: "${filePath}"`);
 
     return [
-      await readFile(filePath, "utf8"),
-      { ...variable, file: filePath },
+      await readFile(filePath),
+      { ...variable, file: escapeInterpolation(filePath) },
     ] as const;
   }
 
@@ -239,10 +283,7 @@ async function inferVariable(
         `Loading variable "${name}" from environment variable "${variant}"`,
       );
 
-      (variable as EnvironmentVariable).environment = variant;
-      const value = variables.get(variant) ?? "";
-
-      return [value, await transformVariable(value, name, variable)] as const;
+      return [Buffer.from(variables.get(variant) ?? ""), undefined] as const;
     }
   }
 
@@ -257,20 +298,22 @@ async function inferVariable(
 // endregion
 
 // region Encoding/Decoding
+// Values stay bytes in both directions, so binary content passes through intact;
+// only url works on text, as percent-encoding is defined over UTF-8 here.
 const encoders = {
-  base64: (value) => Buffer.from(value, "utf8").toString("base64"),
-  base64url: (value) => Buffer.from(value, "utf8").toString("base64url"),
-  hex: (value) => Buffer.from(value, "utf8").toString("hex"),
-  url: (value) => encodeURIComponent(value),
-} satisfies Record<string, (value: string) => string>;
+  base64: (value) => Buffer.from(value.toString("base64")),
+  base64url: (value) => Buffer.from(value.toString("base64url")),
+  hex: (value) => Buffer.from(value.toString("hex")),
+  url: (value) => Buffer.from(encodeURIComponent(value.toString())),
+} satisfies Record<string, (value: Buffer) => Buffer>;
 const decoders = {
-  base64: (value) => Buffer.from(value, "base64").toString("utf8"),
-  base64url: (value) => Buffer.from(value, "base64url").toString("utf8"),
-  hex: (value) => Buffer.from(value, "hex").toString("utf8"),
-  url: (value) => decodeURIComponent(value),
-} satisfies Record<string, (value: string) => string>;
+  base64: (value) => Buffer.from(value.toString(), "base64"),
+  base64url: (value) => Buffer.from(value.toString(), "base64url"),
+  hex: (value) => Buffer.from(value.toString(), "hex"),
+  url: (value) => Buffer.from(decodeURIComponent(value.toString())),
+} satisfies Record<string, (value: Buffer) => Buffer>;
 
-function encodeVariable(content: string, name: string, variable: Variable) {
+function encodeVariable(content: Buffer, name: string, variable: Variable) {
   const format = variable.labels?.[
     encodeLabel
   ].toString() as keyof typeof encoders;
@@ -289,7 +332,7 @@ function encodeVariable(content: string, name: string, variable: Variable) {
   return encoders[format](content);
 }
 
-function decodeVariable(content: string, name: string, variable: Variable) {
+function decodeVariable(content: Buffer, name: string, variable: Variable) {
   const format = variable.labels?.[
     decodeLabel
   ].toString() as keyof typeof decoders;
@@ -352,7 +395,7 @@ export function redactSecretValues(
     .filter(([, value]) => value)
     .sort(([, a], [, b]) => b.length - a.length);
 
-  return mapStrings(spec, (value) => {
+  const redacted = mapStrings(spec, (value) => {
     for (const [name, secret] of redactable) {
       // Short secrets are replaced only where they make up the entire value.
       if (secret.length >= minSubstringRedactionLength || value === secret) {
@@ -362,30 +405,49 @@ export function redactSecretValues(
 
     return value;
   });
+
+  // Variable files hold the values, the paths to them don't. A path can still
+  // contain a string equal to a secret, such as the repository name in the
+  // workspace path, and rewriting it would point the artifact at no file.
+  for (const kind of ["secrets", "configs"] as const) {
+    for (const [name, variable] of Object.entries(spec[kind] ?? {})) {
+      const target = redacted[kind]?.[name];
+
+      if (target && "file" in variable && "file" in target) {
+        target.file = variable.file;
+      }
+    }
+  }
+
+  return redacted;
 }
 
 async function transformVariable(
-  value: string,
+  value: Buffer,
   name: string,
   variable: Variable,
 ): Promise<FileVariable> {
   // Generate a random file name for the secret, so it doesn't conflict with
-  // existing files in the repository
-  const path = `./${name}.${randomUUID()}.generated.secret`;
+  // existing files in the repository. The path is absolute, so it stays valid
+  // wherever Docker resolves the spec from.
+  const path = resolve(`${name}.${randomUUID()}.generated.secret`);
 
   generatedFiles.add(path);
-  await writeFile(path, value, "utf8");
+  await writeFile(path, value, { mode: 0o600 });
 
-  // Remove the existing value pointer from the variable to avoid multiple
+  // Drop the existing value pointer from the variable to avoid multiple
   // source definition errors during the actual deployment
-  delete (variable as Partial<EnvironmentVariable>).environment;
-  delete (variable as Partial<ContentVariable>).content;
+  const {
+    environment: _environment,
+    content: _content,
+    ...rest
+  } = variable as Partial<EnvironmentVariable & ContentVariable>;
 
-  // Overwrite the variable with the new secret file path, so the docker CLI
+  // Point the variable at the new secret file, so the docker CLI
   // will use it instead of the original value
   return {
-    ...variable,
-    file: path,
+    ...rest,
+    file: escapeInterpolation(path),
     labels: {
       ...variable.labels,
     },
@@ -404,8 +466,17 @@ export async function pruneVariables(
 ) {
   core.startGroup("Pruning outdated variables");
 
-  await pruneSecrets(composeSpec, settings);
-  await pruneConfigs(composeSpec, settings);
+  // Swarm only refuses to remove variables referenced by a service's current
+  // spec, not by its previous one, which a rollback restores. Docker sets the
+  // previous spec as part of the update, so it is present even if the stack
+  // was deployed detached.
+  const services = await listServices(
+    { labels: { "com.docker.stack.namespace": settings.stack } },
+    true,
+  );
+
+  await pruneSecrets(composeSpec, settings, services);
+  await pruneConfigs(composeSpec, settings, services);
 
   core.endGroup();
 }
@@ -416,10 +487,14 @@ export async function pruneVariables(
 export async function pruneSecrets(
   { secrets }: ComposeSpec,
   { stack }: Settings,
+  services: Service[],
 ) {
   await pruneStoredVariables({
     kind: "secret",
     specVariables: secrets,
+    referencedIds: referencedIds(services, (container) =>
+      container?.Secrets?.map(({ SecretID }) => SecretID),
+    ),
     stack,
     list: () => listSecrets({ labels: { [stackLabel]: stack } }),
     remove: removeSecret,
@@ -433,19 +508,42 @@ export async function pruneSecrets(
 export async function pruneConfigs(
   { configs }: ComposeSpec,
   { stack }: Settings,
+  services: Service[],
 ) {
   await pruneStoredVariables({
     kind: "config",
     specVariables: configs,
+    referencedIds: referencedIds(services, (container) =>
+      container?.Configs?.map(({ ConfigID }) => ConfigID),
+    ),
     stack,
     list: () => listConfigs({ labels: { [stackLabel]: stack } }),
     remove: removeConfig,
   });
 }
 
+/**
+ * Collect the IDs of the variables the current and previous specs of the
+ * services reference
+ */
+function referencedIds(
+  services: Service[],
+  select: (
+    container: ServiceSpec["TaskTemplate"]["ContainerSpec"],
+  ) => string[] | undefined,
+) {
+  return new Set(
+    services.flatMap(({ Spec, PreviousSpec }) => [
+      ...(select(Spec?.TaskTemplate.ContainerSpec) ?? []),
+      ...(select(PreviousSpec?.TaskTemplate.ContainerSpec) ?? []),
+    ]),
+  );
+}
+
 async function pruneStoredVariables({
   kind,
   specVariables,
+  referencedIds,
   stack,
   list,
   remove,
@@ -453,6 +551,7 @@ async function pruneStoredVariables({
 }: {
   kind: "secret" | "config";
   specVariables: Record<string, Variable> | undefined;
+  referencedIds: Set<string>;
   stack: string;
   list: () => Promise<
     Array<{
@@ -473,12 +572,12 @@ async function pruneStoredVariables({
     hash: string;
   }) => v.stack + v.name + v.hash;
 
-  const specIdentifiers = specVariables
+  const specLabels = specVariables
     ? Object.values(specVariables)
         .map(({ labels }) => marshalLabels(labels))
         .filter((labels) => labels !== undefined)
-        .map((labels) => variableIdentifier(labels))
     : [];
+  const specIdentifiers = new Set(specLabels.map(variableIdentifier));
 
   const items = await list();
 
@@ -499,13 +598,25 @@ async function pruneStoredVariables({
 
     core.debug(`Checking ${kind} ${i + 1}/${items.length}: ${name}`);
 
+    if (!labels && referencedIds.has(ID)) {
+      core.info(`Keeping invalid ${kind} "${name}" referenced by a service.`);
+      continue;
+    }
+
     if (!labels) {
       core.notice(`Found invalid ${kind} "${name}": Missing labels. Pruning.`);
       await remove(ID);
       continue;
     }
 
-    if (!specIdentifiers.includes(variableIdentifier(labels))) {
+    const current = specIdentifiers.has(variableIdentifier(labels));
+
+    if (!current && referencedIds.has(ID)) {
+      core.info(
+        `Keeping version "${labels.hash.substring(0, 7)}" of ${kind} ` +
+          `"${labels.name}" referenced by a service: ${name}`,
+      );
+    } else if (!current) {
       const hash = labels.hash.substring(0, 7);
 
       core.notice(
@@ -513,9 +624,7 @@ async function pruneStoredVariables({
       );
 
       await remove(ID);
-    }
-
-    if (checkRotation && shouldRotate(new Date(CreatedAt ?? 0))) {
+    } else if (checkRotation && shouldRotate(new Date(CreatedAt ?? 0))) {
       core.warning(
         `Secret "${name}" is over a year old and should be rotated. Update ` +
           `its value at the source it is read from and redeploy to roll it ` +
@@ -532,8 +641,18 @@ export function defineVariable<T extends Variable>(variable: T) {
   return variable;
 }
 
-export function hashVariable(value: string) {
-  return createHash("sha256").update(value.trim()).digest("hex");
+export function hashVariable(value: string | Buffer) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * Escape a path for the spec, which is interpolated after variables are
+ * processed: a bare `$` in it would read as a variable reference, and the path
+ * would no longer point at the file. `deployStack` escapes the interpolated
+ * spec again, so Docker receives the path unchanged.
+ */
+function escapeInterpolation(path: string) {
+  return path.replaceAll("$", () => "$$");
 }
 
 function marshalLabels(labels: Record<string, string | number> | undefined) {

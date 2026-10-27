@@ -25,13 +25,17 @@ describe("Monitoring", () => {
 
   const settings = defineSettings({
     envVarPrefix: "APP",
+    healthCheckWarnings: false,
     keyInterpolation: false,
     manageVariables: true,
     monitor: true,
     monitorInterval: 5,
     monitorTimeout: 300,
+    secretValues: new Map(),
     stack: "testso",
+    strictCompatibility: false,
     strictVariables: false,
+    uploadComposeSpec: false,
     variables: new Map(),
     version: "1.0.0",
   });
@@ -490,13 +494,17 @@ describe("Monitoring", () => {
 
     const noMonitorSettings = defineSettings({
       envVarPrefix: "APP",
+      healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,
       monitor: false,
       monitorInterval: 5,
       monitorTimeout: 300,
+      secretValues: new Map(),
       stack: "test",
+      strictCompatibility: false,
       strictVariables: false,
+      uploadComposeSpec: false,
       variables: new Map(),
       version: "1.0.0",
     });
@@ -519,18 +527,22 @@ describe("Monitoring", () => {
           UpdateStatus: { State: "updating" },
         },
       ] as Awaited<ReturnType<typeof engine.listServices>>);
-      vi.spyOn(engine, "inspectService").mockImplementation(() => {
+      vi.spyOn(engine, "listServiceTasks").mockImplementation(() => {
         throw "string error";
       });
       const settings = defineSettings({
         envVarPrefix: "APP",
+        healthCheckWarnings: false,
         keyInterpolation: false,
         manageVariables: true,
         monitor: true,
         monitorInterval: 1,
         monitorTimeout: 1,
+        secretValues: new Map(),
         stack: "test",
+        strictCompatibility: false,
         strictVariables: false,
+        uploadComposeSpec: false,
         variables: new Map(),
         version: "1.0.0",
       });
@@ -616,7 +628,10 @@ describe("Monitoring", () => {
           Name: "svc1",
           Replicas: "1/2",
           Spec: { Name: "svc1", Labels: {}, TaskTemplate: {} },
-          UpdateStatus: { Message: "Service is updating" },
+          // Docker can omit State, which the Service type does not model
+          UpdateStatus: {
+            Message: "Service is updating",
+          } as ServiceWithMetadata["UpdateStatus"],
         }),
       ).toBe(false); // Should return false (still updating)
     });
@@ -632,7 +647,7 @@ describe("Monitoring", () => {
           UpdateStatus: {
             State: undefined,
             Message: "Service is updating",
-          },
+          } as unknown as ServiceWithMetadata["UpdateStatus"],
         }),
       ).toBe(false); // Should return false (still updating)
     });
@@ -876,6 +891,97 @@ describe("Monitoring", () => {
     });
   });
 
+  describe("job services", () => {
+    const job = (replicas: string) => ({
+      ID: "svc1",
+      Name: "app_migrate",
+      Spec: { Name: "app_migrate", Labels: {}, TaskTemplate: {} },
+      Replicas: replicas,
+    });
+    const task = (state: string) => ({
+      ID: state,
+      Name: "app_migrate.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Complete",
+      CurrentState: state,
+      Error: "",
+      Ports: "",
+    });
+
+    it("should not count a running job as complete", () => {
+      expect(isServiceUpdateComplete(job("1/1 (0/1 completed)"))).toBe(false);
+    });
+
+    it("should count a finished job as complete", () => {
+      expect(isServiceUpdateComplete(job("0/1 (1/1 completed)"))).toBe(true);
+    });
+
+    it("should wait for every completion of a job", () => {
+      expect(isServiceUpdateComplete(job("1/1 (2/3 completed)"))).toBe(false);
+      expect(isServiceUpdateComplete(job("0/1 (3/3 completed)"))).toBe(true);
+    });
+
+    it("should count a finished global job as complete", () => {
+      expect(isServiceUpdateComplete(job("0/0 (1/1 completed)"))).toBe(true);
+    });
+
+    it("should not count a global job without tasks as complete", () => {
+      // A global job stops counting a task that failed
+      expect(isServiceUpdateComplete(job("0/0 (0/0 completed)"))).toBe(false);
+    });
+
+    it("should ignore the update status of a job", () => {
+      expect(
+        isServiceUpdateComplete({
+          ...job("0/1 (1/1 completed)"),
+          UpdateStatus: { State: "updating" },
+        }),
+      ).toBe(true);
+    });
+
+    it("should treat a job whose current run failed as stuck", () => {
+      expect(
+        isServiceStuck([
+          task("Failed 5 seconds ago"),
+          task("Complete 2 minutes ago"),
+        ]),
+      ).toBe(true);
+    });
+
+    it("should not treat a job that is being retried as stuck", () => {
+      expect(
+        isServiceStuck([
+          task("Running 1 second ago"),
+          task("Failed 5 seconds ago"),
+          task("Complete 2 minutes ago"),
+        ]),
+      ).toBe(false);
+    });
+
+    it("should not treat a finished job as stuck", () => {
+      expect(isServiceStuck([task("Complete 2 seconds ago")])).toBe(false);
+    });
+
+    it("should wait for a job to finish during monitoring", async () => {
+      vi.useFakeTimers();
+      const listServices = vi
+        .spyOn(engine, "listServices")
+        .mockResolvedValueOnce([
+          job("1/1 (0/1 completed)"),
+        ] as ServiceWithMetadata[])
+        .mockResolvedValueOnce([
+          job("0/1 (1/1 completed)"),
+        ] as ServiceWithMetadata[]);
+
+      const promise = monitorDeployment({ ...settings, monitorInterval: 1 });
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(listServices).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("isServiceStuck", () => {
     it("should return true when all tasks are rejected", () => {
       expect(
@@ -1018,6 +1124,19 @@ describe("Monitoring", () => {
 
     it("should categorize health check failures", () => {
       expect(categorizeTaskError("dockerexec: unhealthy container")).toEqual({
+        category: "health_check",
+        headline: "Container failed health check",
+      });
+    });
+
+    // Swarm kills an unhealthy container, so the task error carries exit
+    // code 137 as well, though the container was not OOM-killed.
+    it("should categorize health check failures before OOM kills", () => {
+      expect(
+        categorizeTaskError(
+          "task: non-zero exit (137): dockerexec: unhealthy container",
+        ),
+      ).toEqual({
         category: "health_check",
         headline: "Container failed health check",
       });
@@ -1390,6 +1509,100 @@ describe("Monitoring", () => {
           monitorInterval: 1,
         }),
       ).rejects.toThrow(/0\/1 services converged/);
+      await vi.runAllTimersAsync();
+      await promise;
+    });
+  });
+
+  describe("service options", () => {
+    const updating = (name: string) =>
+      ({
+        ID: `${name}_id`,
+        Spec: { Name: `testso_${name}` },
+        UpdateStatus: { State: "updating" },
+      }) as ServiceWithMetadata;
+    const completed = (name: string) =>
+      ({
+        ID: `${name}_id`,
+        Spec: { Name: `testso_${name}` },
+        UpdateStatus: { State: "completed" },
+      }) as ServiceWithMetadata;
+
+    it("should not wait for services that opt out", async () => {
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        updating("migrate"),
+        completed("web"),
+      ]);
+
+      await monitorDeployment(
+        settings,
+        undefined,
+        new Map([
+          ["migrate", { monitor: false, monitorTimeout: 300 }],
+          ["web", { monitor: true, monitorTimeout: 300 }],
+        ]),
+      );
+
+      const core = await import("@actions/core");
+      expect(core.info).toHaveBeenCalledWith(
+        "All services have been deployed successfully",
+      );
+      expect(engine.listServiceTasks).not.toHaveBeenCalled();
+    });
+
+    it("should monitor services that opt in while the stack does not", async () => {
+      const listServices = vi
+        .spyOn(engine, "listServices")
+        .mockResolvedValue([completed("web"), updating("worker")]);
+
+      await monitorDeployment(
+        { ...settings, monitor: false },
+        undefined,
+        new Map([
+          ["web", { monitor: true, monitorTimeout: 300 }],
+          ["worker", { monitor: false, monitorTimeout: 300 }],
+        ]),
+      );
+
+      expect(listServices).toHaveBeenCalledOnce();
+    });
+
+    it("should skip monitoring when every service opts out", async () => {
+      const listServices = vi.spyOn(engine, "listServices");
+
+      await monitorDeployment(
+        settings,
+        undefined,
+        new Map([["web", { monitor: false, monitorTimeout: 300 }]]),
+      );
+
+      const core = await import("@actions/core");
+      expect(listServices).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenCalledWith(
+        "Post-Deployment Monitoring is disabled",
+      );
+    });
+
+    it("should time out a service at its own timeout", async () => {
+      vi.useFakeTimers();
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        updating("web"),
+        updating("slow"),
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(
+        monitorDeployment(
+          { ...settings, monitorInterval: 1 },
+          undefined,
+          new Map([
+            ["web", { monitor: true, monitorTimeout: 3 }],
+            ["slow", { monitor: true, monitorTimeout: 600 }],
+          ]),
+        ),
+      ).rejects.toThrow(
+        /Deployment timed out after 3s: 0\/2 services converged.*"com\.matchory\.deployment\.monitor-timeout" service label/,
+      );
       await vi.runAllTimersAsync();
       await promise;
     });

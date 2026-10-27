@@ -16,6 +16,8 @@ post-deployment monitoring. Written in TypeScript, runs on Node 24.
 | Package (TS->dist) | `npm run package`                      |
 | Run tests          | `npm run test`                         |
 | Run single test    | `npx vitest run tests/compose.test.ts` |
+| Run swarm tests    | `npm run test:swarm`                   |
+| More property runs | `PROPERTY_RUNS=1000 npm run test`      |
 | Typecheck          | `npm run typecheck`                    |
 | Lint               | `npm run lint`                         |
 | Format check       | `npm run format:check`                 |
@@ -80,10 +82,28 @@ Docker never triggers a rollback.
 
 ## CI
 
-Four workflows run on push to main: `ci.yml` (tests),
+Five workflows run on push to main: `ci.yml` (tests),
 `linter.yml` (super-linter), `licensed.yml` (license compliance),
-and `check-dist.yml` (rebuilds `dist/` and fails if the committed
-bundle is stale).
+`check-dist.yml` (rebuilds `dist/` and fails if the committed
+bundle is stale), and `swarm.yml` (swarm scenarios, below).
+
+`swarm.yml` runs `tests/swarm` against a real single-node swarm,
+one matrix job per file, plus a smoke job that runs the committed
+action through `uses: ./`. The harness (`tests/swarm/harness.ts`)
+runs `node dist/index.js` with `INPUT_*` variables and the
+defaults from `action.yml`, and passes only a minimal environment,
+because every environment variable becomes a deployment variable.
+Locally, the scenarios run against the current Docker context;
+build `dist/` first.
+
+`tests/properties` holds differential property tests (fast-check):
+generated Compose files go through the action's pipeline in-process
+and are checked against `docker compose config` and `docker stack
+config`, which need Docker but no swarm. They run in the regular
+suite with a fixed seed and 25 cases per property;
+`properties.yml`, triggered by hand, runs 1000 random ones. Generators live in `tests/properties/arbitraries.ts`;
+extend the grammar when a bug is found outside it, and keep the
+shrunk counterexample as a unit test.
 
 `dist/` and `.licenses/` are both derived from `package-lock.json`,
 so a dependency bump alone makes `check-dist.yml` and
@@ -139,6 +159,24 @@ that parses TypeScript itself rather than one that loads
   keeps that to a few thousand characters at worst instead of a quarter
   megabyte; the limit is soft, so some lines still overshoot it.
   Prefer failing through `core.setFailed` so it never comes up.
+- Compose resolves `extends` within the file that writes it,
+  against that file's definition of the base, before merging the
+  files. `docker stack config` rejects `extends` outright, so a
+  spec using it is merged with `docker compose config`, like one
+  with merge tags. Profile selection and env-file inlining replay
+  the merge themselves and must follow the per-file rule.
+- Swarm reuses a freed overlay subnet immediately. Deploying a
+  stack right after removing one whose services were updated gets
+  its tasks rejected with "Pool overlaps with other one on this
+  address space" for about 20s. The swarm tests therefore remove
+  their stacks only after the last file (`global-setup.ts`).
+- `docker stack rm --detach=false` with several stack names has
+  hung after removing all but the last. Remove one per call. It
+  also fails on a network still attached to a stopping task and
+  leaves the network behind; calling it again removes it.
+- Swarm prefixes task errors with the exit code, e.g. `task:
+  non-zero exit (137): dockerexec: unhealthy container`, so the
+  exit-code patterns in `categorizeTaskError` must stay last.
 - `script/bundle.mjs` builds with `write: false` and only clears
   `dist/` once the bundle and the license scan have both succeeded --
   a build error must not leave the committed directory half deleted.

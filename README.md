@@ -33,6 +33,7 @@
   - [How Compose Files Are Processed](#how-compose-files-are-processed)
     - [Compose-Spec to Swarm Reconciliation](#compose-spec-to-swarm-reconciliation)
     - [Variable interpolation](#variable-interpolation)
+    - [Selecting Services with Profiles](#selecting-services-with-profiles)
   - [Configuring Secrets and Configs](#configuring-secrets-and-configs)
     - [Loading Environment Variables or inline Content](#loading-environment-variables-or-inline-content)
     - [Smart Variable Resolution](#smart-variable-resolution)
@@ -42,8 +43,14 @@
     - [Disabling Automatic Variable Management](#disabling-automatic-variable-management)
     - [Data Transformation](#data-transformation)
   - [How the stack is deployed](#how-the-stack-is-deployed)
+  - [Configuring the Deployment in the Compose File](#configuring-the-deployment-in-the-compose-file)
+    - [Stack Settings](#stack-settings)
+    - [Service Labels](#service-labels)
+    - [Deployment Labels](#deployment-labels)
+  - [Removing a Stack](#removing-a-stack)
   - [Post-Deployment Monitoring](#post-deployment-monitoring)
     - [Monitoring Timeout & Interval](#monitoring-timeout--interval)
+    - [Job Services](#job-services)
   - [Health Check Validation](#health-check-validation)
     - [Health Check Details in Failure Reports](#health-check-details-in-failure-reports)
 - [🔨 Contributing](#-contributing)
@@ -135,38 +142,72 @@ jobs:
           DOCKER_CONTEXT: swarm
 ```
 
+The action talks to Docker exclusively through the `docker` CLI, so it honors whatever the CLI would use: the
+`DOCKER_CONTEXT` and `DOCKER_HOST` environment variables, or the context selected with `docker context use` in an
+earlier step. You can also create the context yourself, for example over SSH. Store the host's public key in
+`SSH_KNOWN_HOSTS` (the `ssh-keyscan` output, verified out of band) rather than scanning it during the job, which would
+trust whichever host answers:
+
+```yaml
+- name: Set up SSH
+  env:
+    SSH_KEY: ${{ secrets.SSH_KEY }}
+    SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+  run: |
+    install -m 700 -d ~/.ssh
+    printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+    chmod 600 ~/.ssh/id_ed25519
+    printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+
+- name: Create Docker context
+  run: |
+    docker context create swarm --docker host=ssh://someone@example.domain.tld
+    docker context use swarm
+
+- name: Deploy to Docker Swarm
+  uses: matchory/docker-swarm-deployment-action@v1
+```
+
+Set `DOCKER_CONTEXT`, `DOCKER_HOST`, `DOCKER_CONFIG`, `HOME`, `PATH`, and `SSH_AUTH_SOCK` in the step's `env`, not
+through the `variables`, `secrets`, or `extra-variables` inputs: the action passes those inputs only to
+`docker stack config` and `docker stack deploy`, so they would point just these two commands at a different daemon.
+Listing them in `exclude-variables` is harmless, since every Docker command keeps the process environment.
+
 ## ⚙ Configuration
 
 ### Inputs
 
-To configure the action, you can use the following inputs:
+To configure the action, you can use the following inputs. Inputs marked with an asterisk (\*) can also be set in the
+Compose file; see [Stack Settings](#stack-settings).
 
-| Input                   | Default                               | Description                                                                                                                       |
-|:------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
-| `stack-name`            | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
-| `version`               | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
-| `compose-file`          | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
-| `env-var-prefix`        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
-| `manage-variables`      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
-| `strict-variables`      | `true`                                | Whether to throw an error if a variable specified in the compose spec is not defined.                                             |
-| `strict-compatibility`  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
-| `key-interpolation`     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
-| `variables`             | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
-| `secrets`               | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
-| `exclude-variables`     | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
-| `extra-variables`       | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
-| `monitor`               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
-| `monitor-timeout`       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
-| `monitor-interval`      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
-| `health-check-warnings` | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
-| `upload-compose-spec`   | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
+| Input                     | Default                               | Description                                                                                                                       |
+|:--------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
+| `stack-name`              | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
+| `version`                 | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
+| `compose-file`            | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
+| `env-var-prefix`\*        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
+| `manage-variables`\*      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
+| `strict-variables`\*      | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
+| `strict-compatibility`\*  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
+| `key-interpolation`\*     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
+| `variables`               | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
+| `secrets`                 | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
+| `exclude-variables`       | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
+| `extra-variables`         | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
+| `profiles`\*              | _—_                                   | Compose profiles to activate. Only [their services](#selecting-services-with-profiles) and unprofiled ones are deployed.          |
+| `monitor`\*               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
+| `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
+| `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
+| `health-check-warnings`\* | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
+| `destroy`                 | `false`                               | Whether to [remove the stack](#removing-a-stack) instead of deploying it.                                                         |
+| `upload-compose-spec`     | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
 
 | Output         | Description                                                          |
 |:---------------|:---------------------------------------------------------------------|
 | `status`       | The status of the deployment. Possible values: `success`, `failure`. |
-| `stack-name`   | The name of the stack that was deployed.                             |
+| `stack-name`   | The name of the stack that was deployed or removed.                  |
 | `version`      | The version of the stack that was deployed.                          |
 | `compose-spec` | The final compose specification used for the deployment.             |
 | `service-logs` | Logs of a failed service after deployment.                           |
@@ -261,6 +302,11 @@ the old v3 format or the new Compose Specification. Instead, it:
 This ensures that regardless of the exact format you use (even mixing them), the final configuration passed to
 `docker stack deploy` is valid and correctly interpreted by Docker Swarm.
 
+A Compose file without a `version` key, as the Compose Specification recommends, is validated against stack file version
+`3.12`, so recent fields like `healthcheck.start_interval` are accepted. This requires Docker 25 or later on the runner;
+with an older version, set an explicit `version` in your Compose file. If you deploy several Compose files and another
+of them sets a `version`, a file without one uses that version instead, since Docker rejects files whose versions differ.
+
 #### Compose-Spec to Swarm Reconciliation
 
 Modern Compose Specification constructs (like `develop`, `gpus`, or `label_file`) aren't understood by
@@ -290,7 +336,7 @@ file is warned about, not fatal.
 | `build`                       | Kept + warned                        | ignored by swarm (provide a pre-built `image`)                                                                                                |
 | `develop`                     | Stripped + warned                    | no swarm equivalent (dev-only watch config)                                                                                                   |
 | `post_start` / `pre_stop`     | Stripped + warned                    | lifecycle hooks unsupported by swarm                                                                                                          |
-| `profiles`                    | Stripped + warned                    | unsupported; all services are always deployed                                                                                                 |
+| `profiles`                    | Selected or stripped + warned        | see [profiles](#selecting-services-with-profiles); without the `profiles` input, every service is deployed                                    |
 | `memswap_limit`               | Stripped + warned                    | no swarm swap-limit control                                                                                                                   |
 | `gpus`                        | Stripped + warned                    | use `deploy.resources.reservations.generic_resources` + node labels                                                                           |
 | `provider`                    | Service dropped + warned             | provider services cannot run on swarm                                                                                                         |
@@ -341,7 +387,32 @@ allow for unlimited nesting in default and alternative values, meaning that the 
 
 As in Compose, variable _values_ are inserted literally and never interpolated again: if `DB_PASSWORD` is `p@$$w0rd`,
 `${DB_PASSWORD}` becomes `p@$$w0rd`, and a value of `$OTHER` stays `$OTHER`. To get a literal `$` in the Compose file
-itself, escape it as `$$`.
+itself, escape it as `$$`. A `$` followed by anything other than `$`, `{` or a variable name is kept as it is.
+
+As Compose does, a `${` that does not start a valid reference, such as `${FOO.bar}` or an unterminated
+`${FOO:-bar`, fails the deployment with an `Invalid interpolation format` error naming the reference and where it is.
+
+Also as in Compose, a variable that is used without a default value but is not set is replaced with an empty string, and
+the action logs a warning such as `The "VERSION" variable is not set. Defaulting to a blank string.`, once per variable.
+The same applies to the `content` of secrets and configs, with one warning per variable and secret or config. Use
+`${VERSION:?message}` to fail instead.
+
+Files listed in a service's `env_file` are read by the action and merged into its `environment` following the Compose
+rules, so they behave as with `docker compose`:
+
+- Unquoted and double-quoted values are interpolated: `A=$B` and `A="$B"` get the value of `B`, and `$$` becomes `$`.
+  Variables are looked up in the action's variables first, then in the service's `environment`, then in the keys set
+  earlier in the env files.
+- Single-quoted values are literal: `A='$B'` is `$B`. The quotes are not part of the value.
+- Double-quoted values may span lines and expand escapes such as `\n`, `\t`, `\"` and `\\`.
+- `#` starts a comment at the start of a line, or after a space in an unquoted value. An `export` prefix is ignored.
+- A line with only a key (`A`) takes its value from the action's variables or the service's `environment`, and is left
+  out if neither has it.
+- Entries in `environment` win over env files, in any Compose file, and later env files win over earlier ones.
+- The long syntax (`- path: optional.env` with `required: false`) skips a file that does not exist. Its `format`
+  attribute is not supported.
+
+Relative `env_file` paths resolve against the working directory, like relative `file:` sources of configs and secrets.
 
 In addition to all variables in the process environment and those
 [passed in the `variables` input](#providing-github-secrets-and-variables), the following variables derived from the
@@ -349,6 +420,34 @@ inputs are also available:
 
 - `MATCHORY_DEPLOYMENT_STACK`: The name of the stack being deployed.
 - `MATCHORY_DEPLOYMENT_VERSION`: The version of the stack being deployed.
+
+#### Selecting Services with Profiles
+
+[Compose profiles](https://docs.docker.com/compose/how-tos/profiles/) let one Compose file serve several environments,
+for example with a service that only runs on staging. Swarm has no notion of profiles, so the action selects the services
+itself when the `profiles` input is set:
+
+```yaml
+- name: Deploy to Docker Swarm
+  uses: matchory/docker-swarm-deployment-action@v1
+  with:
+    profiles: staging
+```
+
+It follows the rules of `docker compose --profile`. A service is deployed if it has no profiles or one of its profiles
+is active, and `*` activates every profile. A service's profiles are combined across multiple Compose files and
+inherited through `extends`, `!reset` and `!override` apply as usual, and profile names may use variables. Separate
+multiple profiles with commas, spaces, or newlines, or list them in the [stack settings](#stack-settings).
+
+As in Compose, `extends` takes the base service as the same file defines it, before the files are merged: a later file
+that changes or replaces the base does not change what the extending service inherited, profiles and env files
+included.
+
+Skipped services are dropped before anything else reads the files, so their env files and variables are not required.
+A deployed service that depends on a skipped one loses that dependency with a warning; Swarm ignores `depends_on`
+anyway. A deployed service cannot `extend` a skipped one, though, since the stack would not contain its base.
+
+Without the `profiles` input, every service is deployed regardless of its profiles, and the action warns about them.
 
 ### Configuring Secrets and Configs
 
@@ -377,16 +476,16 @@ The action will automatically create files for these configs, and the resulting 
 ```yaml
 configs:
   app_url:
-    file: ./app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
+    file: /home/runner/work/app/app/app_url.1740e753-0a19-446a-ba6e-361b24f5d9e1.generated.secret
     # omitting rest for brevity
   database_username:
-    file: ./database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
+    file: /home/runner/work/app/app/database_username.c95397dc-c300-4125-b95e-e2ce43821d72.generated.secret
     # omitting rest for brevity
 ```
 
-The action will create the files in the working directory and append a unique identifier to the filename to avoid
-conflicts. The files are removed once the deployment no longer needs them — including when the deployment fails — so no
-plain variable values are left behind for a later job to read.
+The action will create the files in the working directory, readable only by the runner user, and append a unique
+identifier to the filename to avoid conflicts. The files are removed once the deployment no longer needs them —
+including when the deployment fails — so no plain variable values are left behind for a later job to read.
 
 #### Smart Variable Resolution
 
@@ -468,6 +567,9 @@ variables to include:
       DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
 ```
 
+Each line is split at its first `=`: the name is trimmed, and the value is kept exactly as written, including any further
+`=` and surrounding whitespace.
+
 ##### Variable priority and merging
 
 When using multiple input sources, variables are merged with the following priority (later sources override earlier
@@ -536,11 +638,11 @@ The action will transform it to:
 ```yaml
 configs:
   database_username:
-    name: YOUR_STACK-database_username-53175bc
-    file: ./database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
+    name: YOUR_STACK-database_username-4813494
+    file: /home/runner/work/app/app/database_username.36934723-0a0b-4eb6-ab9d-d3a4e5e3cb34.generated.secret
     labels:
       com.matchory.deployment.name: database_username
-      com.matchory.deployment.hash: 53175bcc0524f37b47062fafdda28e3f8eb91d519ca0a184ca71bbebe72f969a
+      com.matchory.deployment.hash: 4813494d137e1631bba301d5acab6e7bb7aa74ce1185d456565ef51d737677b2
       com.matchory.deployment.stack: YOUR_STACK
       com.matchory.deployment.version: VERSION
 ```
@@ -554,7 +656,11 @@ This has two notable implications:
    continue to use the variable created in the initial deployment, even if other variables or settings are updated.
 2. After the deployment is complete, the action will prune any unused variables by checking the labels. If a variable is
    not referenced in the Compose File anymore, it will be safely removed from the cluster. This is important to keep the
-   cluster clean and avoid cluttering it with old variables.
+   cluster clean and avoid cluttering it with old variables. Variables referenced by the previous spec of one of the
+   stack's services are kept, so a rollback (automatic or via `docker service rollback`) can still find them; all other
+   versions are removed. Only this stack's services are checked: if another stack uses one of these variables through
+   `external`, Swarm still refuses to remove it while that stack's current spec references it, but not for its previous
+   spec.
 
 #### Configuring the Variable Name
 
@@ -630,6 +736,134 @@ echo $final_spec | docker stack deploy \
   $stack_name
 ```
 
+### Configuring the Deployment in the Compose File
+
+Besides the action inputs, the deployment can be configured in the Compose file itself: settings for the whole stack in
+a top-level `x-matchory-deployment` block, and settings for single services as labels. Settings kept in the file travel
+with it, so every workflow and environment deploying the file deploys it the same way.
+
+#### Stack Settings
+
+The following inputs can also be set in a top-level `x-matchory-deployment` block: `env-var-prefix`,
+`manage-variables`, `strict-variables`, `strict-compatibility`, `key-interpolation`, `profiles`, `monitor`,
+`monitor-timeout`, `monitor-interval`, and `health-check-warnings`.
+
+```yaml
+x-matchory-deployment:
+  monitor: true
+  monitor-timeout: 600
+  key-interpolation: true
+
+services:
+  app:
+    image: my-app:latest
+```
+
+An input set in the workflow wins over the Compose file, which wins over the default. This lets a single workflow
+override a setting for one environment without editing the file. Settings that choose _what_ to deploy, such as
+`stack-name`, `compose-file`, or `version`, are inputs only.
+
+The block is read from the files as written, before anything else, because its settings govern how the files are
+loaded. Its values are therefore not interpolated. When deploying multiple Compose files, a later file's settings win
+over an earlier file's. Invalid values fail the deployment, even if an input overrides them; unknown settings are
+ignored with a warning.
+
+#### Service Labels
+
+Some settings can be changed for a single service, using labels in its `deploy.labels`. A service label wins over the
+stack-wide setting, wherever that comes from:
+
+| Label                                           | Overrides               | Values                     |
+|:------------------------------------------------|:------------------------|:---------------------------|
+| `com.matchory.deployment.monitor`               | `monitor`               | `true` or `false`          |
+| `com.matchory.deployment.monitor-timeout`       | `monitor-timeout`       | Whole number of seconds    |
+| `com.matchory.deployment.health-check-warnings` | `health-check-warnings` | `true` or `false`          |
+
+```yaml
+services:
+  app:
+    image: my-app:latest
+    deploy:
+      labels:
+        # Takes a while to warm up
+        com.matchory.deployment.monitor-timeout: "900"
+
+  migrate:
+    image: my-app:latest
+    command: ["migrate"]
+    deploy:
+      restart_policy:
+        condition: none
+      labels:
+        # Exits once done, so there is nothing to wait for
+        com.matchory.deployment.monitor: "false"
+        com.matchory.deployment.health-check-warnings: "false"
+```
+
+Monitoring runs if any service is monitored, so a label can also enable it for one service while it is disabled for
+the stack. Labels are read after [interpolation](#variable-interpolation), so their values may use variables. They are
+validated before the stack is deployed, and an invalid value fails the deployment without deploying anything. Labels on
+the container (`labels`) rather than the service (`deploy.labels`) are not read.
+
+#### Deployment Labels
+
+The action adds the following labels to the `deploy.labels` of every service, so you can tell which build is running
+from `docker service inspect` or any tool that shows service labels:
+
+| Label                             | Value                                                    |
+|:----------------------------------|:---------------------------------------------------------|
+| `com.matchory.deployment.version` | The deployed [version](#inputs)                          |
+| `com.matchory.deployment.commit`  | The full commit SHA (`GITHUB_SHA`)                       |
+| `com.matchory.deployment.ref`     | The branch or tag that triggered the workflow            |
+| `com.matchory.deployment.run-url` | The URL of the workflow run that deployed the service    |
+| `com.matchory.deployment.actor`   | The user that triggered the workflow run                 |
+
+Labels whose value the runner does not provide are left out. They replace labels of the same name in the Compose file.
+
+Since they are service labels, not container labels, a new commit does not restart a service: Swarm updates the
+service's metadata in place and only rolls out new tasks for changes to the containers themselves.
+
+### Removing a Stack
+
+Setting the `destroy` input removes the stack instead of deploying it, for example to tear down a preview environment
+when its pull request is closed:
+
+```yaml
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Remove the preview stack
+        uses: matchory/docker-swarm-deployment-action@v1
+        with:
+          stack-name: preview-${{ github.event.number }}
+          destroy: true
+```
+
+The `stack-name` input is required here: the default, the repository name, is usually the name of the main stack, so
+a teardown job that forgot to name its preview stack would otherwise remove that.
+
+This runs `docker stack rm` and waits until the stack's services, networks, configs, and secrets are gone. Volumes are
+kept, so their data survives. No Compose file is read, so the job does not need to check out the repository. A stack
+that does not exist is not an error, so a teardown can safely run more than once. The `version` and `compose-spec`
+outputs are not set.
+
+To guard against a mistyped stack name, the action only removes a stack it deployed: one of its services must carry the
+[deployment labels](#deployment-labels), or one of its configs or secrets must be managed by the action for this stack.
+Otherwise, the action fails without removing anything. This does **not** tell a preview stack from your production
+stack, which the action deployed as well, so derive the stack name for the teardown the same way as for the preview
+deployment. A stack without services, configs, or secrets is left alone with a warning, so a wrong name does not go
+unnoticed.
+
+`docker stack rm` waits until every task of the stack has stopped, without a time limit of its own. Set
+[`timeout-minutes`](https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)
+on the job to bound it, for example when a node holding tasks of the stack is unreachable.
+
 ### Post-Deployment Monitoring
 
 The action can optionally monitor your stacks for any post-deployment issues (e.g., restart cycles or rollbacks) and
@@ -665,6 +899,34 @@ jobs:
           monitor-interval: 30 # 30 seconds
 ```
 
+To give a single slow service more time, or to leave it out of monitoring, use a
+[service label](#service-labels). Each service is held to its own timeout.
+
+#### Job Services
+
+Services that run once instead of continuously, such as database migrations, can use Swarm's job modes
+(`deploy.mode: replicated-job` or `global-job`). Swarm runs a job again on every deployment. Monitoring waits until the
+current run has completed all its tasks, instead of considering the service deployed while it is still running.
+
+When a job fails, Swarm retries it according to its restart policy. The default for stacks retries indefinitely, so a
+failing job fails the deployment once it reaches the [monitoring timeout](#monitoring-timeout--interval), with its exit
+code and logs in the failure report. To fail as soon as a job fails instead, limit the retries:
+
+```yaml
+services:
+  migrate:
+    image: my-app:latest
+    command: ["migrate"]
+    deploy:
+      mode: replicated-job
+      restart_policy:
+        condition: on-failure
+        max_attempts: 2
+```
+
+Jobs run alongside the other services of the stack, not before them. A service that must not start before the
+migration has finished needs to wait for it on its own, for example by retrying until the schema is current.
+
 ### Health Check Validation
 
 The action validates health check configurations in your compose spec before deploying, emitting warnings for common
@@ -688,6 +950,9 @@ To suppress these warnings, set `health-check-warnings` to `false`:
   with:
     health-check-warnings: false
 ```
+
+To suppress them for a single service only, use the `com.matchory.deployment.health-check-warnings`
+[service label](#service-labels).
 
 #### Health Check Details in Failure Reports
 
@@ -713,6 +978,7 @@ The following scripts are available:
 |:----------------------|:-----------------------|
 | Run the full pipeline | `npm run all`          |
 | Run the tests         | `npm run test`         |
+| Run the swarm tests   | `npm run test:swarm`   |
 | Type-check            | `npm run typecheck`    |
 | Lint                  | `npm run lint`         |
 | Check formatting      | `npm run format:check` |
@@ -721,6 +987,16 @@ The following scripts are available:
 
 Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tests run on
 [Vitest](https://vitest.dev/).
+
+The swarm tests in `tests/swarm` deploy to the swarm of your current Docker context and run the bundle in `dist/`, so
+run `npm run package` first. Their stacks are named `e2e-<area>-<random>`, or use the `SWARM_TEST_PREFIX` environment
+variable in place of `e2e`, and are removed after the run.
+
+The property tests in `tests/properties` generate Compose files with [fast-check](https://fast-check.dev/) and check
+the action's processing against `docker compose config` and `docker stack config`. They run with the other tests, on
+25 cases per property and a fixed seed. Set `PROPERTY_RUNS` for more cases and `PROPERTY_SEED=random` for new ones;
+the manually triggered "Property Tests" workflow does both. Turn a counterexample they find into a regular unit test
+before fixing it.
 
 ### Before Opening a Pull Request
 

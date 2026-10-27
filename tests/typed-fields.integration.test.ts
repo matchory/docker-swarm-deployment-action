@@ -2,10 +2,16 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dump } from "js-yaml";
+import { dump, load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { type ComposeSpec, interpolateTypedFields } from "../src/compose.js";
+import {
+  type ComposeSpec,
+  composeSchema,
+  interpolateTypedFields,
+  normalizeSpec,
+} from "../src/compose.js";
 import { normalizeStackSpecification } from "../src/engine.js";
+import type { Settings } from "../src/settings.js";
 
 function dockerAvailable(): boolean {
   try {
@@ -21,7 +27,9 @@ const suite = dockerAvailable() ? describe : describe.skip;
 // `docker stack config --skip-interpolation` validates the schema while
 // variable references are still strings, so typed fields must already hold
 // their final type when the real CLI sees them (issue #207).
-suite("typed fields against docker stack config", () => {
+// Docker's first invocation on a fresh CI runner can take several seconds,
+// so the default 5s per-test timeout is too tight for real CLI calls.
+suite("typed fields against docker stack config", { timeout: 30_000 }, () => {
   const settings = { variables: new Map<string, string>() };
 
   async function normalize(spec: ComposeSpec) {
@@ -48,6 +56,45 @@ suite("typed fields against docker stack config", () => {
 
     const normalized = await normalize(interpolateTypedFields(spec, settings));
 
-    expect(normalized.services.main.deploy?.replicas).toBe(1);
+    expect(normalized.services.main).toHaveProperty("deploy.replicas", 1);
+  });
+
+  // A merge-tagged scalar keeps its source text, so the cast must reach inside
+  // the tag for the tag-aware merge to hand Docker a number.
+  it("casts a merge-tagged typed field and still honors the tag", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "typed-fields-"));
+    const variables = new Map([["REPLICAS", "3"]]);
+    const parse = (source: string) =>
+      interpolateTypedFields(
+        load(source, { schema: composeSchema }) as ComposeSpec,
+        { variables },
+      );
+
+    try {
+      const normalized = await normalizeSpec(
+        [
+          {
+            spec: parse(
+              "services:\n  main:\n    image: nginx\n    deploy:\n" +
+                "      replicas: 1\n    ports: ['8080:80']\n",
+            ),
+            baseDir: dir,
+          },
+          {
+            spec: parse(
+              "services:\n  main:\n    deploy:\n" +
+                "      replicas: !override ${REPLICAS}\n    ports: !reset []\n",
+            ),
+            baseDir: dir,
+          },
+        ],
+        { variables, strictCompatibility: false } as Settings,
+      );
+
+      expect(normalized.services.main).toHaveProperty("deploy.replicas", 3);
+      expect(normalized.services.main).not.toHaveProperty("ports");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
