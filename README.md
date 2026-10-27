@@ -49,6 +49,7 @@
   - [Removing a Stack](#removing-a-stack)
   - [Post-Deployment Monitoring](#post-deployment-monitoring)
     - [Monitoring Timeout & Interval](#monitoring-timeout--interval)
+    - [Job Services](#job-services)
   - [Health Check Validation](#health-check-validation)
     - [Health Check Details in Failure Reports](#health-check-details-in-failure-reports)
 - [🔨 Contributing](#-contributing)
@@ -870,6 +871,31 @@ jobs:
 
 To give a single slow service more time, or to leave it out of monitoring, use a
 [service label](#service-labels). Each service is held to its own timeout.
+
+#### Job Services
+
+Services that run once instead of continuously, such as database migrations, can use Swarm's job modes
+(`deploy.mode: replicated-job` or `global-job`). Swarm runs a job again on every deployment. Monitoring waits until the
+current run has completed all its tasks, instead of considering the service deployed while it is still running.
+
+When a job fails, Swarm retries it according to its restart policy. The default for stacks retries indefinitely, so a
+failing job fails the deployment once it reaches the [monitoring timeout](#monitoring-timeout--interval), with its exit
+code and logs in the failure report. To fail as soon as a job fails instead, limit the retries:
+
+```yaml
+services:
+  migrate:
+    image: my-app:latest
+    command: ["migrate"]
+    deploy:
+      mode: replicated-job
+      restart_policy:
+        condition: on-failure
+        max_attempts: 2
+```
+
+Jobs run alongside the other services of the stack, not before them. A service that must not start before the
+migration has finished needs to wait for it on its own, for example by retrying until the schema is current.
 
 ### Health Check Validation
 
