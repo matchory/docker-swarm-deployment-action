@@ -1,0 +1,228 @@
+{
+  "scenario": "crash-after-start",
+  "docker": "29.8.2",
+  "interval": 1000,
+  "duration": 30000,
+  "ls": [
+    {
+      "at": 2,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"0/1\"}\n"
+    },
+    {
+      "at": 1001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"1/1\"}\n"
+    },
+    {
+      "at": 4001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"0/1\"}\n"
+    },
+    {
+      "at": 10001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"1/1\"}\n"
+    },
+    {
+      "at": 13001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"0/1\"}\n"
+    },
+    {
+      "at": 18001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"1/1\"}\n"
+    },
+    {
+      "at": 21001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"0/1\"}\n"
+    },
+    {
+      "at": 27001,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"1/1\"}\n"
+    },
+    {
+      "at": 30002,
+      "exitCode": 0,
+      "stdout": "{\"ID\":\"uxg7uc7eanrn\",\"Image\":\"busybox:1.37\",\"Mode\":\"replicated\",\"Name\":\"__STACK___app\",\"Ports\":\"\",\"Replicas\":\"0/1\"}\n"
+    }
+  ],
+  "inspect": [
+    {
+      "at": 2,
+      "exitCode": 0,
+      "stdout": "[{\"ID\":\"uxg7uc7eanrnz4uazfq3sze7e\",\"Version\":{\"Index\":2606189},\"CreatedAt\":\"2026-10-27T17:09:09.07731599Z\",\"UpdatedAt\":\"2026-10-27T17:09:09.08484438Z\",\"Spec\":{\"Name\":\"__STACK___app\",\"Labels\":{\"com.docker.stack.image\":\"busybox:1.37\",\"com.docker.stack.namespace\":\"__STACK__\"},\"TaskTemplate\":{\"ContainerSpec\":{\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Labels\":{\"com.docker.stack.namespace\":\"__STACK__\"},\"Args\":[\"sh\",\"-c\",\"sleep 3; exit 2\"],\"Privileges\":{\"CredentialSpec\":null,\"SELinuxContext\":null,\"NoNewPrivileges\":false},\"StopGracePeriod\":10000000000,\"DNSConfig\":{},\"Isolation\":\"default\"},\"Resources\":{},\"RestartPolicy\":{\"Condition\":\"any\",\"Delay\":5000000000,\"MaxAttempts\":0},\"Placement\":{\"Platforms\":[{\"Architecture\":\"amd64\",\"OS\":\"linux\"},{\"OS\":\"linux\"},{\"Architecture\":\"arm64\",\"OS\":\"linux\"},{\"Architecture\":\"386\",\"OS\":\"linux\"},{\"Architecture\":\"ppc64le\",\"OS\":\"linux\"},{\"Architecture\":\"riscv64\",\"OS\":\"linux\"},{\"Architecture\":\"s390x\",\"OS\":\"linux\"}]},\"Networks\":[{\"Target\":\"anoo75v3pnvuseugodhzkceww\",\"Aliases\":[\"app\"]}],\"ForceUpdate\":0,\"Runtime\":\"container\"},\"Mode\":{\"Replicated\":{\"Replicas\":1}},\"UpdateConfig\":{\"Parallelism\":1,\"FailureAction\":\"pause\",\"Monitor\":5000000000,\"MaxFailureRatio\":0,\"Order\":\"stop-first\"},\"RollbackConfig\":{\"Parallelism\":1,\"FailureAction\":\"pause\",\"Monitor\":5000000000,\"MaxFailureRatio\":0,\"Order\":\"stop-first\"},\"EndpointSpec\":{\"Mode\":\"vip\"}},\"Endpoint\":{\"Spec\":{\"Mode\":\"vip\"},\"VirtualIPs\":[{\"NetworkID\":\"anoo75v3pnvuseugodhzkceww\",\"Addr\":\"10.0.3.2/24\"}]}}]\n"
+    }
+  ],
+  "ps": {
+    "app": [
+      {
+        "at": 2,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Assigned less than a second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 1001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running less than a second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 2001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 1 second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 3001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 2 seconds ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 4001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready less than a second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed less than a second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 5001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 1 second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 1 second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 6001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 2 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 2 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 7001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 3 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 3 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 8002,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 4 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 4 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 9001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running less than a second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 5 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 10001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 1 second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 6 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 11001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 2 seconds ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 7 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 12002,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 3 seconds ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 8 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 13001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready less than a second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed less than a second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 9 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 14001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 1 second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 1 second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 10 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 15001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 2 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 2 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 11 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 16001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 3 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 3 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 12 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 17001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 4 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 4 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 13 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 18001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running less than a second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 5 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 14 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 19001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 1 second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 6 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 15 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 20001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 2 seconds ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 7 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 16 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 21001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Preparing less than a second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed less than a second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 8 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 17 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 22001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 1 second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 1 second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 9 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 18 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 23001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 2 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 2 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 10 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 19 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 24001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 3 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 3 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 11 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 20 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 25001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready 4 seconds ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 4 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 12 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 21 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 26001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running less than a second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 5 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 13 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 22 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 27001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 1 second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 6 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 14 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 23 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 28001,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 1 second ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 7 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 15 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 24 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 29000,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Running 3 seconds ago\",\"DesiredState\":\"Running\",\"Error\":\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 8 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 16 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 25 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      },
+      {
+        "at": 30002,
+        "exitCode": 0,
+        "stdout": "{\"CurrentState\":\"Ready less than a second ago\",\"DesiredState\":\"Ready\",\"Error\":\"\",\"ID\":\"kqm74qlkxntc5teujjfxyc2zr\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed less than a second ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"vrrbe243ofue27adbtlnpw5lt\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 9 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"ok310oq6v353rvf0vnx65uss8\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 17 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"taoi36w5dsj1ah03jwzv9cw1q\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n{\"CurrentState\":\"Failed 26 seconds ago\",\"DesiredState\":\"Shutdown\",\"Error\":\"\\\"task: non-zero exit (2)\\\"\",\"ID\":\"oajhcnet6n3isj7h6mpnh175p\",\"Image\":\"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\",\"Name\":\"__STACK___app.1\",\"Node\":\"orbstack\",\"Ports\":\"\"}\n"
+      }
+    ]
+  },
+  "logs": {
+    "app": [
+      {
+        "at": 2,
+        "exitCode": 0,
+        "stdout": ""
+      }
+    ]
+  }
+}

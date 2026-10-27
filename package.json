@@ -48,6 +48,7 @@
     "typecheck": "npx tsc --noEmit && npx tsc -p tsconfig.node.json",
     "test": "npx vitest --run",
     "test:swarm": "npx vitest --run --config vitest.swarm.config.ts",
+    "traces:record": "npx vitest --run --config vitest.traces.config.ts",
     "all": "npm run format:write && npm run lint && npm run typecheck && npm run test && npm run coverage && npm run package"
   },
   "license": "MIT",
