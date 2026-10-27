@@ -29,20 +29,17 @@ export function selectProfiles(
   const bases = new Map<string, string>();
 
   for (const { spec } of specs) {
-    for (const [name, service] of Object.entries(spec?.services ?? {})) {
+    const services = spec?.services ?? {};
+    const inFile = profilesInFile(services);
+
+    for (const [name, service] of Object.entries(services)) {
       // A service tagged as a whole replaces the earlier definitions
       const replaces = service instanceof Tagged;
-      const profiles = field(service, "profiles");
-      const names =
-        profiles instanceof Tagged
-          ? profiles.tag === "!reset"
-            ? []
-            : toList(profiles.value)
-          : toList(profiles);
+      const names = inFile(name);
 
       own.set(
         name,
-        replaces || profiles instanceof Tagged
+        replaces || field(service, "profiles") instanceof Tagged
           ? names
           : [...(own.get(name) ?? []), ...names],
       );
@@ -57,19 +54,13 @@ export function selectProfiles(
     }
   }
 
-  const profilesOf = (name: string, seen = new Set<string>()): string[] => {
-    const base = bases.get(name);
-    const inherited =
-      base && !seen.has(base) ? profilesOf(base, new Set([...seen, name])) : [];
-
-    return [
-      ...new Set(
-        [...inherited, ...(own.get(name) ?? [])].map((profile) =>
-          interpolateString(profile, variables),
-        ),
+  const profilesOf = (name: string) => [
+    ...new Set(
+      (own.get(name) ?? []).map((profile) =>
+        interpolateString(profile, variables),
       ),
-    ];
-  };
+    ),
+  ];
   const inactive = new Map(
     [...own.keys()]
       .map((name) => [name, profilesOf(name)] as const)
@@ -98,7 +89,7 @@ export function selectProfiles(
     core.info(`Skipping service "${name}": ${reason(name)}`);
   }
 
-  for (const { spec } of specs) {
+  for (const [index, { spec }] of specs.entries()) {
     if (!spec?.services) {
       continue;
     }
@@ -110,6 +101,14 @@ export function selectProfiles(
     for (const [name, service] of Object.entries(spec.services)) {
       removeField(service, "profiles");
 
+      // The merge discards a definition a later file replaces, but Compose
+      // still resolves its `extends` first, which fails for a skipped base
+      const base = extendedService(field(service, "extends"));
+
+      if (base && inactive.has(base) && replacedAfter(specs, index, name)) {
+        removeField(service, "extends");
+      }
+
       for (const dependency of removeDependencies(service, inactive)) {
         core.warning(
           `Service "${name}" depends on service "${dependency}", which is ` +
@@ -119,6 +118,52 @@ export function selectProfiles(
       }
     }
   }
+}
+
+// Whether a file after the one at `index` replaces the service as a whole
+function replacedAfter(
+  specs: ReadonlyArray<{ spec: ComposeSpec | undefined }>,
+  index: number,
+  name: string,
+) {
+  return specs
+    .slice(index + 1)
+    .some(({ spec }) => spec?.services?.[name] instanceof Tagged);
+}
+
+// The profiles a file gives each of its services, including those inherited
+// through `extends`. Compose resolves `extends` within the file that writes
+// it, against that file's definition of the base, before merging the files,
+// so a later file changing the base does not change what was inherited.
+function profilesInFile(services: Record<string, unknown>) {
+  const resolved = new Map<string, string[]>();
+  const resolve = (name: string, seen: ReadonlySet<string>): string[] => {
+    const cached = resolved.get(name);
+
+    if (cached) {
+      return cached;
+    }
+
+    const service = services[name];
+    const profiles = field(service, "profiles");
+
+    // Tagged profiles replace the inherited ones, as they replace merged ones
+    if (profiles instanceof Tagged) {
+      return profiles.tag === "!reset" ? [] : toList(profiles.value);
+    }
+
+    const base = extendedService(field(service, "extends"));
+    const inherited =
+      base && base in services && !seen.has(base)
+        ? resolve(base, new Set([...seen, name]))
+        : [];
+    const names = [...inherited, ...toList(profiles)];
+    resolved.set(name, names);
+
+    return names;
+  };
+
+  return (name: string) => resolve(name, new Set([name]));
 }
 
 // Read a key of a service, which may be tagged with !override as a whole
@@ -152,7 +197,7 @@ function toList(value: unknown): string[] {
 
 // `extends: base` or `extends: {service: base}`; a base in another file is
 // resolved by Docker and cannot be checked here
-function extendedService(value: unknown): string | undefined {
+export function extendedService(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
   }

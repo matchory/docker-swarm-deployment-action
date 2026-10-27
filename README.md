@@ -439,6 +439,10 @@ is active, and `*` activates every profile. A service's profiles are combined ac
 inherited through `extends`, `!reset` and `!override` apply as usual, and profile names may use variables. Separate
 multiple profiles with commas, spaces, or newlines, or list them in the [stack settings](#stack-settings).
 
+As in Compose, `extends` takes the base service as the same file defines it, before the files are merged: a later file
+that changes or replaces the base does not change what the extending service inherited, profiles and env files
+included.
+
 Skipped services are dropped before anything else reads the files, so their env files and variables are not required.
 A deployed service that depends on a skipped one loses that dependency with a warning; Swarm ignores `depends_on`
 anyway. A deployed service cannot `extend` a skipped one, though, since the stack would not contain its base.
@@ -987,6 +991,12 @@ Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tes
 The swarm tests in `tests/swarm` deploy to the swarm of your current Docker context and run the bundle in `dist/`, so
 run `npm run package` first. Their stacks are named `e2e-<area>-<random>`, or use the `SWARM_TEST_PREFIX` environment
 variable in place of `e2e`, and are removed after the run.
+
+The property tests in `tests/properties` generate Compose files with [fast-check](https://fast-check.dev/) and check
+the action's processing against `docker compose config` and `docker stack config`. They run with the other tests, on
+25 cases per property and a fixed seed. Set `PROPERTY_RUNS` for more cases and `PROPERTY_SEED=random` for new ones;
+the manually triggered "Property Tests" workflow does both. Turn a counterexample they find into a regular unit test
+before fixing it.
 
 ### Before Opening a Pull Request
 

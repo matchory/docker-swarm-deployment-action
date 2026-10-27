@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   image,
   monitored,
+  networks,
   runSuccessfully,
   services,
   stackName,
@@ -69,4 +70,28 @@ it("keeps the tasks of a redeploy that only changes the version", async () => {
   expect(app.UpdateStatus).toBeUndefined();
   expect(await runningTasks(stack)).toEqual(before);
   expect(before).toHaveLength(1);
+});
+
+// Compose names the default network after the workspace directory, which is
+// the same for every stack deployed from one repository, e.g. previews
+it("deploys several stacks from one repository with extends", async () => {
+  const files = {
+    "compose.yaml": `
+services:
+  base:
+    image: ${image}
+    command: ["sleep", "86400"]
+  app:
+    extends: base
+`,
+  };
+  const stacks = [stackName("deploy"), stackName("deploy")];
+
+  for (const stack of stacks) {
+    await runSuccessfully(files, { "stack-name": stack });
+  }
+
+  for (const stack of stacks) {
+    expect(await networks(stack)).toEqual([`${stack}_default`]);
+  }
 });

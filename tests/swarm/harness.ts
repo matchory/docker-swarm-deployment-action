@@ -71,9 +71,11 @@ export async function runAction(
   inputs: Record<string, string>,
 ): Promise<ActionRun> {
   // The real path, as the working directory of the action resolves to it
-  const workspace = await realpath(
-    await mkdtemp(join(tmpdir(), "swarm-test-")),
-  );
+  const parent = await realpath(await mkdtemp(join(tmpdir(), "swarm-test-")));
+  // Named alike for every run, as a runner names the workspace after the
+  // repository: Compose derives the default network's name from it
+  const workspace = join(parent, "repository");
+  await mkdir(workspace);
 
   try {
     for (const [path, content] of Object.entries(files)) {
@@ -147,7 +149,7 @@ export async function runAction(
       warnings: annotations(stdout, "warning"),
     };
   } finally {
-    await rm(workspace, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
   }
 }
 
@@ -288,6 +290,22 @@ export async function tasks(stack: string, service: string): Promise<Task[]> {
 export async function variables(kind: "config" | "secret", stack: string) {
   const names = await docker(
     kind,
+    "ls",
+    "--filter",
+    `label=com.docker.stack.namespace=${stack}`,
+    "--format",
+    "{{.Name}}",
+  );
+
+  return names ? names.split("\n").sort() : [];
+}
+
+/**
+ * Names of the networks labelled as belonging to a stack
+ */
+export async function networks(stack: string) {
+  const names = await docker(
+    "network",
     "ls",
     "--filter",
     `label=com.docker.stack.namespace=${stack}`,

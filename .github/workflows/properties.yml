@@ -1,0 +1,55 @@
+# Runs the differential property tests in tests/properties with a large
+# budget and, by default, a random seed. Pull requests run them with a small
+# budget and a fixed seed, as part of ci.yml. Start it by hand, e.g. after
+# changing how Compose files are processed. Replay a counterexample with the
+# seed it reports and the same number of runs, and turn it into a unit test
+# before fixing it.
+
+name: Property Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Cases per property
+        default: "1000"
+      seed:
+        description: Seed, or "random"
+        default: random
+
+permissions:
+  contents: read
+
+jobs:
+  properties:
+    name: Property Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install Dependencies
+        id: npm-ci
+        run: npm ci
+
+      - name: Run Property Tests
+        id: properties
+        env:
+          PROPERTY_RUNS: ${{ inputs.runs }}
+          PROPERTY_SEED: ${{ inputs.seed }}
+        run: |
+          docker version --format 'Docker {{.Server.Version}}'
+          docker compose version
+          npx vitest run tests/properties --coverage.enabled=false

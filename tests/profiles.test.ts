@@ -205,6 +205,63 @@ describe("selectProfiles", () => {
       );
     });
 
+    // Compose resolves `extends` within the file that writes it, against that
+    // file's definition of the base, before it merges the files
+    it.each([
+      ["replaces", override({ image: "busybox" })],
+      ["adds profiles to", { profiles: ["prod"] }],
+      [
+        "resets the profiles of",
+        { profiles: new Tagged("!reset", "sequence", []) },
+      ],
+    ])(
+      "should inherit the base as written when a later file %s it",
+      (_, later) => {
+        const specs = files(
+          {
+            base: { image: "busybox", profiles: ["template"] },
+            web: { extends: "base" },
+          },
+          { base: later },
+        );
+
+        select(specs, ["prod"]);
+
+        expect(Object.keys(specs[0].spec.services)).not.toContain("web");
+      },
+    );
+
+    // Compose resolves the `extends` of the replaced definition before it
+    // applies the replacement, so a skipped base would not be found
+    it("should drop extends from a definition a later file replaces", () => {
+      const specs = files(
+        {
+          base: { image: "busybox", profiles: ["template"] },
+          web: { image: "busybox", extends: "base" },
+        },
+        { web: override({ image: "busybox" }) },
+      );
+
+      select(specs, ["prod"]);
+
+      expect(services(specs)[0]).toEqual({ web: { image: "busybox" } });
+    });
+
+    it("should add a later file's profiles to the inherited ones", () => {
+      const specs = files(
+        {
+          base: { image: "busybox", profiles: ["template"] },
+          web: { extends: "base" },
+        },
+        { web: { profiles: ["prod"] } },
+      );
+
+      select(specs, ["template"]);
+
+      expect(Object.keys(specs[0].spec.services)).toEqual(["base", "web"]);
+      expect(core.info).not.toHaveBeenCalled();
+    });
+
     it("should leave bases in other files to Docker", () => {
       const specs = files({
         api: {

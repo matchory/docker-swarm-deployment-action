@@ -178,6 +178,40 @@ describe("reconcileSwarmCompatibility", () => {
       );
     });
 
+    // `docker compose config` writes `depends_on: [db]` in this form, so a
+    // stack merged through it must still pass strict mode
+    it.each([
+      ["the short syntax as Compose merges it", { required: true }],
+      ["an optional dependency", { required: false }],
+    ])("converts %s without a warning", async (_, options) => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          depends_on: { db: { condition: "service_started", ...options } },
+        },
+        db: { image: "postgres" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: true });
+      expect((s.services.api as { depends_on: unknown }).depends_on).toEqual([
+        "db",
+      ]);
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("warns that a restart on dependency changes is dropped", async () => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          depends_on: { db: { condition: "service_started", restart: true } },
+        },
+        db: { image: "postgres" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("depends_on"),
+      );
+    });
+
     it("leaves list form unchanged and does not warn", async () => {
       const s = spec({
         api: { image: "nginx", depends_on: ["db"] },
@@ -203,6 +237,50 @@ describe("reconcileSwarmCompatibility", () => {
       // An empty mapping has no conditions to drop, and `docker compose
       // config` emits one for an emptied list, so it must not fail strict mode
       expect(core.warning).not.toHaveBeenCalled();
+    });
+  });
+
+  // `docker compose config` 2.35 merges two empty mappings into an empty
+  // list, which `docker stack config` 28 rejects with "must be a mapping"
+  describe("empty mapping fields", () => {
+    it.each(["labels", "environment", "sysctls", "extra_hosts", "annotations"])(
+      "removes an empty %s list",
+      async (field) => {
+        const s = spec({ api: { image: "nginx", [field]: [] } });
+        await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+        expect(s.services.api).not.toHaveProperty(field);
+      },
+    );
+
+    it("removes an empty deploy.labels list", async () => {
+      const s = spec({ api: { image: "nginx", deploy: { labels: [] } } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({ image: "nginx", deploy: {} });
+    });
+
+    it.each(["networks", "volumes", "configs", "secrets"])(
+      "removes empty lists from the definitions of %s",
+      async (section) => {
+        const s = {
+          ...spec({ api: { image: "nginx" } }),
+          [section]: { item: { labels: [], driver_opts: [] } },
+        } as ComposeSpec;
+        await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+        expect(s[section as keyof ComposeSpec]).toEqual({ item: {} });
+      },
+    );
+
+    it("keeps lists with entries and empty lists that mean something", async () => {
+      const s = spec({
+        api: { image: "nginx", labels: ["a=b"], entrypoint: [], command: [] },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        labels: ["a=b"],
+        entrypoint: [],
+        command: [],
+      });
     });
   });
 

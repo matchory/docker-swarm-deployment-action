@@ -385,6 +385,55 @@ function translateRestart(
   deploy.restart_policy = policy;
 }
 
+// Fields that hold a mapping, which Compose also accepts as a list
+const mappingFields = [
+  "labels",
+  "environment",
+  "sysctls",
+  "extra_hosts",
+  "annotations",
+];
+const definitionMappingFields = ["labels", "driver_opts"];
+
+/**
+ * Remove mapping fields written as an empty list
+ *
+ * `docker compose config` 2.35 merges two empty mappings into an empty list,
+ * which `docker stack config` 28 rejects with "must be a mapping". An empty
+ * mapping is the same as none.
+ */
+function removeEmptyMappings(spec: ComposeSpec) {
+  const removeFrom = (node: unknown, fields: string[]) => {
+    if (typeof node !== "object" || node === null) {
+      return;
+    }
+
+    const entry = node as Record<string, unknown>;
+
+    for (const field of fields) {
+      if (Array.isArray(entry[field]) && entry[field].length === 0) {
+        delete entry[field];
+      }
+    }
+  };
+
+  for (const service of Object.values(spec.services ?? {})) {
+    removeFrom(service, mappingFields);
+    removeFrom((service as { deploy?: unknown } | null)?.deploy, ["labels"]);
+  }
+
+  for (const section of [
+    "networks",
+    "volumes",
+    "configs",
+    "secrets",
+  ] as const) {
+    for (const definition of Object.values(spec[section] ?? {})) {
+      removeFrom(definition, definitionMappingFields);
+    }
+  }
+}
+
 function translateDependsOn(
   name: string,
   service: Record<string, unknown>,
@@ -408,7 +457,24 @@ function translateDependsOn(
     return;
   }
 
-  if (service.depends_on !== dependsOn) {
+  // Only conditions beyond starting, and restarts, are lost: Compose writes
+  // the short syntax as `{condition: service_started, required: true}` when
+  // it merges files, and Swarm ignores dependencies, optional ones included
+  const dropsBehavior =
+    service.depends_on !== dependsOn &&
+    Object.values(dependsOn as Record<string, unknown>).some((options) => {
+      const { condition, restart } = (options ?? {}) as {
+        condition?: unknown;
+        restart?: unknown;
+      };
+
+      return (
+        (condition !== undefined && condition !== "service_started") ||
+        restart === true
+      );
+    });
+
+  if (dropsBehavior) {
     diagnostics.warn(
       `Service "${name}" uses the long "depends_on" syntax; Docker Swarm has ` +
         `no startup ordering, so conditions are dropped and only the ` +
@@ -636,6 +702,7 @@ export async function reconcileSwarmCompatibility(
   const droppedServices: string[] = [];
 
   applyTopLevelStrips(spec, diagnostics);
+  removeEmptyMappings(spec);
 
   for (const [name, service] of Object.entries(spec.services)) {
     if (typeof service !== "object" || service === null) {
