@@ -100,9 +100,8 @@ build `dist/` first.
 generated Compose files go through the action's pipeline in-process
 and are checked against `docker compose config` and `docker stack
 config`, which need Docker but no swarm. They run in the regular
-suite with a fixed seed and 25 cases per property; `properties.yml`
-runs 1000 random ones nightly and opens an issue for a
-counterexample. Generators live in `tests/properties/arbitraries.ts`;
+suite with a fixed seed and 25 cases per property;
+`properties.yml`, triggered by hand, runs 1000 random ones. Generators live in `tests/properties/arbitraries.ts`;
 extend the grammar when a bug is found outside it, and keep the
 shrunk counterexample as a unit test.
 

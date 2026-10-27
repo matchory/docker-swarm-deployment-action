@@ -995,7 +995,8 @@ variable in place of `e2e`, and are removed after the run.
 The property tests in `tests/properties` generate Compose files with [fast-check](https://fast-check.dev/) and check
 the action's processing against `docker compose config` and `docker stack config`. They run with the other tests, on
 25 cases per property and a fixed seed. Set `PROPERTY_RUNS` for more cases and `PROPERTY_SEED=random` for new ones;
-a nightly workflow does both. Turn a counterexample they find into a regular unit test before fixing it.
+the manually triggered "Property Tests" workflow does both. Turn a counterexample they find into a regular unit test
+before fixing it.
 
 ### Before Opening a Pull Request
 
