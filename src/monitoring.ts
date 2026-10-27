@@ -13,6 +13,7 @@ import {
   formatHealthCheck,
   type HealthCheck,
 } from "./healthcheck.js";
+import { monitorTimeoutLabel, type ServiceOptions } from "./labels.js";
 import type { Settings } from "./settings.js";
 import { sleep } from "./utils.js";
 
@@ -25,12 +26,35 @@ import { sleep } from "./utils.js";
  * errors encountered after the containers are started.
  *
  * @param settings Deployment settings
+ * @param spec Deployed Compose spec
+ * @param serviceOptions Per-service options, keyed by the service name in the
+ *   spec; services without an entry use the stack-wide settings
  */
 export async function monitorDeployment(
   settings: Readonly<Settings>,
   spec?: ComposeSpec,
+  serviceOptions: ReadonlyMap<
+    string,
+    Pick<ServiceOptions, "monitor" | "monitorTimeout">
+  > = new Map(),
 ) {
-  if (!settings.monitor) {
+  const optionsOf = (
+    service: Pick<ServiceWithMetadata, "Spec" | "Name" | "ID">,
+  ) => {
+    const name = displayName(service);
+    const prefix = `${settings.stack}_`;
+
+    return (
+      serviceOptions.get(
+        name.startsWith(prefix) ? name.slice(prefix.length) : name,
+      ) ?? settings
+    );
+  };
+  const monitored = (
+    serviceOptions.size > 0 ? [...serviceOptions.values()] : [settings]
+  ).filter(({ monitor }) => monitor);
+
+  if (monitored.length === 0) {
     core.info("Post-Deployment Monitoring is disabled");
 
     return;
@@ -42,7 +66,7 @@ export async function monitorDeployment(
   const baseInterval = settings.monitorInterval * 1_000;
   const maxInterval = Math.min(
     baseInterval * 6,
-    settings.monitorTimeout * 1_000,
+    ...monitored.map(({ monitorTimeout }) => monitorTimeout * 1_000),
   );
   let currentInterval = baseInterval;
   const completedServices = new Set<string>();
@@ -50,14 +74,16 @@ export async function monitorDeployment(
 
   do {
     const elapsed = Date.now() - startTime.getTime();
+    const pendingOnTimeout = services.filter(
+      (s) =>
+        !completedServices.has(s.ID) &&
+        elapsed >= optionsOf(s).monitorTimeout * 1_000,
+    );
 
-    if (elapsed >= settings.monitorTimeout * 1_000) {
-      // On timeout, report diagnostics for all non-converged services.
-      // Prefetch tasks in parallel, then build reports sequentially to
-      // avoid interleaving job summary output.
-      const pendingOnTimeout = services.filter(
-        (s) => !completedServices.has(s.ID),
-      );
+    if (pendingOnTimeout.length > 0) {
+      // On timeout, report diagnostics for every service past its own
+      // timeout. Prefetch tasks in parallel, then build reports sequentially
+      // to avoid interleaving job summary output.
       const prefetchedTasks = await Promise.all(
         pendingOnTimeout.map((s) => fetchTasks(s.ID)),
       );
@@ -105,19 +131,26 @@ export async function monitorDeployment(
         core.info(`Services not converged: ${pendingNames.join(", ")}`);
       }
 
+      const timeout = Math.max(
+        ...pendingOnTimeout.map((s) => optionsOf(s).monitorTimeout),
+      );
+
       throw new Error(
-        `Deployment timed out after ${settings.monitorTimeout}s: ` +
+        `Deployment timed out after ${timeout}s: ` +
           `${completedServices.size}/${services.length} services converged. ` +
           `See the per-service failure reports above for why the remaining ` +
           `services did not become healthy, or raise the "monitor-timeout" ` +
-          `input if they simply need more time.`,
+          `input or the "${monitorTimeoutLabel}" service label if they ` +
+          `simply need more time.`,
       );
     }
 
-    services = await listServices(
-      { labels: { "com.docker.stack.namespace": settings.stack } },
-      true,
-    );
+    services = (
+      await listServices(
+        { labels: { "com.docker.stack.namespace": settings.stack } },
+        true,
+      )
+    ).filter((service) => optionsOf(service).monitor);
 
     core.debug(
       `Waiting for services to finish updating: ` +

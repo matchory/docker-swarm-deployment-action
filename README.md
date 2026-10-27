@@ -42,6 +42,10 @@
     - [Disabling Automatic Variable Management](#disabling-automatic-variable-management)
     - [Data Transformation](#data-transformation)
   - [How the stack is deployed](#how-the-stack-is-deployed)
+  - [Configuring the Deployment in the Compose File](#configuring-the-deployment-in-the-compose-file)
+    - [Stack Settings](#stack-settings)
+    - [Service Labels](#service-labels)
+    - [Deployment Labels](#deployment-labels)
   - [Post-Deployment Monitoring](#post-deployment-monitoring)
     - [Monitoring Timeout & Interval](#monitoring-timeout--interval)
   - [Health Check Validation](#health-check-validation)
@@ -170,27 +174,28 @@ Listing them in `exclude-variables` is harmless, since every Docker command keep
 
 ### Inputs
 
-To configure the action, you can use the following inputs:
+To configure the action, you can use the following inputs. Inputs marked with an asterisk (\*) can also be set in the
+Compose file; see [Stack Settings](#stack-settings).
 
-| Input                   | Default                               | Description                                                                                                                       |
-|:------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
-| `stack-name`            | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
-| `version`               | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
-| `compose-file`          | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
-| `env-var-prefix`        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
-| `manage-variables`      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
-| `strict-variables`      | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
-| `strict-compatibility`  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
-| `key-interpolation`     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
-| `variables`             | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
-| `secrets`               | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
-| `exclude-variables`     | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
-| `extra-variables`       | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
-| `monitor`               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
-| `monitor-timeout`       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
-| `monitor-interval`      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
-| `health-check-warnings` | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
-| `upload-compose-spec`   | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
+| Input                     | Default                               | Description                                                                                                                       |
+|:--------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
+| `stack-name`              | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
+| `version`                 | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
+| `compose-file`            | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
+| `env-var-prefix`\*        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
+| `manage-variables`\*      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
+| `strict-variables`\*      | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
+| `strict-compatibility`\*  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
+| `key-interpolation`\*     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
+| `variables`               | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
+| `secrets`                 | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
+| `exclude-variables`       | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
+| `extra-variables`         | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
+| `monitor`\*               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
+| `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
+| `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
+| `health-check-warnings`\* | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
+| `upload-compose-spec`     | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
 
@@ -698,6 +703,93 @@ echo $final_spec | docker stack deploy \
   $stack_name
 ```
 
+### Configuring the Deployment in the Compose File
+
+Besides the action inputs, the deployment can be configured in the Compose file itself: settings for the whole stack in
+a top-level `x-matchory-deployment` block, and settings for single services as labels. Settings kept in the file travel
+with it, so every workflow and environment deploying the file deploys it the same way.
+
+#### Stack Settings
+
+The following inputs can also be set in a top-level `x-matchory-deployment` block: `env-var-prefix`,
+`manage-variables`, `strict-variables`, `strict-compatibility`, `key-interpolation`, `monitor`, `monitor-timeout`,
+`monitor-interval`, and `health-check-warnings`.
+
+```yaml
+x-matchory-deployment:
+  monitor: true
+  monitor-timeout: 600
+  key-interpolation: true
+
+services:
+  app:
+    image: my-app:latest
+```
+
+An input set in the workflow wins over the Compose file, which wins over the default. This lets a single workflow
+override a setting for one environment without editing the file. Settings that choose _what_ to deploy, such as
+`stack-name`, `compose-file`, or `version`, are inputs only.
+
+The block is read from the files as written, before anything else, because its settings govern how the files are
+loaded. Its values are therefore not interpolated. When deploying multiple Compose files, a later file's settings win
+over an earlier file's. Invalid values fail the deployment, even if an input overrides them; unknown settings are
+ignored with a warning.
+
+#### Service Labels
+
+Some settings can be changed for a single service, using labels in its `deploy.labels`. A service label wins over the
+stack-wide setting, wherever that comes from:
+
+| Label                                           | Overrides               | Values                     |
+|:------------------------------------------------|:------------------------|:---------------------------|
+| `com.matchory.deployment.monitor`               | `monitor`               | `true` or `false`          |
+| `com.matchory.deployment.monitor-timeout`       | `monitor-timeout`       | Whole number of seconds    |
+| `com.matchory.deployment.health-check-warnings` | `health-check-warnings` | `true` or `false`          |
+
+```yaml
+services:
+  app:
+    image: my-app:latest
+    deploy:
+      labels:
+        # Takes a while to warm up
+        com.matchory.deployment.monitor-timeout: "900"
+
+  migrate:
+    image: my-app:latest
+    command: ["migrate"]
+    deploy:
+      restart_policy:
+        condition: none
+      labels:
+        # Exits once done, so there is nothing to wait for
+        com.matchory.deployment.monitor: "false"
+        com.matchory.deployment.health-check-warnings: "false"
+```
+
+Monitoring runs if any service is monitored, so a label can also enable it for one service while it is disabled for
+the stack. Labels are read after [interpolation](#variable-interpolation), so their values may use variables. They are
+validated before the stack is deployed, and an invalid value fails the deployment without deploying anything. Labels on
+the container (`labels`) rather than the service (`deploy.labels`) are not read.
+
+#### Deployment Labels
+
+The action adds the following labels to the `deploy.labels` of every service, so you can tell which build is running
+from `docker service inspect` or any tool that shows service labels:
+
+| Label                             | Value                                                    |
+|:----------------------------------|:---------------------------------------------------------|
+| `com.matchory.deployment.version` | The deployed [version](#inputs)                          |
+| `com.matchory.deployment.commit`  | The full commit SHA (`GITHUB_SHA`)                       |
+| `com.matchory.deployment.ref`     | The branch or tag that triggered the workflow            |
+| `com.matchory.deployment.run-url` | The URL of the workflow run that deployed the service    |
+| `com.matchory.deployment.actor`   | The user that triggered the workflow run                 |
+
+Labels whose value the runner does not provide are left out. They replace labels of the same name in the Compose file.
+
+Since they are service labels, not container labels, a new commit does not restart a service: Swarm updates the
+service's metadata in place and only rolls out new tasks for changes to the containers themselves.
+
 ### Post-Deployment Monitoring
 
 The action can optionally monitor your stacks for any post-deployment issues (e.g., restart cycles or rollbacks) and
@@ -733,6 +825,9 @@ jobs:
           monitor-interval: 30 # 30 seconds
 ```
 
+To give a single slow service more time, or to leave it out of monitoring, use a
+[service label](#service-labels). Each service is held to its own timeout.
+
 ### Health Check Validation
 
 The action validates health check configurations in your compose spec before deploying, emitting warnings for common
@@ -756,6 +851,9 @@ To suppress these warnings, set `health-check-warnings` to `false`:
   with:
     health-check-warnings: false
 ```
+
+To suppress them for a single service only, use the `com.matchory.deployment.health-check-warnings`
+[service label](#service-labels).
 
 #### Health Check Details in Failure Reports
 

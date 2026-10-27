@@ -1,11 +1,29 @@
 import { debug } from "node:util";
-import { getBooleanInput, getInput, setSecret } from "@actions/core";
+import {
+  getBooleanInput,
+  getInput,
+  info,
+  setSecret,
+  warning,
+} from "@actions/core";
+import {
+  booleanValue,
+  inferDeploymentLabels,
+  parseValue,
+  secondsValue,
+  type ValueType,
+} from "./labels.js";
+import { suggestion } from "./reconcile.js";
 
 /**
  * Deployment settings
  */
 export interface Settings {
   composeFiles?: string[];
+  /**
+   * Labels written to every service; see `addDeploymentLabels`
+   */
+  deploymentLabels?: Readonly<Record<string, string>>;
   envVarPrefix: string;
   healthCheckWarnings: boolean;
   keyInterpolation: boolean;
@@ -21,6 +39,11 @@ export interface Settings {
    */
   secretValues: ReadonlyMap<string, string>;
   stack: string;
+  /**
+   * Stack settings given as workflow inputs, as written; the Compose file's
+   * settings block cannot override them
+   */
+  stackInputs?: Readonly<Record<string, string>>;
   strictCompatibility: boolean;
   strictVariables: boolean;
   uploadComposeSpec: boolean;
@@ -30,6 +53,165 @@ export interface Settings {
 
 export function defineSettings<T extends Settings>(settings: T) {
   return settings;
+}
+
+/**
+ * Top-level Compose extension holding stack settings
+ */
+export const stackSettingsKey = "x-matchory-deployment";
+
+type StackSettings = Pick<
+  Settings,
+  | "envVarPrefix"
+  | "healthCheckWarnings"
+  | "keyInterpolation"
+  | "manageVariables"
+  | "monitor"
+  | "monitorInterval"
+  | "monitorTimeout"
+  | "strictCompatibility"
+  | "strictVariables"
+>;
+
+// Inputs a Compose file may also set: the setting each one maps to, and its
+// default. They have no default in action.yml, so an unset input reads as
+// empty instead of being indistinguishable from one set to the default.
+const stackSettings: Record<
+  string,
+  { key: keyof StackSettings; default: unknown } & ValueType<unknown>
+> = {
+  "env-var-prefix": {
+    key: "envVarPrefix",
+    default: "DEPLOYMENT",
+    parse: (value) =>
+      typeof value === "string" && value ? value.replace(/_$/, "") : undefined,
+    expected: "a non-empty string",
+  },
+  "health-check-warnings": {
+    key: "healthCheckWarnings",
+    default: true,
+    ...booleanValue,
+  },
+  "key-interpolation": {
+    key: "keyInterpolation",
+    default: false,
+    ...booleanValue,
+  },
+  "manage-variables": {
+    key: "manageVariables",
+    default: true,
+    ...booleanValue,
+  },
+  monitor: { key: "monitor", default: false, ...booleanValue },
+  "monitor-interval": { key: "monitorInterval", default: 5, ...secondsValue },
+  "monitor-timeout": { key: "monitorTimeout", default: 300, ...secondsValue },
+  "strict-compatibility": {
+    key: "strictCompatibility",
+    default: false,
+    ...booleanValue,
+  },
+  "strict-variables": {
+    key: "strictVariables",
+    default: true,
+    ...booleanValue,
+  },
+};
+
+// Only read while monitoring. An invalid value is rejected then, because a NaN
+// interval/timeout would make the monitor loop hang silently (`elapsed >= NaN`
+// is always false), but ignored otherwise: failing on an unused input would
+// break existing workflows that already pass one.
+const monitorInputs = new Set(["monitor-interval", "monitor-timeout"]);
+
+/**
+ * Apply the settings block of the Compose files
+ *
+ * @param settings Settings parsed from the inputs
+ * @param block Merged settings block of the Compose files
+ * @returns A copy of the settings with the block applied
+ */
+export function applyStackSettings<T extends Settings>(
+  settings: T,
+  block: Readonly<Record<string, unknown>>,
+): T {
+  return {
+    ...settings,
+    ...resolveStackSettings(settings.stackInputs ?? {}, block, settings),
+  };
+}
+
+/**
+ * Resolve the stack settings
+ *
+ * A setting given as a workflow input wins over the Compose file, which wins
+ * over the fallback, which wins over the default. Every value in the file is
+ * validated, including overridden ones, so a mistake in the file surfaces in
+ * every environment that deploys it.
+ *
+ * @param inputs Stack settings given as workflow inputs, as written
+ * @param block Merged settings block of the Compose files
+ * @param fallback Settings resolved before, if any
+ */
+function resolveStackSettings(
+  inputs: Readonly<Record<string, string>>,
+  block: Readonly<Record<string, unknown>>,
+  fallback: Partial<StackSettings> = {},
+): StackSettings {
+  const fromBlock: Record<string, unknown> = {};
+
+  for (const [name, value] of Object.entries(block)) {
+    const setting = stackSettings[name];
+
+    if (!setting) {
+      warning(
+        `Ignoring unknown setting "${name}" in "${stackSettingsKey}"` +
+          suggestion(name, new Set(Object.keys(stackSettings))) +
+          ".",
+      );
+      continue;
+    }
+
+    fromBlock[name] = parseValue(
+      value,
+      setting,
+      `The "${name}" setting in "${stackSettingsKey}"`,
+    );
+  }
+
+  const resolved: Record<string, unknown> = {};
+  const invalidInputs: string[] = [];
+
+  for (const [name, setting] of Object.entries(stackSettings)) {
+    const raw = inputs[name];
+    const input = raw === undefined ? undefined : setting.parse(raw);
+
+    if (raw !== undefined && input === undefined) {
+      invalidInputs.push(name);
+    }
+
+    if (input !== undefined && name in fromBlock) {
+      info(
+        `The "${name}" input overrides the "${name}" setting in ` +
+          `"${stackSettingsKey}"`,
+      );
+    }
+
+    resolved[setting.key] =
+      input ?? fromBlock[name] ?? fallback[setting.key] ?? setting.default;
+  }
+
+  for (const name of invalidInputs) {
+    if (monitorInputs.has(name) && !resolved.monitor) {
+      continue;
+    }
+
+    throw new Error(
+      `The "${name}" input must be ${stackSettings[name].expected}, ` +
+        `but received "${inputs[name]}".`,
+    );
+  }
+
+  return resolved as StackSettings;
 }
 
 /**
@@ -54,86 +236,25 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
   variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
   variables.set("MATCHORY_DEPLOYMENT_VERSION", version);
 
-  const healthCheckWarnings =
-    getBooleanInput("health-check-warnings", { required: false }) ?? true;
-  const keyInterpolation =
-    getBooleanInput("key-interpolation", { required: false }) ?? false;
-  const manageVariables =
-    getBooleanInput("manage-variables", { required: false }) ?? true;
-  const monitor = getBooleanInput("monitor", { required: false }) ?? false;
-  const strictCompatibility =
-    getBooleanInput("strict-compatibility", { required: false }) ?? false;
-  const strictVariables =
-    getBooleanInput("strict-variables", { required: false }) ?? true;
+  const stackInputs = Object.fromEntries(
+    Object.keys(stackSettings)
+      .map((name) => [name, getInput(name)])
+      .filter(([, value]) => value),
+  );
   const uploadComposeSpec =
     getBooleanInput("upload-compose-spec", { required: false }) ?? true;
 
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
-    envVarPrefix: (getInput("env-var-prefix") || "DEPLOYMENT").replace(
-      /_$/,
-      "",
-    ),
-    healthCheckWarnings,
-    keyInterpolation,
-    manageVariables,
-    monitor,
-    monitorInterval: parsePositiveSeconds(
-      getInput("monitor-interval"),
-      "monitor-interval",
-      5,
-      monitor,
-    ),
-    monitorTimeout: parsePositiveSeconds(
-      getInput("monitor-timeout"),
-      "monitor-timeout",
-      300,
-      monitor,
-    ),
+    deploymentLabels: inferDeploymentLabels(version, env),
+    ...resolveStackSettings(stackInputs, {}),
     secretValues,
     stack,
-    strictCompatibility,
-    strictVariables,
+    stackInputs,
     uploadComposeSpec,
     variables,
     version,
   });
-}
-
-// Parse a whole-second duration input. An unset input falls back to the
-// default; a non-numeric or non-positive value is rejected up front, because a
-// NaN interval/timeout would otherwise make the monitor loop hang silently
-// (`elapsed >= NaN` is always false) with no indication of why.
-// Rejecting only applies when monitoring is enabled, since the value is never
-// read otherwise: failing on an unused input would break existing workflows
-// that already pass one.
-function parsePositiveSeconds(
-  raw: string,
-  input: string,
-  fallback: number,
-  monitor: boolean,
-): number {
-  if (!raw) {
-    return fallback;
-  }
-
-  // Only plain digits are accepted. `Number.parseInt` would silently truncate
-  // instead of rejecting: it reads "5.9" as 5, "10s" as 10, and "1e3" as 1 --
-  // a thousandth of the duration the author asked for.
-  const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
-
-  if (!Number.isInteger(value) || value <= 0) {
-    if (!monitor) {
-      return fallback;
-    }
-
-    throw new Error(
-      `The "${input}" input must be a positive whole number of seconds, ` +
-        `but received "${raw}".`,
-    );
-  }
-
-  return value;
 }
 
 function inferStackName(name: string | undefined, env: NodeJS.ProcessEnv) {

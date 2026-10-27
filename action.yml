@@ -67,52 +67,52 @@ inputs:
     default: ""
   env-var-prefix:
     description: >-
-      Prefix filter for environment variables to automatically load as secrets.
-    default: "DEPLOYMENT"
+      Prefix filter for environment variables to automatically load as
+      secrets. Defaults to `DEPLOYMENT`. Can also be set in the Compose file.
   manage-variables:
     description: >-
       Whether to automatically manage configs and secrets. If set to `false`,
       the action will leave the configs and secrets in the stack untouched.
-    default: "true"
+      Defaults to `true`. Can also be set in the Compose file.
   strict-variables:
     description: >-
       Whether to fail if the `file` source of a secret or config cannot be
       read, instead of falling back to automatic resolution (a `<name>.secret`
       file or a matching environment variable). Undefined variables in the
       Compose Specification are replaced with an empty string and logged as a
-      warning either way.
-    default: "true"
+      warning either way. Defaults to `true`. Can also be set in the Compose
+      file.
   strict-compatibility:
     description: >-
       Whether to fail the deployment when the Compose Specification contains
       features that Docker Swarm does not support and cannot be translated
       (e.g. develop, profiles, provider). When false (the default), such
       features are stripped or translated with a warning instead of failing.
-    default: "false"
+      Can also be set in the Compose file.
   key-interpolation:
     description: >-
       Whether to enable interpolation of environment variables within keys in
       the Compose Specification, in addition to values. This is not supported by
-      the Compose Spec, and thus needs to be enabled explicitly.
-    default: "false"
+      the Compose Spec, and thus needs to be enabled explicitly. Defaults to
+      `false`. Can also be set in the Compose file.
   monitor:
     description: >-
       Whether to monitor the stack after the deployment is complete. If an error
-      occurs, the action will fail.
-    default: "false"
+      occurs, the action will fail. Defaults to `false`. Can also be set in
+      the Compose file, and per service with a label.
   monitor-timeout:
     description: >-
-      Timeout for post-deployment monitoring in seconds.
-    default: "300"
+      Timeout for post-deployment monitoring in seconds. Defaults to `300`.
+      Can also be set in the Compose file, and per service with a label.
   monitor-interval:
     description: >-
-      Interval for post-deployment monitoring checks in seconds.
-    default: "5"
+      Interval for post-deployment monitoring checks in seconds. Defaults to
+      `5`. Can also be set in the Compose file.
   health-check-warnings:
     description: >-
       Whether to emit warnings for missing or suspect health check
-      configurations in compose services.
-    default: "true"
+      configurations in compose services. Defaults to `true`. Can also be set
+      in the Compose file, and per service with a label.
   upload-compose-spec:
     description: >-
       Whether to upload the final interpolated Compose Specification as a

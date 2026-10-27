@@ -4,12 +4,18 @@ import {
   interpolateTypedFields,
   loadComposeSpecs,
   normalizeSpec,
+  readStackSettings,
   resolveComposeFiles,
 } from "./compose.js";
 import { deployStack } from "./engine.js";
 import { validateHealthChecks } from "./healthcheck.js";
+import {
+  addDeploymentLabels,
+  resolveServiceOptions,
+  type ServiceOptions,
+} from "./labels.js";
 import { monitorDeployment } from "./monitoring.js";
-import type { Settings } from "./settings.js";
+import { applyStackSettings, type Settings } from "./settings.js";
 import { assertOwnShares } from "./shares.js";
 import { warnAboutUndefinedVariables } from "./utils.js";
 import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
@@ -17,14 +23,19 @@ import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
 /**
  * Main deployment function
  */
-export async function deploy(settings: Readonly<Settings>) {
+export async function deploy(inputSettings: Readonly<Settings>) {
+  const composeFiles = await resolveComposeFiles(inputSettings);
+  const settings = applyStackSettings(
+    inputSettings,
+    await readStackSettings(composeFiles),
+  );
   let finalSpec: ComposeSpec;
+  let serviceOptions: Map<string, ServiceOptions>;
 
   // Shared, so a variable used in both passes is only reported once
   const onUndefined = warnAboutUndefinedVariables();
 
   try {
-    const composeFiles = await resolveComposeFiles(settings);
     const composeSpecs = (
       await loadComposeSpecs(composeFiles, settings, onUndefined)
     ).map((item) => ({
@@ -38,17 +49,21 @@ export async function deploy(settings: Readonly<Settings>) {
     );
     finalSpec = interpolateSpec(composeSpec, settings, onUndefined);
 
-    // After interpolation: volume names are often built from variables.
+    // After interpolation: volume names are often built from variables, and
+    // service labels may be too.
     assertOwnShares(finalSpec, settings.stack);
-    validateHealthChecks(finalSpec, settings);
+    serviceOptions = resolveServiceOptions(finalSpec, settings);
+    validateHealthChecks(finalSpec, settings, serviceOptions);
+
+    finalSpec = addDeploymentLabels(finalSpec, settings.deploymentLabels ?? {});
 
     await deployStack(finalSpec, settings);
   } finally {
     await removeGeneratedVariableFiles();
   }
 
-  if (settings.monitor) {
-    await monitorDeployment(settings, finalSpec);
+  if ([...serviceOptions.values()].some(({ monitor }) => monitor)) {
+    await monitorDeployment(settings, finalSpec, serviceOptions);
   }
 
   // Without variable management, the spec carries no deployment labels, so

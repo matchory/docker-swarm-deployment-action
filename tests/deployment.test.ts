@@ -326,14 +326,23 @@ describe("Deployment", () => {
         },
         settings,
       );
-      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(settings, {
-        version: "3.8",
-        services: {
-          web: {
-            image: "nginx:latest",
+      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(
+        settings,
+        {
+          version: "3.8",
+          services: {
+            web: {
+              image: "nginx:latest",
+            },
           },
         },
-      });
+        new Map([
+          [
+            "web",
+            { healthCheckWarnings: false, monitor: true, monitorTimeout: 0 },
+          ],
+        ]),
+      );
       expect(variables.pruneVariables).toHaveBeenCalledWith(
         {
           version: "3.8",
@@ -445,6 +454,124 @@ describe("Deployment", () => {
 
       await expect(deploy(settings)).rejects.toThrowError(
         /names "other_shared"/,
+      );
+      expect(engine.deployStack).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Labels and Stack Settings", () => {
+    const settings = defineSettings({
+      deploymentLabels: { "com.matchory.deployment.version": "1.2.3" },
+      envVarPrefix: "DEPLOYMENT",
+      healthCheckWarnings: false,
+      keyInterpolation: false,
+      manageVariables: true,
+      monitor: false,
+      monitorInterval: 5,
+      monitorTimeout: 300,
+      secretValues: new Map(),
+      stack: "test-stack",
+      strictCompatibility: false,
+      strictVariables: false,
+      uploadComposeSpec: false,
+      variables: new Map(),
+      version: "1.2.3",
+    });
+
+    const withSpec = (file: string, services: Record<string, unknown>) => {
+      const spec = { version: "3.12", services };
+      readFile.mockResolvedValue(file);
+      vi.spyOn(compose, "resolveComposeFiles").mockResolvedValue([
+        "compose.yaml",
+      ]);
+      vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
+        { spec, baseDir: "." },
+      ]);
+      vi.spyOn(compose, "normalizeSpec").mockResolvedValue(spec);
+      vi.spyOn(engine, "deployStack").mockResolvedValue(undefined);
+      vi.spyOn(monitoring, "monitorDeployment").mockResolvedValue(undefined);
+      vi.spyOn(variables, "pruneVariables").mockResolvedValue(undefined);
+      vi.spyOn(variables, "removeGeneratedVariableFiles").mockResolvedValue();
+    };
+
+    it("should deploy every service with the deployment labels", async () => {
+      withSpec("services: {}", {
+        web: { image: "nginx", deploy: { labels: { team: "web" } } },
+      });
+
+      const spec = await deploy(settings);
+
+      expect(engine.deployStack).toHaveBeenCalledWith(
+        {
+          version: "3.12",
+          services: {
+            web: {
+              image: "nginx",
+              deploy: {
+                labels: {
+                  team: "web",
+                  "com.matchory.deployment.version": "1.2.3",
+                },
+              },
+            },
+          },
+        },
+        settings,
+      );
+      expect(spec).toEqual(vi.mocked(engine.deployStack).mock.calls[0][0]);
+    });
+
+    it("should apply the stack settings of the Compose file", async () => {
+      withSpec(
+        "x-matchory-deployment:\n  monitor: true\n  monitor-timeout: 600\n",
+        { web: { image: "nginx" } },
+      );
+
+      await deploy(settings);
+
+      const resolved = { ...settings, monitor: true, monitorTimeout: 600 };
+      expect(compose.loadComposeSpecs).toHaveBeenCalledWith(
+        ["compose.yaml"],
+        resolved,
+        expect.any(Function),
+      );
+      expect(monitoring.monitorDeployment).toHaveBeenCalledWith(
+        resolved,
+        expect.anything(),
+        new Map([
+          [
+            "web",
+            { healthCheckWarnings: false, monitor: true, monitorTimeout: 600 },
+          ],
+        ]),
+      );
+    });
+
+    it("should monitor a stack whose services opt in", async () => {
+      withSpec("services: {}", {
+        web: {
+          image: "nginx",
+          deploy: { labels: { "com.matchory.deployment.monitor": "true" } },
+        },
+      });
+
+      await deploy(settings);
+
+      expect(monitoring.monitorDeployment).toHaveBeenCalledOnce();
+    });
+
+    it("should not deploy with an invalid service label", async () => {
+      withSpec("services: {}", {
+        web: {
+          image: "nginx",
+          deploy: {
+            labels: { "com.matchory.deployment.monitor-timeout": "5m" },
+          },
+        },
+      });
+
+      await expect(deploy(settings)).rejects.toThrow(
+        /"com\.matchory\.deployment\.monitor-timeout" label of service "web"/,
       );
       expect(engine.deployStack).not.toHaveBeenCalled();
     });

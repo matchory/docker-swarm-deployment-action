@@ -17,7 +17,7 @@ import {
   Tagged,
 } from "./override-tags.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
-import type { Settings } from "./settings.js";
+import { type Settings, stackSettingsKey } from "./settings.js";
 import {
   exists,
   findFirstExistingFile,
@@ -215,6 +215,39 @@ export async function loadComposeSpecs(
   await inlineEnvFiles(specs, settings, onUndefined);
 
   return specs;
+}
+
+/**
+ * Read the stack settings block of the Compose files
+ *
+ * The settings govern how the files are loaded, so the block is read from the
+ * files as written, before anything else, and its values are not interpolated.
+ * A later file's settings win over an earlier file's, as in a merge.
+ *
+ * @param composeFiles The Compose files to load, in merge order
+ * @returns The merged settings block
+ */
+export async function readStackSettings(composeFiles: Readonly<Array<string>>) {
+  const settings: Record<string, unknown> = {};
+
+  for (const filename of composeFiles) {
+    const block = (await parseComposeFile(filename))?.[stackSettingsKey];
+
+    if (block === undefined || block === null) {
+      continue;
+    }
+
+    if (typeof block !== "object" || Array.isArray(block)) {
+      throw new Error(
+        `"${stackSettingsKey}" in Compose file "${filename}" must be a ` +
+          `mapping of settings.`,
+      );
+    }
+
+    Object.assign(settings, block);
+  }
+
+  return settings;
 }
 
 async function parseComposeFile(filename: string) {

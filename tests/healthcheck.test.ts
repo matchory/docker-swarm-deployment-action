@@ -274,6 +274,36 @@ describe("Health Check", () => {
     });
   });
 
+  describe("validateHealthChecks with service options", () => {
+    const spec = {
+      services: { web: { image: "nginx" }, api: { image: "node" } },
+    };
+
+    it("should skip services that turn the warnings off", () => {
+      validateHealthChecks(
+        spec,
+        { healthCheckWarnings: true },
+        new Map([["web", { healthCheckWarnings: false }]]),
+      );
+
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'Service "api" has no health check defined',
+      );
+    });
+
+    it("should check services that turn the warnings on", () => {
+      validateHealthChecks(
+        spec,
+        { healthCheckWarnings: false },
+        new Map([["api", { healthCheckWarnings: true }]]),
+      );
+
+      expect(core.warning).toHaveBeenCalledExactlyOnceWith(
+        'Service "api" has no health check defined',
+      );
+    });
+  });
+
   describe("formatHealthCheck", () => {
     it("should format health check with all fields", () => {
       const result = formatHealthCheck({

@@ -226,7 +226,7 @@ function closestKey(key: string, known: Set<string>): string | null {
   return best;
 }
 
-function suggestion(key: string, known: Set<string>): string {
+export function suggestion(key: string, known: Set<string>): string {
   const closest = closestKey(key, known);
 
   return closest ? ` — did you mean "${closest}"?` : "";
@@ -482,7 +482,7 @@ function validateTopLevelKeys(
   }
 }
 
-function labelsToMap(labels: unknown): Record<string, string> {
+export function labelsToMap(labels: unknown): Record<string, string> {
   if (Array.isArray(labels)) {
     const map: Record<string, string> = {};
 

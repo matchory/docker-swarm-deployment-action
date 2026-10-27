@@ -33,10 +33,25 @@ vi.mock("node:crypto", () => ({
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
 
+// Added to every service; the runner variables that would add more are cleared
+const deploymentLabels = {
+  "com.matchory.deployment.version": "4fadb58",
+  "com.matchory.deployment.commit": "4fadb584c2bad24be4467665cc6874dc57c2034e",
+};
+
 describe("main", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllEnvs();
+
+    for (const name of [
+      "GITHUB_ACTOR",
+      "GITHUB_REF",
+      "GITHUB_RUN_ID",
+      "GITHUB_SERVER_URL",
+    ]) {
+      vi.stubEnv(name, undefined);
+    }
 
     // Set up default readdir mock to return compose files
     vi.mocked(readdir).mockImplementation(async (path: string) => {
@@ -96,13 +111,20 @@ describe("main", () => {
 
         return 0;
       });
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile.mockResolvedValue(undefined);
     mockRandomUUID.mockReturnValueOnce("compose-temp-uuid");
 
     await expect(run()).resolves.not.toThrow();
     expect(core.setFailed).not.toHaveBeenCalled();
-    expect(core.setOutput).toHaveBeenCalledWith("compose-spec", composeSpec);
+    expect(core.setOutput).toHaveBeenCalledWith("compose-spec", {
+      services: {
+        app: {
+          ...composeSpec.services.app,
+          deploy: { labels: deploymentLabels },
+        },
+      },
+    });
     expect(core.setOutput).toHaveBeenCalledWith("stack-name", "my-app");
     expect(core.setOutput).toHaveBeenCalledWith("version", "4fadb58");
     expect(core.setOutput).toHaveBeenCalledWith("status", "success");
@@ -131,7 +153,7 @@ describe("main", () => {
 
       return 0;
     });
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile.mockResolvedValue(undefined);
     mockRandomUUID.mockReturnValue("undefined"); // For compose processing
 
@@ -146,7 +168,7 @@ describe("main", () => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     vi.spyOn(core, "getBooleanInput").mockImplementation(() => {
       throw new TypeError(
-        'Input does not meet YAML 1.2 "Core Schema" specification: monitor',
+        'Input does not meet YAML 1.2 "Core Schema" specification: upload-compose-spec',
       );
     });
 
@@ -196,7 +218,7 @@ describe("main", () => {
         return 0;
       });
 
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile.mockResolvedValue(undefined);
     mockRandomUUID
       .mockReturnValueOnce("compose-temp-uuid") // For compose processing
@@ -214,7 +236,18 @@ describe("main", () => {
     // Check that the artifact file was written with the correct content
     expect(writeFile).toHaveBeenCalledWith(
       expect.stringMatching(/^\.\/compose-spec\.generated\..*\.json$/),
-      JSON.stringify(composeSpec, null, 2),
+      JSON.stringify(
+        {
+          services: {
+            app: {
+              ...composeSpec.services.app,
+              deploy: { labels: deploymentLabels },
+            },
+          },
+        },
+        null,
+        2,
+      ),
     );
     expect(mockUploadArtifact).toHaveBeenCalledWith(
       "compose-spec",
@@ -263,7 +296,7 @@ describe("main", () => {
         return 0;
       });
 
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile.mockResolvedValue(undefined);
     mockRandomUUID.mockReturnValue("uuid");
     mockUploadArtifact.mockResolvedValueOnce({ id: "artifact-123" });
@@ -325,7 +358,7 @@ describe("main", () => {
         return 0;
       });
 
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile
       .mockResolvedValueOnce(undefined) // For compose processing
       .mockRejectedValueOnce(new Error("Permission denied")); // For artifact storage
@@ -386,7 +419,7 @@ describe("main", () => {
         return 0;
       });
 
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
     writeFile.mockResolvedValue(undefined);
     mockRandomUUID
       .mockReturnValueOnce("compose-temp-uuid") // For compose processing
@@ -428,7 +461,7 @@ describe("main", () => {
       options?.listeners?.stdout?.(Buffer.from(dump(composeSpec)));
       return 0;
     });
-    readFile.mockResolvedValueOnce(dump(composeSpec));
+    readFile.mockResolvedValue(dump(composeSpec));
 
     await expect(run()).resolves.not.toThrow();
 

@@ -11,6 +11,7 @@ import {
   loadComposeSpecs,
   normalizeSpec,
   prepareSpec,
+  readStackSettings,
   resolveComposeFiles,
   schemaVersion,
 } from "../src/compose.js";
@@ -2282,6 +2283,57 @@ describe("Compose", () => {
           },
           silent: false,
         },
+      );
+    });
+  });
+
+  describe("readStackSettings", () => {
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof yaml>("js-yaml");
+      vi.mocked(yaml.load).mockImplementation(actual.load);
+    });
+
+    it("should merge the settings blocks, later files winning", async () => {
+      readFile.mockImplementation(
+        async (filename: string) =>
+          ({
+            "base.yaml":
+              "x-matchory-deployment:\n  monitor: true\n  monitor-timeout: 60\n" +
+              "services:\n  web:\n    image: nginx\n",
+            "override.yaml": "x-matchory-deployment:\n  monitor-timeout: 600\n",
+            "plain.yaml": "services: {}\n",
+          })[filename],
+      );
+
+      await expect(
+        readStackSettings(["base.yaml", "override.yaml", "plain.yaml"]),
+      ).resolves.toEqual({ monitor: true, "monitor-timeout": 600 });
+    });
+
+    it("should read the block without interpolating it", async () => {
+      readFile.mockResolvedValue(
+        "x-matchory-deployment:\n  env-var-prefix: ${PREFIX}\nservices: {}\n",
+      );
+
+      await expect(readStackSettings(["compose.yaml"])).resolves.toEqual({
+        "env-var-prefix": "${PREFIX}",
+      });
+    });
+
+    it("should ignore an empty block", async () => {
+      readFile.mockResolvedValue("x-matchory-deployment:\nservices: {}\n");
+
+      await expect(readStackSettings(["compose.yaml"])).resolves.toEqual({});
+    });
+
+    it("should reject a block that is not a mapping", async () => {
+      readFile.mockResolvedValue(
+        "x-matchory-deployment: [monitor]\nservices: {}\n",
+      );
+
+      await expect(readStackSettings(["compose.yaml"])).rejects.toThrow(
+        '"x-matchory-deployment" in Compose file "compose.yaml" must be a ' +
+          "mapping of settings.",
       );
     });
   });
