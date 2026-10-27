@@ -1,12 +1,28 @@
 import { debug } from "node:util";
-import { getBooleanInput, getInput, setSecret } from "@actions/core";
+import {
+  getBooleanInput,
+  getInput,
+  info,
+  setSecret,
+  warning,
+} from "@actions/core";
+import { inferDeploymentLabels, parseBoolean, parseSeconds } from "./labels.js";
 
 /**
  * Deployment settings
  */
 export interface Settings {
   composeFiles?: string[];
+  /**
+   * Labels written to every service; see `addDeploymentLabels`
+   */
+  deploymentLabels?: Readonly<Record<string, string>>;
   envVarPrefix: string;
+  /**
+   * Stack settings given as workflow inputs, which the Compose file's
+   * settings block cannot override
+   */
+  explicitInputs?: ReadonlySet<string>;
   healthCheckWarnings: boolean;
   keyInterpolation: boolean;
   manageVariables: boolean;
@@ -33,6 +49,115 @@ export function defineSettings<T extends Settings>(settings: T) {
 }
 
 /**
+ * Top-level Compose extension holding stack settings
+ */
+export const stackSettingsKey = "x-matchory-deployment";
+
+// Inputs a Compose file may also set, with the setting each one maps to
+const stackSettings: Record<
+  string,
+  {
+    key: keyof Settings;
+    parse: (value: unknown) => unknown;
+    expected: string;
+  }
+> = {
+  "env-var-prefix": {
+    key: "envVarPrefix",
+    parse: (value) =>
+      typeof value === "string" && value ? value.replace(/_$/, "") : undefined,
+    expected: "a non-empty string",
+  },
+  "health-check-warnings": {
+    key: "healthCheckWarnings",
+    parse: parseBoolean,
+    expected: "true or false",
+  },
+  "key-interpolation": {
+    key: "keyInterpolation",
+    parse: parseBoolean,
+    expected: "true or false",
+  },
+  "manage-variables": {
+    key: "manageVariables",
+    parse: parseBoolean,
+    expected: "true or false",
+  },
+  monitor: { key: "monitor", parse: parseBoolean, expected: "true or false" },
+  "monitor-interval": {
+    key: "monitorInterval",
+    parse: parseSeconds,
+    expected: "a positive whole number of seconds",
+  },
+  "monitor-timeout": {
+    key: "monitorTimeout",
+    parse: parseSeconds,
+    expected: "a positive whole number of seconds",
+  },
+  "strict-compatibility": {
+    key: "strictCompatibility",
+    parse: parseBoolean,
+    expected: "true or false",
+  },
+  "strict-variables": {
+    key: "strictVariables",
+    parse: parseBoolean,
+    expected: "true or false",
+  },
+};
+
+/**
+ * Apply the settings block of the Compose files
+ *
+ * A setting given as a workflow input wins over the Compose file, which wins
+ * over the default. Every value is validated, including overridden ones, so
+ * a mistake in the file surfaces in every environment that deploys it.
+ *
+ * @param settings Settings parsed from the inputs
+ * @param block Merged settings block of the Compose files
+ * @returns A copy of the settings with the block applied
+ */
+export function applyStackSettings<T extends Settings>(
+  settings: T,
+  block: Readonly<Record<string, unknown>>,
+): T {
+  const resolved = { ...settings };
+
+  for (const [name, value] of Object.entries(block)) {
+    const setting = stackSettings[name];
+
+    if (!setting) {
+      warning(
+        `Ignoring unknown setting "${name}" in "${stackSettingsKey}". ` +
+          `Supported settings: ${Object.keys(stackSettings).join(", ")}.`,
+      );
+      continue;
+    }
+
+    const parsed = setting.parse(value);
+
+    if (parsed === undefined) {
+      throw new Error(
+        `The "${name}" setting in "${stackSettingsKey}" must be ` +
+          `${setting.expected}, but is "${value}".`,
+      );
+    }
+
+    if (settings.explicitInputs?.has(name)) {
+      info(
+        `The "${name}" input overrides the "${name}" setting in ` +
+          `"${stackSettingsKey}"`,
+      );
+      continue;
+    }
+
+    Object.assign(resolved, { [setting.key]: parsed });
+  }
+
+  return resolved;
+}
+
+/**
  * Parse settings from GitHub Actions inputs
  */
 export function parseSettings(env: NodeJS.ProcessEnv) {
@@ -54,38 +179,59 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
   variables.set("MATCHORY_DEPLOYMENT_STACK", stack);
   variables.set("MATCHORY_DEPLOYMENT_VERSION", version);
 
+  // Inputs a Compose file may also set have no default in action.yml, so an
+  // unset one can be told apart from one set to its default value.
+  const explicitInputs = new Set<string>();
+  const optionalBooleanInput = (name: string) => {
+    const value = getOptionalBooleanInput(name);
+
+    if (value !== undefined) {
+      explicitInputs.add(name);
+    }
+
+    return value;
+  };
+  const optionalInput = (name: string) => {
+    const value = getInput(name);
+
+    if (value) {
+      explicitInputs.add(name);
+    }
+
+    return value;
+  };
+
   const healthCheckWarnings =
-    getBooleanInput("health-check-warnings", { required: false }) ?? true;
-  const keyInterpolation =
-    getBooleanInput("key-interpolation", { required: false }) ?? false;
-  const manageVariables =
-    getBooleanInput("manage-variables", { required: false }) ?? true;
-  const monitor = getBooleanInput("monitor", { required: false }) ?? false;
+    optionalBooleanInput("health-check-warnings") ?? true;
+  const keyInterpolation = optionalBooleanInput("key-interpolation") ?? false;
+  const manageVariables = optionalBooleanInput("manage-variables") ?? true;
+  const monitor = optionalBooleanInput("monitor") ?? false;
   const strictCompatibility =
-    getBooleanInput("strict-compatibility", { required: false }) ?? false;
-  const strictVariables =
-    getBooleanInput("strict-variables", { required: false }) ?? true;
+    optionalBooleanInput("strict-compatibility") ?? false;
+  const strictVariables = optionalBooleanInput("strict-variables") ?? true;
   const uploadComposeSpec =
     getBooleanInput("upload-compose-spec", { required: false }) ?? true;
 
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
-    envVarPrefix: (getInput("env-var-prefix") || "DEPLOYMENT").replace(
+    deploymentLabels: inferDeploymentLabels(version, env),
+    envVarPrefix: (optionalInput("env-var-prefix") || "DEPLOYMENT").replace(
       /_$/,
       "",
     ),
+    explicitInputs,
     healthCheckWarnings,
     keyInterpolation,
     manageVariables,
     monitor,
     monitorInterval: parsePositiveSeconds(
-      getInput("monitor-interval"),
+      optionalInput("monitor-interval"),
       "monitor-interval",
       5,
       monitor,
     ),
     monitorTimeout: parsePositiveSeconds(
-      getInput("monitor-timeout"),
+      optionalInput("monitor-timeout"),
       "monitor-timeout",
       300,
       monitor,
@@ -98,6 +244,21 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
     variables,
     version,
   });
+}
+
+// Read a boolean input that has no default. getBooleanInput rejects the empty
+// string an unset input reads as, so that case is told apart afterwards;
+// any other value it rejects is a genuine mistake.
+function getOptionalBooleanInput(name: string): boolean | undefined {
+  try {
+    return getBooleanInput(name);
+  } catch (error) {
+    if (!getInput(name)) {
+      return undefined;
+    }
+
+    throw error;
+  }
 }
 
 // Parse a whole-second duration input. An unset input falls back to the

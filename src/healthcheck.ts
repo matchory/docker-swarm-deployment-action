@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
+import type { ServiceOptions } from "./labels.js";
 import type { Settings } from "./settings.js";
 
 export interface HealthCheck {
@@ -18,12 +19,20 @@ export interface HealthCheck {
 export function validateHealthChecks(
   spec: ComposeSpec,
   settings: Pick<Readonly<Settings>, "healthCheckWarnings">,
+  serviceOptions?: ReadonlyMap<
+    string,
+    Pick<ServiceOptions, "healthCheckWarnings">
+  >,
 ) {
-  if (!settings.healthCheckWarnings) {
-    return;
-  }
-
   for (const [name, service] of Object.entries(spec.services)) {
+    const enabled =
+      serviceOptions?.get(name)?.healthCheckWarnings ??
+      settings.healthCheckWarnings;
+
+    if (!enabled) {
+      continue;
+    }
+
     const healthcheck = (service as { healthcheck?: HealthCheck }).healthcheck;
 
     if (!healthcheck || isHealthCheckDisabled(healthcheck)) {

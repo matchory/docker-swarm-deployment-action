@@ -482,7 +482,7 @@ function validateTopLevelKeys(
   }
 }
 
-function labelsToMap(labels: unknown): Record<string, string> {
+export function labelsToMap(labels: unknown): Record<string, string> {
   if (Array.isArray(labels)) {
     const map: Record<string, string> = {};
 

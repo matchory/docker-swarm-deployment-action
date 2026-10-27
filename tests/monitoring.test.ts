@@ -1410,6 +1410,100 @@ describe("Monitoring", () => {
     });
   });
 
+  describe("service options", () => {
+    const updating = (name: string) =>
+      ({
+        ID: `${name}_id`,
+        Spec: { Name: `testso_${name}` },
+        UpdateStatus: { State: "updating" },
+      }) as ServiceWithMetadata;
+    const completed = (name: string) =>
+      ({
+        ID: `${name}_id`,
+        Spec: { Name: `testso_${name}` },
+        UpdateStatus: { State: "completed" },
+      }) as ServiceWithMetadata;
+
+    it("should not wait for services that opt out", async () => {
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        updating("migrate"),
+        completed("web"),
+      ]);
+
+      await monitorDeployment(
+        settings,
+        undefined,
+        new Map([
+          ["migrate", { monitor: false, monitorTimeout: 300 }],
+          ["web", { monitor: true, monitorTimeout: 300 }],
+        ]),
+      );
+
+      const core = await import("@actions/core");
+      expect(core.info).toHaveBeenCalledWith(
+        "All services have been deployed successfully",
+      );
+      expect(engine.listServiceTasks).not.toHaveBeenCalled();
+    });
+
+    it("should monitor services that opt in while the stack does not", async () => {
+      const listServices = vi
+        .spyOn(engine, "listServices")
+        .mockResolvedValue([completed("web"), updating("worker")]);
+
+      await monitorDeployment(
+        { ...settings, monitor: false },
+        undefined,
+        new Map([
+          ["web", { monitor: true, monitorTimeout: 300 }],
+          ["worker", { monitor: false, monitorTimeout: 300 }],
+        ]),
+      );
+
+      expect(listServices).toHaveBeenCalledOnce();
+    });
+
+    it("should skip monitoring when every service opts out", async () => {
+      const listServices = vi.spyOn(engine, "listServices");
+
+      await monitorDeployment(
+        settings,
+        undefined,
+        new Map([["web", { monitor: false, monitorTimeout: 300 }]]),
+      );
+
+      const core = await import("@actions/core");
+      expect(listServices).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenCalledWith(
+        "Post-Deployment Monitoring is disabled",
+      );
+    });
+
+    it("should time out a service at its own timeout", async () => {
+      vi.useFakeTimers();
+      vi.spyOn(engine, "listServices").mockResolvedValue([
+        updating("web"),
+        updating("slow"),
+      ]);
+      vi.spyOn(engine, "getServiceLogs").mockResolvedValue([]);
+
+      const promise = expect(
+        monitorDeployment(
+          { ...settings, monitorInterval: 1 },
+          undefined,
+          new Map([
+            ["web", { monitor: true, monitorTimeout: 3 }],
+            ["slow", { monitor: true, monitorTimeout: 600 }],
+          ]),
+        ),
+      ).rejects.toThrow(
+        /Deployment timed out after 3s: 0\/2 services converged.*"com\.matchory\.deployment\.monitor-timeout" service label/,
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+    });
+  });
+
   describe("parallel service checks", () => {
     it("should fetch tasks for all stuck services in parallel", async () => {
       vi.useFakeTimers();

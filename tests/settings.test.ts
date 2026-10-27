@@ -1,7 +1,7 @@
 import { env } from "node:process";
 import * as core from "@actions/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseSettings } from "../src/settings.js";
+import { applyStackSettings, parseSettings } from "../src/settings.js";
 
 vi.mock("@actions/core", { spy: true });
 
@@ -1121,6 +1121,188 @@ SECRET2=simple_secret`;
       const settings = parseSettings(env);
 
       expect(settings.monitorInterval).toBe(5);
+    });
+  });
+
+  describe("explicit inputs", () => {
+    it("should record no explicit inputs when none are set", () => {
+      const settings = parseSettings(env);
+
+      expect(settings.explicitInputs).toEqual(new Set());
+    });
+
+    it("should record the stack settings set as inputs", () => {
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) =>
+          ({ "env-var-prefix": "APP", "monitor-timeout": "60" })[name] || "",
+      );
+      booleanInputs.monitor = false;
+      booleanInputs["strict-variables"] = true;
+      booleanInputs["upload-compose-spec"] = false;
+
+      const settings = parseSettings(env);
+
+      expect(settings.explicitInputs).toEqual(
+        new Set([
+          "env-var-prefix",
+          "monitor",
+          "monitor-timeout",
+          "strict-variables",
+        ]),
+      );
+    });
+
+    it("should reject an invalid boolean input", () => {
+      vi.spyOn(core, "getBooleanInput").mockImplementation((name) => {
+        if (name === "monitor") {
+          throw new TypeError("Input does not meet YAML 1.2 Core Schema");
+        }
+
+        return booleanInputs[name] as boolean;
+      });
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "monitor" ? "yes" : "",
+      );
+
+      expect(() => parseSettings(env)).toThrow(/Core Schema/);
+    });
+
+    it("should default an unset boolean input", () => {
+      vi.spyOn(core, "getBooleanInput").mockImplementation((name) => {
+        if (name === "monitor") {
+          throw new TypeError("Input does not meet YAML 1.2 Core Schema");
+        }
+
+        return booleanInputs[name] as boolean;
+      });
+      vi.spyOn(core, "getInput").mockReturnValue("");
+
+      const settings = parseSettings(env);
+
+      expect(settings.monitor).toBe(false);
+      expect(settings.explicitInputs?.has("monitor")).toBe(false);
+    });
+  });
+
+  describe("deployment labels", () => {
+    it("should infer the deployment labels from the environment", () => {
+      vi.stubEnv("GITHUB_SHA", "4fadb584c2bad24be4467665cc6874dc57c2034e");
+      vi.stubEnv("GITHUB_REF", "refs/heads/main");
+      vi.stubEnv("GITHUB_ACTOR", undefined);
+      vi.stubEnv("GITHUB_RUN_ID", undefined);
+
+      const settings = parseSettings(env);
+
+      expect(settings.deploymentLabels).toEqual({
+        "com.matchory.deployment.version": "4fadb58",
+        "com.matchory.deployment.commit":
+          "4fadb584c2bad24be4467665cc6874dc57c2034e",
+        "com.matchory.deployment.ref": "refs/heads/main",
+      });
+    });
+  });
+
+  describe("applyStackSettings", () => {
+    const settings = {
+      envVarPrefix: "DEPLOYMENT",
+      explicitInputs: new Set<string>(),
+      healthCheckWarnings: true,
+      keyInterpolation: false,
+      manageVariables: true,
+      monitor: false,
+      monitorInterval: 5,
+      monitorTimeout: 300,
+      secretValues: new Map(),
+      stack: "test",
+      strictCompatibility: false,
+      strictVariables: true,
+      uploadComposeSpec: true,
+      variables: new Map(),
+      version: "1.0.0",
+    };
+
+    it("should apply every supported setting", () => {
+      const resolved = applyStackSettings(settings, {
+        "env-var-prefix": "APP_",
+        "health-check-warnings": false,
+        "key-interpolation": true,
+        "manage-variables": "false",
+        monitor: true,
+        "monitor-interval": 10,
+        "monitor-timeout": "600",
+        "strict-compatibility": true,
+        "strict-variables": false,
+      });
+
+      expect(resolved).toEqual({
+        ...settings,
+        envVarPrefix: "APP",
+        healthCheckWarnings: false,
+        keyInterpolation: true,
+        manageVariables: false,
+        monitor: true,
+        monitorInterval: 10,
+        monitorTimeout: 600,
+        strictCompatibility: true,
+        strictVariables: false,
+      });
+    });
+
+    it("should not modify the given settings", () => {
+      applyStackSettings(settings, { monitor: true });
+
+      expect(settings.monitor).toBe(false);
+    });
+
+    it("should let an explicit input win over the Compose file", () => {
+      const resolved = applyStackSettings(
+        { ...settings, explicitInputs: new Set(["monitor"]) },
+        { monitor: true, "monitor-timeout": 600 },
+      );
+
+      expect(resolved.monitor).toBe(false);
+      expect(resolved.monitorTimeout).toBe(600);
+      expect(core.info).toHaveBeenCalledWith(
+        'The "monitor" input overrides the "monitor" setting in ' +
+          '"x-matchory-deployment"',
+      );
+    });
+
+    it("should reject an invalid value even if an input overrides it", () => {
+      expect(() =>
+        applyStackSettings(
+          { ...settings, explicitInputs: new Set(["monitor"]) },
+          { monitor: "yes" },
+        ),
+      ).toThrow(
+        'The "monitor" setting in "x-matchory-deployment" must be true or ' +
+          'false, but is "yes".',
+      );
+    });
+
+    it.each([
+      ["monitor-timeout", 0, /positive whole number of seconds/],
+      ["monitor-interval", "5s", /positive whole number of seconds/],
+      ["env-var-prefix", "", /non-empty string/],
+      ["env-var-prefix", 42, /non-empty string/],
+      ["strict-variables", null, /true or false/],
+    ])("should reject %s: %j", (name, value, message) => {
+      expect(() => applyStackSettings(settings, { [name]: value })).toThrow(
+        message,
+      );
+    });
+
+    it("should warn about and ignore unknown settings", () => {
+      const resolved = applyStackSettings(settings, {
+        "stack-name": "other",
+      });
+
+      expect(resolved).toEqual(settings);
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Ignoring unknown setting "stack-name" in "x-matchory-deployment"',
+        ),
+      );
     });
   });
 });
