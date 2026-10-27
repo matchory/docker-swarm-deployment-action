@@ -389,7 +389,7 @@ export async function normalizeSpec(
   settings: Readonly<Settings>,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
-  const spec = prepared.some((item) => containsOverrideTag(item.spec))
+  const spec = prepared.some(({ spec }) => needsComposeMerge(spec))
     ? await mergeThenReconcile(prepared, settings, onUndefined)
     : await reconcileThenMerge(prepared, settings);
 
@@ -402,6 +402,18 @@ export async function normalizeSpec(
   }
 
   return spec;
+}
+
+// Merge tags and `extends` need `docker compose config`: `docker stack config`
+// ignores the tags, and rejects `extends` as a forbidden property
+function needsComposeMerge(spec: ComposeSpec) {
+  return (
+    containsOverrideTag(spec) ||
+    Object.values(spec.services ?? {}).some(
+      (service) =>
+        typeof service === "object" && service !== null && "extends" in service,
+    )
+  );
 }
 
 // Write a spec to a uniquely-named temp file in `dir`, so the docker merge tool
@@ -441,7 +453,8 @@ async function reconcileThenMerge(
 }
 
 // Tag path: merge with `docker compose config` (which honors the
-// !reset/!override tags and emits a tag-free spec), reconcile the merged
+// !reset/!override tags, resolves `extends`, and emits a tag-free spec),
+// reconcile the merged
 // spec for Swarm, then normalize via `docker stack config`.
 async function mergeThenReconcile(
   prepared: Array<{ spec: ComposeSpec; baseDir: string }>,
@@ -450,9 +463,9 @@ async function mergeThenReconcile(
 ) {
   if (!(await isComposePluginAvailable())) {
     throw new Error(
-      'Compose file uses the "!reset"/"!override" merge tags, which ' +
-        "require the Docker Compose v2 plugin ('docker compose') on the " +
-        "runner. Install it (it ships with GitHub-hosted runners) or " +
+      'Compose file uses "extends" or the "!reset"/"!override" merge ' +
+        "tags, which require the Docker Compose v2 plugin ('docker compose') " +
+        "on the runner. Install it (it ships with GitHub-hosted runners) or " +
         "inline the override.",
     );
   }

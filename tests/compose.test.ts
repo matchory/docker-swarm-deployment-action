@@ -968,6 +968,34 @@ describe("Compose", () => {
       expect(engine.normalizeStackSpecification).toHaveBeenCalled();
     });
 
+    // `docker stack config` rejects `extends` as a forbidden property
+    it("merges with docker compose config when a service uses extends", async () => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      const merge = vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      // The merged spec, with `extends` resolved
+      vi.spyOn(yaml, "load").mockReturnValue({
+        services: { base: { image: "nginx" }, web: { image: "nginx" } },
+      });
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { base: { image: "nginx" }, web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              base: { image: "nginx" },
+              web: { extends: "base" },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(merge).toHaveBeenCalled();
+    });
+
     it("writes the input spec beside its compose file so relative paths resolve", async () => {
       vi.spyOn(crypto, "randomUUID").mockReturnValue(
         "10000000-0000-4000-0000-000000000000",
