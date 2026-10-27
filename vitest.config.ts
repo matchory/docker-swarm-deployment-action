@@ -1,7 +1,9 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Needs a swarm; run with vitest.swarm.config.ts
+    exclude: [...configDefaults.exclude, "tests/swarm/**"],
     coverage: {
       enabled: true,
       include: ["src/**/*.ts"],

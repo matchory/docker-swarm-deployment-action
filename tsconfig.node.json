@@ -10,7 +10,7 @@
   },
   "exclude": ["dist", "node_modules"],
   "include": [
-    "tests/**/*.test.ts",
+    "tests/**/*.ts",
     "src/**/*.ts",
     "*.config.mjs",
     "*.config.js",

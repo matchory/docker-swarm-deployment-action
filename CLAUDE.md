@@ -16,6 +16,7 @@ post-deployment monitoring. Written in TypeScript, runs on Node 24.
 | Package (TS->dist) | `npm run package`                      |
 | Run tests          | `npm run test`                         |
 | Run single test    | `npx vitest run tests/compose.test.ts` |
+| Run swarm tests    | `npm run test:swarm`                   |
 | Typecheck          | `npm run typecheck`                    |
 | Lint               | `npm run lint`                         |
 | Format check       | `npm run format:check`                 |
@@ -80,10 +81,19 @@ Docker never triggers a rollback.
 
 ## CI
 
-Four workflows run on push to main: `ci.yml` (tests),
+Five workflows run on push to main: `ci.yml` (tests),
 `linter.yml` (super-linter), `licensed.yml` (license compliance),
-and `check-dist.yml` (rebuilds `dist/` and fails if the committed
-bundle is stale).
+`check-dist.yml` (rebuilds `dist/` and fails if the committed
+bundle is stale), and `swarm.yml` (swarm scenarios, below).
+
+`swarm.yml` runs `tests/swarm` against a real single-node swarm,
+one matrix job per file, plus a smoke job that runs the committed
+action through `uses: ./`. The harness (`tests/swarm/harness.ts`)
+runs `node dist/index.js` with `INPUT_*` variables and the
+defaults from `action.yml`, and passes only a minimal environment,
+because every environment variable becomes a deployment variable.
+Locally, the scenarios run against the current Docker context;
+build `dist/` first.
 
 `dist/` and `.licenses/` are both derived from `package-lock.json`,
 so a dependency bump alone makes `check-dist.yml` and
@@ -139,6 +149,18 @@ that parses TypeScript itself rather than one that loads
   keeps that to a few thousand characters at worst instead of a quarter
   megabyte; the limit is soft, so some lines still overshoot it.
   Prefer failing through `core.setFailed` so it never comes up.
+- Swarm reuses a freed overlay subnet immediately. Deploying a
+  stack right after removing one whose services were updated gets
+  its tasks rejected with "Pool overlaps with other one on this
+  address space" for about 20s. The swarm tests therefore remove
+  their stacks only after the last file (`global-setup.ts`).
+- `docker stack rm --detach=false` with several stack names has
+  hung after removing all but the last. Remove one per call. It
+  also fails on a network still attached to a stopping task and
+  leaves the network behind; calling it again removes it.
+- Swarm prefixes task errors with the exit code, e.g. `task:
+  non-zero exit (137): dockerexec: unhealthy container`, so the
+  exit-code patterns in `categorizeTaskError` must stay last.
 - `script/bundle.mjs` builds with `write: false` and only clears
   `dist/` once the bundle and the license scan have both succeeded --
   a build error must not leave the committed directory half deleted.
