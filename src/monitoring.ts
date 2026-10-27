@@ -674,6 +674,13 @@ const errorPatterns: Array<{
     category: "image_pull",
     headline: (e) => `Image could not be pulled: ${e}`,
   },
+  // Before the exit codes: Swarm kills an unhealthy container, so its error
+  // reads "task: non-zero exit (137): dockerexec: unhealthy container".
+  {
+    test: (e) => /unhealthy container/.test(e),
+    category: "health_check",
+    headline: () => "Container failed health check",
+  },
   {
     test: (e) => /non-zero exit \(137\)/.test(e),
     category: "oom_kill",
@@ -686,11 +693,6 @@ const errorPatterns: Array<{
       const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
       return `Container exited with code ${code}`;
     },
-  },
-  {
-    test: (e) => /unhealthy container/.test(e),
-    category: "health_check",
-    headline: () => "Container failed health check",
   },
   {
     test: (e) => /no suitable node/.test(e),

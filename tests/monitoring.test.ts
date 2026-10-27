@@ -1129,6 +1129,19 @@ describe("Monitoring", () => {
       });
     });
 
+    // Swarm kills an unhealthy container, so the task error carries exit
+    // code 137 as well, though the container was not OOM-killed.
+    it("should categorize health check failures before OOM kills", () => {
+      expect(
+        categorizeTaskError(
+          "task: non-zero exit (137): dockerexec: unhealthy container",
+        ),
+      ).toEqual({
+        category: "health_check",
+        headline: "Container failed health check",
+      });
+    });
+
     it("should categorize scheduling failures", () => {
       expect(
         categorizeTaskError(
