@@ -10,9 +10,11 @@ on:
       - main
     paths:
       - .github/workflows/swarm.yml
+      - .node-version
       - action.yml
       - dist/**
       - package-lock.json
+      - script/bundle.mjs
       - src/**
       - tests/swarm/**
       - vitest.swarm.config.ts
@@ -21,9 +23,11 @@ on:
       - main
     paths:
       - .github/workflows/swarm.yml
+      - .node-version
       - action.yml
       - dist/**
       - package-lock.json
+      - script/bundle.mjs
       - src/**
       - tests/swarm/**
       - vitest.swarm.config.ts
@@ -32,23 +36,41 @@ permissions:
   contents: read
 
 jobs:
+  # One scenario job per file in tests/swarm, so that the files run in
+  # parallel, and a new file cannot be left out of CI
+  list:
+    name: List Scenarios
+    runs-on: ubuntu-latest
+
+    outputs:
+      scenarios: ${{ steps.list.outputs.scenarios }}
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+          sparse-checkout: tests/swarm
+
+      - name: List Scenario Files
+        id: list
+        run: |
+          scenarios=$(find tests/swarm -name '*.test.ts' -printf '%f\n' \
+            | sed 's/\.test\.ts$//' | jq --raw-input --slurp --compact-output \
+            'split("\n") | map(select(. != "")) | sort')
+          echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
+
   scenarios:
     name: Scenarios (${{ matrix.scenario }})
+    needs: list
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     strategy:
       fail-fast: false
       matrix:
-        # One job per file, so that the files run in parallel
-        scenario:
-          - deploy
-          - jobs
-          - monitoring
-          - profiles
-          - settings
-          - teardown
-          - variables
+        scenario: ${{ fromJSON(needs.list.outputs.scenarios) }}
 
     steps:
       - name: Checkout
