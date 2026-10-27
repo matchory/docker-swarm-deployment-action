@@ -24,6 +24,10 @@ export interface Settings {
    * Labels written to every service; see `addDeploymentLabels`
    */
   deploymentLabels?: Readonly<Record<string, string>>;
+  /**
+   * Remove the stack instead of deploying it
+   */
+  destroy?: boolean;
   envVarPrefix: string;
   healthCheckWarnings: boolean;
   keyInterpolation: boolean;
@@ -220,7 +224,19 @@ function resolveStackSettings(
 export function parseSettings(env: NodeJS.ProcessEnv) {
   debug("Parsing settings from inputs");
 
-  const stack = inferStackName(getInput("stack-name"), env);
+  const stackName = getInput("stack-name");
+  const stack = inferStackName(stackName, env);
+  const destroy = getBooleanInput("destroy", { required: false }) ?? false;
+
+  // The inferred name is usually the repository's main stack, so a teardown
+  // job that forgot to name its preview stack would remove that instead.
+  if (destroy && !stackName) {
+    throw new Error(
+      `The "destroy" input requires the "stack-name" input, so a teardown ` +
+        `never falls back to the stack named after the repository.`,
+    );
+  }
+
   const version = inferVersion(getInput("version"), env);
   const { variables, secretValues } = inferVariables(
     {
@@ -247,6 +263,7 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
     deploymentLabels: inferDeploymentLabels(version, env),
+    destroy,
     ...resolveStackSettings(stackInputs, {}),
     secretValues,
     stack,

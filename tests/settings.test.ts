@@ -29,6 +29,7 @@ describe("settings", () => {
     expect(settings.stack).toBe("unknown");
     expect(settings.version).toBe("unknown");
     expect(settings.composeFiles).toEqual([]);
+    expect(settings.destroy).toBe(false);
     expect(settings.envVarPrefix).toBe("DEPLOYMENT");
     expect(settings.healthCheckWarnings).toBe(true);
     expect(settings.keyInterpolation).toBe(false);
@@ -1321,6 +1322,39 @@ SECRET2=simple_secret`;
 
       expect(resolved.monitor).toBe(true);
       expect(resolved.monitorTimeout).toBe(42);
+    });
+  });
+
+  describe("destroy", () => {
+    it("should require an explicit stack name", () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+      booleanInputs.destroy = true;
+
+      expect(() => parseSettings(env)).toThrow(
+        'The "destroy" input requires the "stack-name" input',
+      );
+    });
+
+    it("should check the stack name before parsing variables", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "secrets" ? "TOKEN=abc" : "",
+      );
+      booleanInputs.destroy = true;
+
+      expect(() => parseSettings(env)).toThrow(/requires the "stack-name"/);
+      expect(core.setSecret).not.toHaveBeenCalled();
+    });
+
+    it("should destroy the named stack", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "stack-name" ? "preview-42" : "",
+      );
+      booleanInputs.destroy = true;
+
+      const settings = parseSettings(env);
+
+      expect(settings.destroy).toBe(true);
+      expect(settings.stack).toBe("preview-42");
     });
   });
 });
