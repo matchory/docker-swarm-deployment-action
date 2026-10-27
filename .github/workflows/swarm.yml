@@ -1,0 +1,169 @@
+# Runs the action against a real single-node swarm. The unit tests mock
+# Docker with the output we believe it produces; these scenarios check that
+# belief against Docker itself. See tests/swarm/harness.ts.
+
+name: Swarm Scenarios
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/swarm.yml
+      - action.yml
+      - dist/**
+      - package-lock.json
+      - src/**
+      - tests/swarm/**
+      - vitest.swarm.config.ts
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/swarm.yml
+      - action.yml
+      - dist/**
+      - package-lock.json
+      - src/**
+      - tests/swarm/**
+      - vitest.swarm.config.ts
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    name: Scenarios (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One swarm per file, so that no file deploys right after another
+        # removed its stacks; see tests/swarm/global-setup.ts.
+        scenario:
+          - deploy
+          - jobs
+          - monitoring
+          - profiles
+          - settings
+          - teardown
+          - variables
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install Dependencies
+        id: npm-ci
+        run: npm ci
+
+      # Built from the checked-out source rather than the committed bundle;
+      # check-dist.yml ensures the two match.
+      - name: Bundle
+        id: bundle
+        run: npm run package
+
+      - name: Initialize Swarm
+        id: swarm
+        run: |
+          docker version
+          docker swarm init
+          docker pull --quiet busybox:1.37
+
+      - name: Run Scenarios
+        id: scenarios
+        run: >-
+          npx vitest run --config vitest.swarm.config.ts
+          tests/swarm/${{ matrix.scenario }}.test.ts
+
+  # Runs the committed action through `uses:`, which the scenarios bypass:
+  # action.yml, its input defaults, the outputs and the artifact upload.
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      STACK: e2e-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+
+      - name: Initialize Swarm
+        id: swarm
+        run: |
+          docker swarm init
+          cat > smoke.compose.yaml <<'EOF'
+          services:
+            app:
+              image: busybox:1.37
+              command: ["sleep", "86400"]
+              configs: [greeting]
+            migrate:
+              image: busybox:1.37
+              command: ["sh", "-c", "sleep 3"]
+              deploy:
+                mode: replicated-job
+          configs:
+            greeting:
+              content: hello ${NAME}
+          EOF
+
+      - name: Deploy
+        id: deploy
+        uses: ./
+        with:
+          stack-name: ${{ env.STACK }}
+          compose-file: smoke.compose.yaml
+          version: smoke
+          variables: NAME=world
+          monitor: "true"
+          monitor-interval: "1"
+          monitor-timeout: "60"
+
+      - name: Check Deployment
+        id: check-deploy
+        env:
+          STATUS: ${{ steps.deploy.outputs.status }}
+          STACK_NAME: ${{ steps.deploy.outputs.stack-name }}
+          VERSION: ${{ steps.deploy.outputs.version }}
+        run: |
+          test "$STATUS" = success
+          test "$STACK_NAME" = "$STACK"
+          test "$VERSION" = smoke
+          label='{{ index .Spec.Labels "com.matchory.deployment.version" }}'
+          test "$(docker service inspect "${STACK}_app" --format "$label")" \
+            = smoke
+          docker service ls --filter "name=${STACK}_migrate" \
+            --format '{{.Replicas}}' | grep --fixed-strings '(1/1 completed)'
+
+      - name: Destroy
+        id: destroy
+        uses: ./
+        with:
+          stack-name: ${{ env.STACK }}
+          destroy: "true"
+
+      - name: Check Removal
+        id: check-destroy
+        run: |
+          test -z "$(docker service ls --quiet \
+            --filter "label=com.docker.stack.namespace=${STACK}")"
+          test -z "$(docker config ls --quiet \
+            --filter "label=com.docker.stack.namespace=${STACK}")"

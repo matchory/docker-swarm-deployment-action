@@ -974,6 +974,7 @@ The following scripts are available:
 |:----------------------|:-----------------------|
 | Run the full pipeline | `npm run all`          |
 | Run the tests         | `npm run test`         |
+| Run the swarm tests   | `npm run test:swarm`   |
 | Type-check            | `npm run typecheck`    |
 | Lint                  | `npm run lint`         |
 | Check formatting      | `npm run format:check` |
@@ -982,6 +983,10 @@ The following scripts are available:
 
 Linting and formatting are handled by [Biome](https://biomejs.dev/), and the tests run on
 [Vitest](https://vitest.dev/).
+
+The swarm tests in `tests/swarm` deploy to the swarm of your current Docker context and run the bundle in `dist/`, so
+run `npm run package` first. Their stacks are named `e2e-<area>-<random>`, or use the `SWARM_TEST_PREFIX` environment
+variable in place of `e2e`, and are removed after the run.
 
 ### Before Opening a Pull Request
 
