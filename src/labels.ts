@@ -16,6 +16,45 @@ export const runUrlLabel = "com.matchory.deployment.run-url";
 export const actorLabel = "com.matchory.deployment.actor";
 
 /**
+ * A kind of setting value: how to parse it, and what it must be
+ */
+export interface ValueType<T> {
+  parse: (value: unknown) => T | undefined;
+  expected: string;
+}
+
+export const booleanValue: ValueType<boolean> = {
+  parse: parseBoolean,
+  expected: "true or false",
+};
+
+export const secondsValue: ValueType<number> = {
+  parse: parseSeconds,
+  expected: "a positive whole number of seconds",
+};
+
+/**
+ * Parse a setting value, or throw naming the setting
+ *
+ * @param value Value to parse
+ * @param type Kind of value expected
+ * @param subject Description of the setting, starting the error message
+ */
+export function parseValue<T>(
+  value: unknown,
+  type: ValueType<T>,
+  subject: string,
+): T {
+  const parsed = type.parse(value);
+
+  if (parsed === undefined) {
+    throw new Error(`${subject} must be ${type.expected}, but is "${value}".`);
+  }
+
+  return parsed;
+}
+
+/**
  * Settings that a service can override with a label
  */
 export interface ServiceOptions {
@@ -48,39 +87,22 @@ export function resolveServiceOptions(
     const labels = labelsToMap(
       (service as { deploy?: { labels?: unknown } } | null)?.deploy?.labels,
     );
-    const read = <T>(
-      label: string,
-      parse: (value: unknown) => T | undefined,
-      expected: string,
-    ) => {
-      if (!(label in labels)) {
-        return undefined;
-      }
-
-      const value = parse(labels[label]);
-
-      if (value === undefined) {
-        throw new Error(
-          `The "${label}" label of service "${name}" must be ${expected}, ` +
-            `but is "${labels[label]}".`,
-        );
-      }
-
-      return value;
-    };
+    const read = <T>(label: string, type: ValueType<T>) =>
+      label in labels
+        ? parseValue(
+            labels[label],
+            type,
+            `The "${label}" label of service "${name}"`,
+          )
+        : undefined;
 
     options.set(name, {
       healthCheckWarnings:
-        read(healthCheckWarningsLabel, parseBoolean, "true or false") ??
+        read(healthCheckWarningsLabel, booleanValue) ??
         settings.healthCheckWarnings,
-      monitor:
-        read(monitorLabel, parseBoolean, "true or false") ?? settings.monitor,
+      monitor: read(monitorLabel, booleanValue) ?? settings.monitor,
       monitorTimeout:
-        read(
-          monitorTimeoutLabel,
-          parseSeconds,
-          "a positive whole number of seconds",
-        ) ?? settings.monitorTimeout,
+        read(monitorTimeoutLabel, secondsValue) ?? settings.monitorTimeout,
     });
   }
 
@@ -190,7 +212,9 @@ export function parseBoolean(value: unknown): boolean | undefined {
 export function parseSeconds(value: unknown): number | undefined {
   const text = String(value);
 
-  // Plain digits only, for the same reasons as the duration inputs
+  // Only plain digits are accepted. `Number.parseInt` would silently truncate
+  // instead of rejecting: it reads "5.9" as 5, "10s" as 10, and "1e3" as 1 --
+  // a thousandth of the duration the author asked for.
   if (!/^\d+$/.test(text) || Number(text) <= 0) {
     return undefined;
   }

@@ -24,7 +24,11 @@ import { pruneVariables, removeGeneratedVariableFiles } from "./variables.js";
  * Main deployment function
  */
 export async function deploy(inputSettings: Readonly<Settings>) {
-  let settings = inputSettings;
+  const composeFiles = await resolveComposeFiles(inputSettings);
+  const settings = applyStackSettings(
+    inputSettings,
+    await readStackSettings(composeFiles),
+  );
   let finalSpec: ComposeSpec;
   let serviceOptions: Map<string, ServiceOptions>;
 
@@ -32,11 +36,6 @@ export async function deploy(inputSettings: Readonly<Settings>) {
   const onUndefined = warnAboutUndefinedVariables();
 
   try {
-    const composeFiles = await resolveComposeFiles(settings);
-    settings = applyStackSettings(
-      settings,
-      await readStackSettings(composeFiles),
-    );
     const composeSpecs = (
       await loadComposeSpecs(composeFiles, settings, onUndefined)
     ).map((item) => ({

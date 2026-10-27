@@ -1292,6 +1292,15 @@ SECRET2=simple_secret`;
       );
     });
 
+    it("should suggest the setting a typo was meant to be", () => {
+      applyStackSettings(settings, { "monitor-timout": 600 });
+
+      expect(core.warning).toHaveBeenCalledWith(
+        'Ignoring unknown setting "monitor-timout" in ' +
+          '"x-matchory-deployment" — did you mean "monitor-timeout"?.',
+      );
+    });
+
     it("should warn about and ignore unknown settings", () => {
       const resolved = applyStackSettings(settings, {
         "stack-name": "other",

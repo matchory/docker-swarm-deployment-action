@@ -6,7 +6,15 @@ import {
   setSecret,
   warning,
 } from "@actions/core";
-import { inferDeploymentLabels, parseBoolean, parseSeconds } from "./labels.js";
+import {
+  booleanValue,
+  inferDeploymentLabels,
+  parseSeconds,
+  parseValue,
+  secondsValue,
+  type ValueType,
+} from "./labels.js";
+import { suggestion } from "./reconcile.js";
 
 /**
  * Deployment settings
@@ -56,11 +64,7 @@ export const stackSettingsKey = "x-matchory-deployment";
 // Inputs a Compose file may also set, with the setting each one maps to
 const stackSettings: Record<
   string,
-  {
-    key: keyof Settings;
-    parse: (value: unknown) => unknown;
-    expected: string;
-  }
+  { key: keyof Settings } & ValueType<unknown>
 > = {
   "env-var-prefix": {
     key: "envVarPrefix",
@@ -68,42 +72,14 @@ const stackSettings: Record<
       typeof value === "string" && value ? value.replace(/_$/, "") : undefined,
     expected: "a non-empty string",
   },
-  "health-check-warnings": {
-    key: "healthCheckWarnings",
-    parse: parseBoolean,
-    expected: "true or false",
-  },
-  "key-interpolation": {
-    key: "keyInterpolation",
-    parse: parseBoolean,
-    expected: "true or false",
-  },
-  "manage-variables": {
-    key: "manageVariables",
-    parse: parseBoolean,
-    expected: "true or false",
-  },
-  monitor: { key: "monitor", parse: parseBoolean, expected: "true or false" },
-  "monitor-interval": {
-    key: "monitorInterval",
-    parse: parseSeconds,
-    expected: "a positive whole number of seconds",
-  },
-  "monitor-timeout": {
-    key: "monitorTimeout",
-    parse: parseSeconds,
-    expected: "a positive whole number of seconds",
-  },
-  "strict-compatibility": {
-    key: "strictCompatibility",
-    parse: parseBoolean,
-    expected: "true or false",
-  },
-  "strict-variables": {
-    key: "strictVariables",
-    parse: parseBoolean,
-    expected: "true or false",
-  },
+  "health-check-warnings": { key: "healthCheckWarnings", ...booleanValue },
+  "key-interpolation": { key: "keyInterpolation", ...booleanValue },
+  "manage-variables": { key: "manageVariables", ...booleanValue },
+  monitor: { key: "monitor", ...booleanValue },
+  "monitor-interval": { key: "monitorInterval", ...secondsValue },
+  "monitor-timeout": { key: "monitorTimeout", ...secondsValue },
+  "strict-compatibility": { key: "strictCompatibility", ...booleanValue },
+  "strict-variables": { key: "strictVariables", ...booleanValue },
 };
 
 /**
@@ -128,20 +104,18 @@ export function applyStackSettings<T extends Settings>(
 
     if (!setting) {
       warning(
-        `Ignoring unknown setting "${name}" in "${stackSettingsKey}". ` +
-          `Supported settings: ${Object.keys(stackSettings).join(", ")}.`,
+        `Ignoring unknown setting "${name}" in "${stackSettingsKey}"` +
+          suggestion(name, new Set(Object.keys(stackSettings))) +
+          ".",
       );
       continue;
     }
 
-    const parsed = setting.parse(value);
-
-    if (parsed === undefined) {
-      throw new Error(
-        `The "${name}" setting in "${stackSettingsKey}" must be ` +
-          `${setting.expected}, but is "${value}".`,
-      );
-    }
+    const parsed = parseValue(
+      value,
+      setting,
+      `The "${name}" setting in "${stackSettingsKey}"`,
+    );
 
     if (settings.explicitInputs?.has(name)) {
       info(
@@ -278,12 +252,9 @@ function parsePositiveSeconds(
     return fallback;
   }
 
-  // Only plain digits are accepted. `Number.parseInt` would silently truncate
-  // instead of rejecting: it reads "5.9" as 5, "10s" as 10, and "1e3" as 1 --
-  // a thousandth of the duration the author asked for.
-  const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  const value = parseSeconds(raw);
 
-  if (!Number.isInteger(value) || value <= 0) {
+  if (value === undefined) {
     if (!monitor) {
       return fallback;
     }
