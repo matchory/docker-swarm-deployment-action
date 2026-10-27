@@ -204,6 +204,7 @@ async function inWorkspace<T>(
     join(directory, `compose.${index}.yaml`),
   );
   vi.mocked(core.warning).mockClear();
+  vi.mocked(core.error).mockClear();
 
   try {
     for (const [index, spec] of files.entries()) {
@@ -223,8 +224,17 @@ async function inWorkspace<T>(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const stderr = (error as { stderr?: string }).stderr ?? "";
+    // The action reports the output of a failed Docker command as errors
+    const reported = vi
+      .mocked(core.error)
+      .mock.calls.map(([output]) => String(output))
+      .join("\n");
 
-    return { ok: false, error: `${message}\n${stderr}`, warnings: warnings() };
+    return {
+      ok: false,
+      error: [message, stderr, reported].filter(Boolean).join("\n"),
+      warnings: warnings(),
+    };
   } finally {
     process.chdir(cwd);
 
