@@ -33,6 +33,7 @@
   - [How Compose Files Are Processed](#how-compose-files-are-processed)
     - [Compose-Spec to Swarm Reconciliation](#compose-spec-to-swarm-reconciliation)
     - [Variable interpolation](#variable-interpolation)
+    - [Selecting Services with Profiles](#selecting-services-with-profiles)
   - [Configuring Secrets and Configs](#configuring-secrets-and-configs)
     - [Loading Environment Variables or inline Content](#loading-environment-variables-or-inline-content)
     - [Smart Variable Resolution](#smart-variable-resolution)
@@ -191,6 +192,7 @@ Compose file; see [Stack Settings](#stack-settings).
 | `secrets`                 | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
 | `exclude-variables`       | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
 | `extra-variables`         | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
+| `profiles`\*              | _—_                                   | Compose profiles to activate. Only [their services](#selecting-services-with-profiles) and unprofiled ones are deployed.          |
 | `monitor`\*               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
 | `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
@@ -331,7 +333,7 @@ file is warned about, not fatal.
 | `build`                       | Kept + warned                        | ignored by swarm (provide a pre-built `image`)                                                                                                |
 | `develop`                     | Stripped + warned                    | no swarm equivalent (dev-only watch config)                                                                                                   |
 | `post_start` / `pre_stop`     | Stripped + warned                    | lifecycle hooks unsupported by swarm                                                                                                          |
-| `profiles`                    | Stripped + warned                    | unsupported; all services are always deployed                                                                                                 |
+| `profiles`                    | Selected or stripped + warned        | see [profiles](#selecting-services-with-profiles); without the `profiles` input, every service is deployed                                    |
 | `memswap_limit`               | Stripped + warned                    | no swarm swap-limit control                                                                                                                   |
 | `gpus`                        | Stripped + warned                    | use `deploy.resources.reservations.generic_resources` + node labels                                                                           |
 | `provider`                    | Service dropped + warned             | provider services cannot run on swarm                                                                                                         |
@@ -415,6 +417,27 @@ inputs are also available:
 
 - `MATCHORY_DEPLOYMENT_STACK`: The name of the stack being deployed.
 - `MATCHORY_DEPLOYMENT_VERSION`: The version of the stack being deployed.
+
+#### Selecting Services with Profiles
+
+[Compose profiles](https://docs.docker.com/compose/how-tos/profiles/) let one Compose file serve several environments,
+for example with a service that only runs on staging. Swarm has no notion of profiles, so the action selects the services
+itself when the `profiles` input is set:
+
+```yaml
+- name: Deploy to Docker Swarm
+  uses: matchory/docker-swarm-deployment-action@v1
+  with:
+    profiles: staging
+```
+
+It follows the rules of `docker compose --profile`. A service is deployed if it has no profiles or one of its profiles
+is active, and `*` activates every profile. When deploying multiple Compose files, a service's profiles are combined
+across them, and `!reset` and `!override` apply as usual. A deployed service that depends on a skipped one fails the
+deployment. Separate multiple profiles with commas or newlines, or list them in the
+[stack settings](#stack-settings).
+
+Without the `profiles` input, every service is deployed regardless of its profiles, and the action warns about them.
 
 ### Configuring Secrets and Configs
 
@@ -712,8 +735,8 @@ with it, so every workflow and environment deploying the file deploys it the sam
 #### Stack Settings
 
 The following inputs can also be set in a top-level `x-matchory-deployment` block: `env-var-prefix`,
-`manage-variables`, `strict-variables`, `strict-compatibility`, `key-interpolation`, `monitor`, `monitor-timeout`,
-`monitor-interval`, and `health-check-warnings`.
+`manage-variables`, `strict-variables`, `strict-compatibility`, `key-interpolation`, `profiles`, `monitor`,
+`monitor-timeout`, `monitor-interval`, and `health-check-warnings`.
 
 ```yaml
 x-matchory-deployment:

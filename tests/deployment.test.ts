@@ -547,6 +547,52 @@ describe("Deployment", () => {
       );
     });
 
+    it("should deploy only the services of the active profiles", async () => {
+      const loaded = {
+        version: "3.12",
+        services: {
+          web: { image: "nginx" },
+          debug: { image: "busybox", profiles: ["debug"] },
+        },
+      };
+      withSpec("services: {}", { web: { image: "nginx" } });
+      vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
+        { spec: loaded, baseDir: "." },
+      ]);
+
+      await deploy({ ...settings, profiles: ["prod"] });
+
+      expect(compose.normalizeSpec).toHaveBeenCalledWith(
+        [
+          {
+            spec: { version: "3.12", services: { web: { image: "nginx" } } },
+            baseDir: ".",
+          },
+        ],
+        expect.anything(),
+        expect.any(Function),
+      );
+    });
+
+    it("should deploy every service without profiles set", async () => {
+      const loaded = {
+        version: "3.12",
+        services: { debug: { image: "busybox", profiles: ["debug"] } },
+      };
+      withSpec("services: {}", { debug: { image: "busybox" } });
+      vi.spyOn(compose, "loadComposeSpecs").mockResolvedValue([
+        { spec: loaded, baseDir: "." },
+      ]);
+
+      await deploy(settings);
+
+      expect(compose.normalizeSpec).toHaveBeenCalledWith(
+        [{ spec: loaded, baseDir: "." }],
+        expect.anything(),
+        expect.any(Function),
+      );
+    });
+
     it("should monitor a stack whose services opt in", async () => {
       withSpec("services: {}", {
         web: {

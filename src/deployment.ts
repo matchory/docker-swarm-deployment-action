@@ -15,6 +15,7 @@ import {
   type ServiceOptions,
 } from "./labels.js";
 import { monitorDeployment } from "./monitoring.js";
+import { selectProfiles } from "./profiles.js";
 import { applyStackSettings, type Settings } from "./settings.js";
 import { assertOwnShares } from "./shares.js";
 import { warnAboutUndefinedVariables } from "./utils.js";
@@ -42,6 +43,11 @@ export async function deploy(inputSettings: Readonly<Settings>) {
       ...item,
       spec: interpolateTypedFields(item.spec, settings, onUndefined),
     }));
+
+    if (settings.profiles) {
+      selectProfiles(composeSpecs, settings.profiles);
+    }
+
     const composeSpec = await normalizeSpec(
       composeSpecs,
       settings,

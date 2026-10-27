@@ -28,6 +28,20 @@ export const booleanValue: ValueType<boolean> = {
   expected: "true or false",
 };
 
+export const listValue: ValueType<string[]> = {
+  parse: (value) => {
+    if (typeof value === "string") {
+      return value.split(/[\s,]+/).filter(Boolean);
+    }
+
+    return Array.isArray(value) &&
+      value.every((item) => typeof item === "string")
+      ? value
+      : undefined;
+  },
+  expected: "a list of names",
+};
+
 export const secondsValue: ValueType<number> = {
   parse: parseSeconds,
   expected: "a positive whole number of seconds",

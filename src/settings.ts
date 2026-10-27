@@ -9,6 +9,7 @@ import {
 import {
   booleanValue,
   inferDeploymentLabels,
+  listValue,
   parseValue,
   secondsValue,
   type ValueType,
@@ -31,6 +32,10 @@ export interface Settings {
   monitor: boolean;
   monitorInterval: number;
   monitorTimeout: number;
+  /**
+   * Profiles whose services to deploy; unset deploys every service
+   */
+  profiles?: string[];
   /**
    * Values that came from the `secrets` input, keyed by variable name
    *
@@ -69,6 +74,7 @@ type StackSettings = Pick<
   | "monitor"
   | "monitorInterval"
   | "monitorTimeout"
+  | "profiles"
   | "strictCompatibility"
   | "strictVariables"
 >;
@@ -105,6 +111,7 @@ const stackSettings: Record<
   monitor: { key: "monitor", default: false, ...booleanValue },
   "monitor-interval": { key: "monitorInterval", default: 5, ...secondsValue },
   "monitor-timeout": { key: "monitorTimeout", default: 300, ...secondsValue },
+  profiles: { key: "profiles", default: undefined, ...listValue },
   "strict-compatibility": {
     key: "strictCompatibility",
     default: false,
