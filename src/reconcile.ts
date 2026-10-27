@@ -457,7 +457,24 @@ function translateDependsOn(
     return;
   }
 
-  if (service.depends_on !== dependsOn) {
+  // Only conditions beyond starting, and restarts, are lost: Compose writes
+  // the short syntax as `{condition: service_started, required: true}` when
+  // it merges files, and Swarm ignores dependencies, optional ones included
+  const dropsBehavior =
+    service.depends_on !== dependsOn &&
+    Object.values(dependsOn as Record<string, unknown>).some((options) => {
+      const { condition, restart } = (options ?? {}) as {
+        condition?: unknown;
+        restart?: unknown;
+      };
+
+      return (
+        (condition !== undefined && condition !== "service_started") ||
+        restart === true
+      );
+    });
+
+  if (dropsBehavior) {
     diagnostics.warn(
       `Service "${name}" uses the long "depends_on" syntax; Docker Swarm has ` +
         `no startup ordering, so conditions are dropped and only the ` +

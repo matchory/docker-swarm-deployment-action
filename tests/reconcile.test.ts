@@ -178,6 +178,40 @@ describe("reconcileSwarmCompatibility", () => {
       );
     });
 
+    // `docker compose config` writes `depends_on: [db]` in this form, so a
+    // stack merged through it must still pass strict mode
+    it.each([
+      ["the short syntax as Compose merges it", { required: true }],
+      ["an optional dependency", { required: false }],
+    ])("converts %s without a warning", async (_, options) => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          depends_on: { db: { condition: "service_started", ...options } },
+        },
+        db: { image: "postgres" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: true });
+      expect((s.services.api as { depends_on: unknown }).depends_on).toEqual([
+        "db",
+      ]);
+      expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it("warns that a restart on dependency changes is dropped", async () => {
+      const s = spec({
+        api: {
+          image: "nginx",
+          depends_on: { db: { condition: "service_started", restart: true } },
+        },
+        db: { image: "postgres" },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("depends_on"),
+      );
+    });
+
     it("leaves list form unchanged and does not warn", async () => {
       const s = spec({
         api: { image: "nginx", depends_on: ["db"] },
