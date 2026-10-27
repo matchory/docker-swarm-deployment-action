@@ -46,6 +46,7 @@
     - [Stack Settings](#stack-settings)
     - [Service Labels](#service-labels)
     - [Deployment Labels](#deployment-labels)
+  - [Removing a Stack](#removing-a-stack)
   - [Post-Deployment Monitoring](#post-deployment-monitoring)
     - [Monitoring Timeout & Interval](#monitoring-timeout--interval)
   - [Health Check Validation](#health-check-validation)
@@ -195,6 +196,7 @@ Compose file; see [Stack Settings](#stack-settings).
 | `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
 | `health-check-warnings`\* | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
+| `destroy`                 | `false`                               | Whether to [remove the stack](#removing-a-stack) instead of deploying it.                                                         |
 | `upload-compose-spec`     | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
@@ -202,7 +204,7 @@ Compose file; see [Stack Settings](#stack-settings).
 | Output         | Description                                                          |
 |:---------------|:---------------------------------------------------------------------|
 | `status`       | The status of the deployment. Possible values: `success`, `failure`. |
-| `stack-name`   | The name of the stack that was deployed.                             |
+| `stack-name`   | The name of the stack that was deployed or removed.                  |
 | `version`      | The version of the stack that was deployed.                          |
 | `compose-spec` | The final compose specification used for the deployment.             |
 | `service-logs` | Logs of a failed service after deployment.                           |
@@ -789,6 +791,47 @@ Labels whose value the runner does not provide are left out. They replace labels
 
 Since they are service labels, not container labels, a new commit does not restart a service: Swarm updates the
 service's metadata in place and only rolls out new tasks for changes to the containers themselves.
+
+### Removing a Stack
+
+Setting the `destroy` input removes the stack instead of deploying it, for example to tear down a preview environment
+when its pull request is closed:
+
+```yaml
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Remove the preview stack
+        uses: matchory/docker-swarm-deployment-action@v1
+        with:
+          stack-name: preview-${{ github.event.number }}
+          destroy: true
+```
+
+The `stack-name` input is required here: the default, the repository name, is usually the name of the main stack, so
+a teardown job that forgot to name its preview stack would otherwise remove that.
+
+This runs `docker stack rm` and waits until the stack's services, networks, configs, and secrets are gone. Volumes are
+kept, so their data survives. No Compose file is read, so the job does not need to check out the repository. A stack
+that does not exist is not an error, so a teardown can safely run more than once. The `version` and `compose-spec`
+outputs are not set.
+
+To guard against a mistyped stack name, the action only removes a stack it deployed: one of its services must carry the
+[deployment labels](#deployment-labels), or one of its configs or secrets must be managed by the action for this stack.
+Otherwise, the action fails without removing anything. This does **not** tell a preview stack from your production
+stack, which the action deployed as well, so derive the stack name for the teardown the same way as for the preview
+deployment. A stack without services, configs, or secrets is left alone with a warning, so a wrong name does not go
+unnoticed.
+
+`docker stack rm` waits until every task of the stack has stopped, without a time limit of its own. Set
+[`timeout-minutes`](https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)
+on the job to bound it, for example when a node holding tasks of the stack is unreachable.
 
 ### Post-Deployment Monitoring
 
