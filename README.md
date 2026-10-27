@@ -432,10 +432,13 @@ itself when the `profiles` input is set:
 ```
 
 It follows the rules of `docker compose --profile`. A service is deployed if it has no profiles or one of its profiles
-is active, and `*` activates every profile. When deploying multiple Compose files, a service's profiles are combined
-across them, and `!reset` and `!override` apply as usual. A deployed service that depends on a skipped one fails the
-deployment. Separate multiple profiles with commas or newlines, or list them in the
-[stack settings](#stack-settings).
+is active, and `*` activates every profile. A service's profiles are combined across multiple Compose files and
+inherited through `extends`, `!reset` and `!override` apply as usual, and profile names may use variables. Separate
+multiple profiles with commas, spaces, or newlines, or list them in the [stack settings](#stack-settings).
+
+Skipped services are dropped before anything else reads the files, so their env files and variables are not required.
+A deployed service that depends on a skipped one loses that dependency with a warning; Swarm ignores `depends_on`
+anyway. A deployed service cannot `extend` a skipped one, though, since the stack would not contain its base.
 
 Without the `profiles` input, every service is deployed regardless of its profiles, and the action warns about them.
 

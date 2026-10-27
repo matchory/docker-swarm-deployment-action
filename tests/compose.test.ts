@@ -2287,6 +2287,53 @@ describe("Compose", () => {
     });
   });
 
+  describe("loadComposeSpecs with profiles", () => {
+    beforeEach(async () => {
+      const actual = await vi.importActual<typeof yaml>("js-yaml");
+      vi.mocked(yaml.load).mockImplementation(actual.load);
+    });
+
+    it("should skip inactive services before reading their env files", async () => {
+      readFile.mockImplementation(async (filename: string) => {
+        if (filename === "compose.yaml") {
+          return (
+            "services:\n" +
+            "  web:\n    image: nginx\n" +
+            "  debug:\n    image: busybox\n    profiles: [debug]\n" +
+            "    env_file: debug.env\n"
+          );
+        }
+
+        throw Object.assign(new Error(`ENOENT: ${filename}`), {
+          code: "ENOENT",
+        });
+      });
+
+      const specs = await loadComposeSpecs(
+        ["compose.yaml"],
+        defineSettings({
+          envVarPrefix: "APP",
+          healthCheckWarnings: false,
+          keyInterpolation: false,
+          manageVariables: false,
+          monitor: false,
+          monitorInterval: 5,
+          monitorTimeout: 300,
+          profiles: ["prod"],
+          secretValues: new Map(),
+          stack: "test",
+          strictCompatibility: false,
+          strictVariables: false,
+          uploadComposeSpec: false,
+          variables: new Map(),
+          version: "1.0.0",
+        }),
+      );
+
+      expect(Object.keys(specs[0].spec.services)).toEqual(["web"]);
+    });
+  });
+
   describe("readStackSettings", () => {
     beforeEach(async () => {
       const actual = await vi.importActual<typeof yaml>("js-yaml");

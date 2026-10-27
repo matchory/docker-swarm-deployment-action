@@ -97,8 +97,8 @@ inputs:
       `false`. Can also be set in the Compose file.
   profiles:
     description: >-
-      Compose profiles to activate, separated by commas or newlines. Only
-      services without a profile or with an active one are deployed; `*`
+      Compose profiles to activate, separated by commas, spaces or newlines.
+      Only services without a profile or with an active one are deployed; `*`
       activates every profile. If unset, every service is deployed regardless
       of its profiles. Can also be set in the Compose file.
   monitor:

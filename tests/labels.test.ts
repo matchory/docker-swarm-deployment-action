@@ -267,6 +267,8 @@ describe("Labels", () => {
         ["debug", "seed"],
       ],
       [[], []],
+      [",", undefined],
+      ["", undefined],
       [["debug", 1], undefined],
       [true, undefined],
       [null, undefined],

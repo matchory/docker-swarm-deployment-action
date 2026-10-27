@@ -31,7 +31,10 @@ export const booleanValue: ValueType<boolean> = {
 export const listValue: ValueType<string[]> = {
   parse: (value) => {
     if (typeof value === "string") {
-      return value.split(/[\s,]+/).filter(Boolean);
+      const names = value.split(/[\s,]+/).filter(Boolean);
+
+      // A string without names is a mistake, such as empty expressions
+      return names.length > 0 ? names : undefined;
     }
 
     return Array.isArray(value) &&

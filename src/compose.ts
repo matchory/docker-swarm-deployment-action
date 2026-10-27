@@ -16,6 +16,7 @@ import {
   overrideTagDefinitions,
   Tagged,
 } from "./override-tags.js";
+import { selectProfiles } from "./profiles.js";
 import { reconcileSwarmCompatibility } from "./reconcile.js";
 import { type Settings, stackSettingsKey } from "./settings.js";
 import {
@@ -181,6 +182,10 @@ export async function loadComposeSpecs(
 
   for (const filename of composeFiles) {
     parsed.push({ filename, spec: await parseComposeFile(filename) });
+  }
+
+  if (settings.profiles) {
+    selectProfiles(parsed, settings.profiles, settings.variables);
   }
 
   // `docker stack config` rejects files whose versions differ, so a file
