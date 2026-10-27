@@ -922,6 +922,15 @@ describe("Monitoring", () => {
       expect(isServiceUpdateComplete(job("0/1 (3/3 completed)"))).toBe(true);
     });
 
+    it("should count a finished global job as complete", () => {
+      expect(isServiceUpdateComplete(job("0/0 (1/1 completed)"))).toBe(true);
+    });
+
+    it("should not count a global job without tasks as complete", () => {
+      // A global job stops counting a task that failed
+      expect(isServiceUpdateComplete(job("0/0 (0/0 completed)"))).toBe(false);
+    });
+
     it("should ignore the update status of a job", () => {
       expect(
         isServiceUpdateComplete({

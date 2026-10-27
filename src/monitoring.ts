@@ -294,11 +294,13 @@ export function isServiceUpdateComplete(
   core.debug(`Checking update status of service ${name}`);
 
   // A job service is done once its tasks have completed: a running task is
-  // still working, and a finished job has no running tasks at all.
+  // still working, and a finished job has no running tasks at all. A global
+  // job stops counting a task that failed, so "0/0 completed" is a failed run,
+  // not a finished one; stuck detection reports it.
   const job = parseJobProgress(service.Replicas);
 
   if (job) {
-    if (job.completed >= job.total) {
+    if (job.total > 0 && job.completed >= job.total) {
       core.info(
         `Job service "${name}" has completed ` +
           `(${job.completed}/${job.total} tasks)`,
