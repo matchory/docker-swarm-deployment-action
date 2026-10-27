@@ -95,6 +95,12 @@ inputs:
       the Compose Specification, in addition to values. This is not supported by
       the Compose Spec, and thus needs to be enabled explicitly. Defaults to
       `false`. Can also be set in the Compose file.
+  profiles:
+    description: >-
+      Compose profiles to activate, separated by commas, spaces or newlines.
+      Only services without a profile or with an active one are deployed; `*`
+      activates every profile. If unset, every service is deployed regardless
+      of its profiles. Can also be set in the Compose file.
   monitor:
     description: >-
       Whether to monitor the stack after the deployment is complete. If an error

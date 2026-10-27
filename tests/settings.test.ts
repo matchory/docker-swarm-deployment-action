@@ -30,6 +30,7 @@ describe("settings", () => {
     expect(settings.version).toBe("unknown");
     expect(settings.composeFiles).toEqual([]);
     expect(settings.destroy).toBe(false);
+    expect(settings.profiles).toBeUndefined();
     expect(settings.envVarPrefix).toBe("DEPLOYMENT");
     expect(settings.healthCheckWarnings).toBe(true);
     expect(settings.keyInterpolation).toBe(false);
@@ -1226,6 +1227,22 @@ SECRET2=simple_secret`;
         strictCompatibility: true,
         strictVariables: false,
       });
+    });
+
+    it("should select profiles from the Compose file", () => {
+      expect(applyStackSettings(settings, { profiles: ["debug"] })).toEqual({
+        ...settings,
+        profiles: ["debug"],
+      });
+    });
+
+    it("should let the profiles input win over the Compose file", () => {
+      const resolved = applyStackSettings(
+        { ...settings, stackInputs: { profiles: "seed,\nstaging" } },
+        { profiles: ["debug"] },
+      );
+
+      expect(resolved).toMatchObject({ profiles: ["seed", "staging"] });
     });
 
     it("should not modify the given settings", () => {
