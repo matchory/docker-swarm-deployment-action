@@ -1,6 +1,6 @@
 ---
 name: js-yaml
-version: 5.4.2
+version: 5.5.0
 type: npm
 summary: YAML 1.2 parser and serializer
 homepage:
