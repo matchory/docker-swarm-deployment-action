@@ -177,25 +177,25 @@ Listing them in `exclude-variables` is harmless, since every Docker command keep
 To configure the action, you can use the following inputs. Inputs marked with an asterisk (\*) can also be set in the
 Compose file; see [Stack Settings](#stack-settings).
 
-| Input                    | Default                               | Description                                                                                                                       |
-|:-------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
-| `stack-name`             | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
-| `version`                | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
-| `compose-file`           | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
-| `env-var-prefix`\*       | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
-| `manage-variables`\*     | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
-| `strict-variables`\*     | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
-| `strict-compatibility`\* | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
-| `key-interpolation`\*    | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
-| `variables`              | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
-| `secrets`                | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
-| `exclude-variables`      | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
-| `extra-variables`        | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
-| `monitor`\*              | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
-| `monitor-timeout`\*      | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
-| `monitor-interval`\*     | `5`                                   | The interval in seconds to check the stack status.                                                                                |
+| Input                     | Default                               | Description                                                                                                                       |
+|:--------------------------|:--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
+| `stack-name`              | _Repository name_                     | The name of the stack to deploy. If not specified, the repository name (without the "user/" part) will be used.                   |
+| `version`                 | _Tag Name&thinsp;/&thinsp;Commit SHA_ | The version of the stack to deploy. If not specified, the action will use the tag name or commit SHA of the build.                |
+| `compose-file`            | _—_                                   | The path to the compose file. If not specified, the action will [automatically search for it](#how-compose-file-detection-works). |
+| `env-var-prefix`\*        | `DEPLOYMENT`                          | Prefix to resolve variables intended for [auto-configuration of variables](#smart-variable-resolution). Trailing `_` stripped.    |
+| `manage-variables`\*      | `true`                                | Whether to automatically [manage configs and secrets](#configuring-secrets-and-configs).                                          |
+| `strict-variables`\*      | `true`                                | Whether to fail if a `file` secret/config source is unreadable, instead of [falling back](#smart-variable-resolution).            |
+| `strict-compatibility`\*  | `false`                               | Whether to fail on Swarm-incompatible features. See [reconciliation](#compose-spec-to-swarm-reconciliation).                      |
+| `key-interpolation`\*     | `false`                               | Whether to interpolate variables in Compose Spec _keys_ too, not just values. See [interpolation](#variable-interpolation).       |
+| `variables`               | _—_                                   | Variables as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(vars) }}`). Applies to environment.            |
+| `secrets`                 | _—_                                   | Secrets as KEY=value pairs, newline-separated, or JSON object (e.g., `${{ toJSON(secrets) }}`). Higher priority than variables.   |
+| `exclude-variables`       | _—_                                   | List of variable names to exclude from deployment, separated by newlines. Applies to every source except `extra-variables`.       |
+| `extra-variables`         | _—_                                   | Additional variables as KEY=value pairs, separated by newlines. Highest priority, overrides all other sources.                    |
+| `monitor`\*               | `false`                               | Whether to [monitor the stack](#post-deployment-monitoring) after deployment.                                                     |
+| `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
+| `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
 | `health-check-warnings`\* | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
-| `upload-compose-spec`    | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
+| `upload-compose-spec`     | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
 
