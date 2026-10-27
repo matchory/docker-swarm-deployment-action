@@ -40,8 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One swarm per file, so that no file deploys right after another
-        # removed its stacks; see tests/swarm/global-setup.ts.
+        # One job per file, so that the files run in parallel
         scenario:
           - deploy
           - jobs

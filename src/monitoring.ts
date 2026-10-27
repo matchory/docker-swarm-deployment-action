@@ -674,25 +674,10 @@ const errorPatterns: Array<{
     category: "image_pull",
     headline: (e) => `Image could not be pulled: ${e}`,
   },
-  // Before the exit codes: Swarm kills an unhealthy container, so its error
-  // reads "task: non-zero exit (137): dockerexec: unhealthy container".
   {
     test: (e) => /unhealthy container/.test(e),
     category: "health_check",
     headline: () => "Container failed health check",
-  },
-  {
-    test: (e) => /non-zero exit \(137\)/.test(e),
-    category: "oom_kill",
-    headline: () => "Container killed (likely OOM): exit code 137",
-  },
-  {
-    test: (e) => /non-zero exit \((\d+)\)/.test(e),
-    category: "container_crash",
-    headline: (e) => {
-      const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
-      return `Container exited with code ${code}`;
-    },
   },
   {
     test: (e) => /no suitable node/.test(e),
@@ -744,6 +729,22 @@ const errorPatterns: Array<{
     test: (e) => /host-mode port already in use/.test(e),
     category: "port_conflict",
     headline: (e) => `Host port already in use: ${e}`,
+  },
+  // Exit codes last: they say how a task died, not why. Swarm prefixes other
+  // causes with one, e.g. "task: non-zero exit (137): dockerexec: unhealthy
+  // container", so any cause listed after them would never match.
+  {
+    test: (e) => /non-zero exit \(137\)/.test(e),
+    category: "oom_kill",
+    headline: () => "Container killed (likely OOM): exit code 137",
+  },
+  {
+    test: (e) => /non-zero exit \((\d+)\)/.test(e),
+    category: "container_crash",
+    headline: (e) => {
+      const code = e.match(/non-zero exit \((\d+)\)/)?.[1] ?? "?";
+      return `Container exited with code ${code}`;
+    },
   },
 ];
 

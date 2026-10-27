@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   image,
+  monitored,
   replicas,
   runAction,
   runSuccessfully,
@@ -18,15 +19,6 @@ services:
     deploy:
       mode: ${mode}
 ${restart ? `      restart_policy:\n        condition: ${restart}\n` : ""}`,
-  };
-}
-
-function monitored(stack: string, timeout = 60) {
-  return {
-    "stack-name": stack,
-    monitor: "true",
-    "monitor-interval": "1",
-    "monitor-timeout": String(timeout),
   };
 }
 

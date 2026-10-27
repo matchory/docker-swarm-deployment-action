@@ -10,6 +10,9 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 180_000,
     hookTimeout: 180_000,
-    reporters: ["verbose", "github-actions"],
+    reporters: [
+      "verbose",
+      ...(process.env.GITHUB_ACTIONS === "true" ? ["github-actions"] : []),
+    ],
   },
 });

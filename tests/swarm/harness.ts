@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
-import { expect, inject } from "vitest";
+import { expect, inject, onTestFinished } from "vitest";
 
 // Runs the bundled action against the swarm of the current Docker context, the
 // way the runner does: `node dist/index.js` with inputs as `INPUT_*` variables.
@@ -26,7 +26,17 @@ const run = promisify(execFile);
 
 export const image = "busybox:1.37";
 
-export interface ActionRun {
+// The runner sets an `INPUT_*` variable for every input with a default
+const action = load(await readFile(join(root, "action.yml"), "utf8")) as {
+  inputs: Record<string, { default?: string }>;
+};
+const defaults = Object.fromEntries(
+  Object.entries(action.inputs)
+    .filter(([, input]) => input.default !== undefined)
+    .map(([name, input]) => [name, String(input.default)]),
+);
+
+interface ActionRun {
   exitCode: number;
   outputs: Record<string, string>;
   log: string;
@@ -81,6 +91,9 @@ export async function runAction(
       HOME: process.env.HOME,
       DOCKER_HOST: process.env.DOCKER_HOST,
       DOCKER_CONTEXT: process.env.DOCKER_CONTEXT,
+      DOCKER_CONFIG: process.env.DOCKER_CONFIG,
+      DOCKER_TLS_VERIFY: process.env.DOCKER_TLS_VERIFY,
+      DOCKER_CERT_PATH: process.env.DOCKER_CERT_PATH,
       GITHUB_WORKSPACE: workspace,
       GITHUB_OUTPUT: outputFile,
       GITHUB_STEP_SUMMARY: join(workspace, ".github-step-summary"),
@@ -92,7 +105,7 @@ export async function runAction(
     await writeFile(env.GITHUB_STEP_SUMMARY as string, "");
 
     for (const [name, value] of Object.entries({
-      ...(await inputDefaults()),
+      ...defaults,
       "upload-compose-spec": "false",
       ...inputs,
     })) {
@@ -104,6 +117,12 @@ export async function runAction(
       log: string;
     }>((done, fail) => {
       const child = spawn(process.execPath, [entry], { cwd: workspace, env });
+      // A timed-out test must not leave the action deploying behind it
+      onTestFinished(() => {
+        child.kill();
+      });
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
       let log = "";
       child.stdout.on("data", (chunk) => {
         log += chunk;
@@ -125,24 +144,6 @@ export async function runAction(
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
-}
-
-let defaults: Record<string, string> | undefined;
-
-// The runner sets an `INPUT_*` variable for every input with a default
-async function inputDefaults() {
-  if (!defaults) {
-    const action = load(await readFile(join(root, "action.yml"), "utf8")) as {
-      inputs: Record<string, { default?: string }>;
-    };
-    defaults = Object.fromEntries(
-      Object.entries(action.inputs)
-        .filter(([, input]) => input.default !== undefined)
-        .map(([name, input]) => [name, String(input.default)]),
-    );
-  }
-
-  return defaults;
 }
 
 function parseOutputs(content: string) {
@@ -197,7 +198,7 @@ export async function deployRaw(stack: string, compose: string) {
   }
 }
 
-export interface ServiceInspect {
+interface ServiceInspect {
   ID: string;
   Spec: {
     Name: string;
@@ -206,12 +207,9 @@ export interface ServiceInspect {
       ContainerSpec: {
         Labels?: Record<string, string>;
         Configs?: Array<{ ConfigName: string }>;
-        Secrets?: Array<{ SecretName: string }>;
       };
     };
-    Mode: Record<string, unknown>;
   };
-  PreviousSpec?: ServiceInspect["Spec"];
   UpdateStatus?: { State: string };
 }
 
@@ -257,11 +255,10 @@ export async function replicas(stack: string, service: string) {
   );
 }
 
-export interface Task {
+interface Task {
   ID: string;
   DesiredState: string;
   CurrentState: string;
-  Error: string;
 }
 
 /**
@@ -294,6 +291,18 @@ export async function variables(kind: "config" | "secret", stack: string) {
   );
 
   return names ? names.split("\n").sort() : [];
+}
+
+/**
+ * Inputs that monitor the deployment, polling every second
+ */
+export function monitored(stack: string, timeout = 60) {
+  return {
+    "stack-name": stack,
+    monitor: "true",
+    "monitor-interval": "1",
+    "monitor-timeout": String(timeout),
+  };
 }
 
 /**

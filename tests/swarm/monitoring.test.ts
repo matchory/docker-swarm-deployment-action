@@ -1,23 +1,19 @@
 import { expect, it } from "vitest";
-import { image, runAction, runSuccessfully, stackName } from "./harness.js";
-
-function monitored(stack: string, timeout = 60) {
-  return {
-    "stack-name": stack,
-    monitor: "true",
-    "monitor-interval": "1",
-    "monitor-timeout": String(timeout),
-  };
-}
+import {
+  image,
+  monitored,
+  runAction,
+  runSuccessfully,
+  stackName,
+} from "./harness.js";
 
 function compose(services: string) {
   return { "compose.yaml": `services:\n${services}` };
 }
 
-const crashing = (labels = "") => `
+const crashing = `
     image: ${image}
-    command: ["sh", "-c", "exit 2"]
-${labels ? `    deploy:\n      labels:\n${labels}` : ""}`;
+    command: ["sh", "-c", "exit 2"]`;
 
 const running = `
     image: ${image}
@@ -45,15 +41,15 @@ it("fails fast on an image that does not exist", async () => {
 it("fails a crash loop with the exit code", async () => {
   const stack = stackName("monitor");
   const run = await runAction(
-    compose(`  app:${crashing()}`),
-    monitored(stack, 15),
+    compose(`  app:${crashing}\n`),
+    monitored(stack, 10),
   );
 
   expect(run.exitCode, run.log).toBe(1);
   expect(run.errors).toContain(
     `Service "${stack}_app" failed to deploy: Container exited with code 2`,
   );
-  expect(run.errors.at(-1)).toContain("Deployment timed out after 15s");
+  expect(run.errors.at(-1)).toContain("Deployment timed out after 10s");
 });
 
 it("fails a service whose health check fails", async () => {
@@ -77,11 +73,11 @@ it("fails a service whose health check fails", async () => {
 it("ignores a service that opts out of monitoring", async () => {
   const stack = stackName("monitor");
   const run = await runSuccessfully(
-    compose(
-      `  app:${running}  worker:${crashing(
-        `        com.matchory.deployment.monitor: "false"\n`,
-      )}`,
-    ),
+    compose(`  app:${running}  worker:${crashing}
+    deploy:
+      labels:
+        com.matchory.deployment.monitor: "false"
+`),
     monitored(stack),
   );
 
@@ -95,11 +91,11 @@ it("enforces the monitor timeout of a service", async () => {
   const stack = stackName("monitor");
   const started = Date.now();
   const run = await runAction(
-    compose(
-      `  app:${running}  worker:${crashing(
-        `        com.matchory.deployment.monitor-timeout: "10"\n`,
-      )}`,
-    ),
+    compose(`  app:${running}  worker:${crashing}
+    deploy:
+      labels:
+        com.matchory.deployment.monitor-timeout: "10"
+`),
     monitored(stack, 300),
   );
 

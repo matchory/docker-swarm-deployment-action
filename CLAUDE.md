@@ -155,10 +155,12 @@ that parses TypeScript itself rather than one that loads
   address space" for about 20s. The swarm tests therefore remove
   their stacks only after the last file (`global-setup.ts`).
 - `docker stack rm --detach=false` with several stack names has
-  hung after removing all but the last. Remove one per call.
-- An unhealthy container's task error is `task: non-zero exit
-  (137): dockerexec: unhealthy container`, so the health check
-  pattern in `categorizeTaskError` must precede the OOM one.
+  hung after removing all but the last. Remove one per call. It
+  also fails on a network still attached to a stopping task and
+  leaves the network behind; calling it again removes it.
+- Swarm prefixes task errors with the exit code, e.g. `task:
+  non-zero exit (137): dockerexec: unhealthy container`, so the
+  exit-code patterns in `categorizeTaskError` must stay last.
 - `script/bundle.mjs` builds with `write: false` and only clears
   `dist/` once the bundle and the license scan have both succeeded --
   a build error must not leave the committed directory half deleted.

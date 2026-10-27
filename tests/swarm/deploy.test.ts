@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   image,
+  monitored,
   runSuccessfully,
   services,
   stackName,
@@ -17,13 +18,7 @@ services:
 };
 
 function inputs(stack: string, version: string) {
-  return {
-    "stack-name": stack,
-    version,
-    monitor: "true",
-    "monitor-interval": "1",
-    "monitor-timeout": "60",
-  };
+  return { ...monitored(stack), version };
 }
 
 async function runningTasks(stack: string) {
