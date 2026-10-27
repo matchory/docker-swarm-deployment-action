@@ -206,6 +206,50 @@ describe("reconcileSwarmCompatibility", () => {
     });
   });
 
+  // `docker compose config` 2.35 merges two empty mappings into an empty
+  // list, which `docker stack config` 28 rejects with "must be a mapping"
+  describe("empty mapping fields", () => {
+    it.each(["labels", "environment", "sysctls", "extra_hosts", "annotations"])(
+      "removes an empty %s list",
+      async (field) => {
+        const s = spec({ api: { image: "nginx", [field]: [] } });
+        await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+        expect(s.services.api).not.toHaveProperty(field);
+      },
+    );
+
+    it("removes an empty deploy.labels list", async () => {
+      const s = spec({ api: { image: "nginx", deploy: { labels: [] } } });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({ image: "nginx", deploy: {} });
+    });
+
+    it.each(["networks", "volumes", "configs", "secrets"])(
+      "removes empty lists from the definitions of %s",
+      async (section) => {
+        const s = {
+          ...spec({ api: { image: "nginx" } }),
+          [section]: { item: { labels: [], driver_opts: [] } },
+        } as ComposeSpec;
+        await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+        expect(s[section as keyof ComposeSpec]).toEqual({ item: {} });
+      },
+    );
+
+    it("keeps lists with entries and empty lists that mean something", async () => {
+      const s = spec({
+        api: { image: "nginx", labels: ["a=b"], entrypoint: [], command: [] },
+      });
+      await reconcileSwarmCompatibility(s, { strictCompatibility: false });
+      expect(s.services.api).toEqual({
+        image: "nginx",
+        labels: ["a=b"],
+        entrypoint: [],
+        command: [],
+      });
+    });
+  });
+
   describe("strip-and-warn rules", () => {
     it.each([
       "develop",
