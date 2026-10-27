@@ -1,0 +1,96 @@
+# Runs the differential property tests in tests/properties with a large
+# budget and a random seed. Pull requests run them with a small budget and a
+# fixed seed, as part of ci.yml. A counterexample found here is reported as an
+# issue; replay it with the seed and path the issue names, and turn it into a
+# unit test before fixing it.
+
+name: Property Tests
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Cases per property
+        default: "1000"
+      seed:
+        description: Seed, or "random"
+        default: random
+
+permissions:
+  contents: read
+
+jobs:
+  properties:
+    name: Property Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install Dependencies
+        id: npm-ci
+        run: npm ci
+
+      - name: Run Property Tests
+        id: properties
+        env:
+          PROPERTY_RUNS: ${{ inputs.runs || '1000' }}
+          PROPERTY_SEED: ${{ inputs.seed || 'random' }}
+        run: |
+          docker version --format 'Docker {{.Server.Version}}'
+          docker compose version
+          set -o pipefail
+          npx vitest run tests/properties --coverage.enabled=false \
+            | tee properties.log
+
+      - name: Report Counterexample
+        id: report
+        if: failure() && steps.properties.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          title="Property tests found a counterexample"
+          run_url="${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
+          {
+            echo "The nightly property tests failed in ${run_url}."
+            echo
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' properties.log \
+              | grep -E '^ *(×|Property failed|Counterexample|Shrunk)|seed:' \
+              | head -40
+            echo '```'
+            echo
+            echo "Replay locally with \`PROPERTY_SEED=<seed>\` and the same"
+            echo "\`PROPERTY_RUNS\`, and add the shrunk counterexample as a"
+            echo "unit test before fixing it."
+          } > report.md
+
+          issue=$(gh issue list --state open --search "in:title \"$title\"" \
+            --json number --jq '.[0].number')
+
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file report.md
+          else
+            gh issue create --title "$title" --label bug --body-file report.md
+          fi

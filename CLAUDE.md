@@ -17,6 +17,7 @@ post-deployment monitoring. Written in TypeScript, runs on Node 24.
 | Run tests          | `npm run test`                         |
 | Run single test    | `npx vitest run tests/compose.test.ts` |
 | Run swarm tests    | `npm run test:swarm`                   |
+| More property runs | `PROPERTY_RUNS=1000 npm run test`      |
 | Typecheck          | `npm run typecheck`                    |
 | Lint               | `npm run lint`                         |
 | Format check       | `npm run format:check`                 |
@@ -95,6 +96,16 @@ because every environment variable becomes a deployment variable.
 Locally, the scenarios run against the current Docker context;
 build `dist/` first.
 
+`tests/properties` holds differential property tests (fast-check):
+generated Compose files go through the action's pipeline in-process
+and are checked against `docker compose config` and `docker stack
+config`, which need Docker but no swarm. They run in the regular
+suite with a fixed seed and 25 cases per property; `properties.yml`
+runs 1000 random ones nightly and opens an issue for a
+counterexample. Generators live in `tests/properties/arbitraries.ts`;
+extend the grammar when a bug is found outside it, and keep the
+shrunk counterexample as a unit test.
+
 `dist/` and `.licenses/` are both derived from `package-lock.json`,
 so a dependency bump alone makes `check-dist.yml` and
 `licensed.yml` fail. `regenerate-artifacts.yml` handles that: it
@@ -149,6 +160,12 @@ that parses TypeScript itself rather than one that loads
   keeps that to a few thousand characters at worst instead of a quarter
   megabyte; the limit is soft, so some lines still overshoot it.
   Prefer failing through `core.setFailed` so it never comes up.
+- Compose resolves `extends` within the file that writes it,
+  against that file's definition of the base, before merging the
+  files. `docker stack config` rejects `extends` outright, so a
+  spec using it is merged with `docker compose config`, like one
+  with merge tags. Profile selection and env-file inlining replay
+  the merge themselves and must follow the per-file rule.
 - Swarm reuses a freed overlay subnet immediately. Deploying a
   stack right after removing one whose services were updated gets
   its tasks rejected with "Pool overlaps with other one on this
