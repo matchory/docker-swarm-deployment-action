@@ -168,7 +168,7 @@ describe("main", () => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     vi.spyOn(core, "getBooleanInput").mockImplementation(() => {
       throw new TypeError(
-        'Input does not meet YAML 1.2 "Core Schema" specification: monitor',
+        'Input does not meet YAML 1.2 "Core Schema" specification: upload-compose-spec',
       );
     });
 

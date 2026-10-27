@@ -463,7 +463,6 @@ describe("Deployment", () => {
     const settings = defineSettings({
       deploymentLabels: { "com.matchory.deployment.version": "1.2.3" },
       envVarPrefix: "DEPLOYMENT",
-      explicitInputs: new Set<string>(),
       healthCheckWarnings: false,
       keyInterpolation: false,
       manageVariables: true,

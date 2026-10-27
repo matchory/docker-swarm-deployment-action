@@ -250,7 +250,9 @@ describe("settings", () => {
   });
 
   it("parses strict-compatibility input when set", () => {
-    booleanInputs["strict-compatibility"] = true;
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "strict-compatibility" ? "true" : "",
+    );
 
     const settings = parseSettings({ GITHUB_REPOSITORY: "matchory/app" });
     expect(settings.strictCompatibility).toBe(true);
@@ -1074,10 +1076,9 @@ SECRET2=simple_secret`;
 
   describe("monitor duration inputs", () => {
     it("should reject a non-numeric monitor-interval when monitoring is enabled", () => {
-      vi.spyOn(core, "getInput").mockImplementation((name) =>
-        name === "monitor-interval" ? "abc" : "",
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) => ({ monitor: "true", "monitor-interval": "abc" })[name] ?? "",
       );
-      booleanInputs.monitor = true;
 
       expect(() => parseSettings(env)).toThrow(
         /"monitor-interval" input must be a positive whole number/,
@@ -1085,10 +1086,9 @@ SECRET2=simple_secret`;
     });
 
     it("should reject a zero monitor-timeout when monitoring is enabled", () => {
-      vi.spyOn(core, "getInput").mockImplementation((name) =>
-        name === "monitor-timeout" ? "0" : "",
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) => ({ monitor: "true", "monitor-timeout": "0" })[name] ?? "",
       );
-      booleanInputs.monitor = true;
 
       expect(() => parseSettings(env)).toThrow(
         /"monitor-timeout" input must be a positive whole number.*received "0"/,
@@ -1099,10 +1099,9 @@ SECRET2=simple_secret`;
     // reads as 1, a thousandth of the timeout the author asked for.
     for (const raw of ["1e3", "5.9", "10s"]) {
       it(`should reject a monitor-timeout of "${raw}"`, () => {
-        vi.spyOn(core, "getInput").mockImplementation((name) =>
-          name === "monitor-timeout" ? raw : "",
+        vi.spyOn(core, "getInput").mockImplementation(
+          (name) => ({ monitor: "true", "monitor-timeout": raw })[name] ?? "",
         );
-        booleanInputs.monitor = true;
 
         expect(() => parseSettings(env)).toThrow(
           /"monitor-timeout" input must be a positive whole number/,
@@ -1113,10 +1112,9 @@ SECRET2=simple_secret`;
     // Monitoring is off, so the value is never read. Failing the deployment
     // over an unused input would break workflows that used to parse fine.
     it("should ignore an invalid monitor-interval when monitoring is disabled", () => {
-      vi.spyOn(core, "getInput").mockImplementation((name) =>
-        name === "monitor-interval" ? "0" : "",
+      vi.spyOn(core, "getInput").mockImplementation(
+        (name) => ({ monitor: "false", "monitor-interval": "0" })[name] ?? "",
       );
-      booleanInputs.monitor = false;
 
       const settings = parseSettings(env);
 
@@ -1124,63 +1122,45 @@ SECRET2=simple_secret`;
     });
   });
 
-  describe("explicit inputs", () => {
-    it("should record no explicit inputs when none are set", () => {
+  describe("stack inputs", () => {
+    it("should record no stack inputs when none are set", () => {
       const settings = parseSettings(env);
 
-      expect(settings.explicitInputs).toEqual(new Set());
+      expect(settings.stackInputs).toEqual({});
     });
 
-    it("should record the stack settings set as inputs", () => {
+    it("should record the stack settings set as inputs, as written", () => {
       vi.spyOn(core, "getInput").mockImplementation(
         (name) =>
-          ({ "env-var-prefix": "APP", "monitor-timeout": "60" })[name] || "",
+          ({
+            "env-var-prefix": "APP_",
+            monitor: "False",
+            "monitor-timeout": "60",
+            "stack-name": "app",
+          })[name] ?? "",
       );
-      booleanInputs.monitor = false;
-      booleanInputs["strict-variables"] = true;
       booleanInputs["upload-compose-spec"] = false;
 
       const settings = parseSettings(env);
 
-      expect(settings.explicitInputs).toEqual(
-        new Set([
-          "env-var-prefix",
-          "monitor",
-          "monitor-timeout",
-          "strict-variables",
-        ]),
-      );
+      expect(settings.stackInputs).toEqual({
+        "env-var-prefix": "APP_",
+        monitor: "False",
+        "monitor-timeout": "60",
+      });
+      expect(settings.envVarPrefix).toBe("APP");
+      expect(settings.monitor).toBe(false);
+      expect(settings.monitorTimeout).toBe(60);
     });
 
     it("should reject an invalid boolean input", () => {
-      vi.spyOn(core, "getBooleanInput").mockImplementation((name) => {
-        if (name === "monitor") {
-          throw new TypeError("Input does not meet YAML 1.2 Core Schema");
-        }
-
-        return booleanInputs[name] as boolean;
-      });
       vi.spyOn(core, "getInput").mockImplementation((name) =>
         name === "monitor" ? "yes" : "",
       );
 
-      expect(() => parseSettings(env)).toThrow(/Core Schema/);
-    });
-
-    it("should default an unset boolean input", () => {
-      vi.spyOn(core, "getBooleanInput").mockImplementation((name) => {
-        if (name === "monitor") {
-          throw new TypeError("Input does not meet YAML 1.2 Core Schema");
-        }
-
-        return booleanInputs[name] as boolean;
-      });
-      vi.spyOn(core, "getInput").mockReturnValue("");
-
-      const settings = parseSettings(env);
-
-      expect(settings.monitor).toBe(false);
-      expect(settings.explicitInputs?.has("monitor")).toBe(false);
+      expect(() => parseSettings(env)).toThrow(
+        'The "monitor" input must be true or false, but received "yes".',
+      );
     });
   });
 
@@ -1205,7 +1185,6 @@ SECRET2=simple_secret`;
   describe("applyStackSettings", () => {
     const settings = {
       envVarPrefix: "DEPLOYMENT",
-      explicitInputs: new Set<string>(),
       healthCheckWarnings: true,
       keyInterpolation: false,
       manageVariables: true,
@@ -1254,9 +1233,9 @@ SECRET2=simple_secret`;
       expect(settings.monitor).toBe(false);
     });
 
-    it("should let an explicit input win over the Compose file", () => {
+    it("should let an input win over the Compose file", () => {
       const resolved = applyStackSettings(
-        { ...settings, explicitInputs: new Set(["monitor"]) },
+        { ...settings, stackInputs: { monitor: "false" } },
         { monitor: true, "monitor-timeout": 600 },
       );
 
@@ -1271,7 +1250,7 @@ SECRET2=simple_secret`;
     it("should reject an invalid value even if an input overrides it", () => {
       expect(() =>
         applyStackSettings(
-          { ...settings, explicitInputs: new Set(["monitor"]) },
+          { ...settings, stackInputs: { monitor: "false" } },
           { monitor: "yes" },
         ),
       ).toThrow(
@@ -1312,6 +1291,36 @@ SECRET2=simple_secret`;
           'Ignoring unknown setting "stack-name" in "x-matchory-deployment"',
         ),
       );
+    });
+    it("should reject an invalid duration input once the file enables monitoring", () => {
+      expect(() =>
+        applyStackSettings(
+          { ...settings, stackInputs: { "monitor-timeout": "10m" } },
+          { monitor: true },
+        ),
+      ).toThrow(
+        'The "monitor-timeout" input must be a positive whole number of ' +
+          'seconds, but received "10m".',
+      );
+    });
+
+    it("should ignore an invalid duration input while monitoring stays off", () => {
+      const resolved = applyStackSettings(
+        { ...settings, stackInputs: { "monitor-timeout": "10m" } },
+        { "monitor-timeout": 600 },
+      );
+
+      expect(resolved.monitorTimeout).toBe(600);
+    });
+
+    it("should keep resolved values the Compose file does not set", () => {
+      const resolved = applyStackSettings(
+        { ...settings, monitor: true, monitorTimeout: 42 },
+        {},
+      );
+
+      expect(resolved.monitor).toBe(true);
+      expect(resolved.monitorTimeout).toBe(42);
     });
   });
 });
