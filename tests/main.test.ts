@@ -3,7 +3,9 @@ import { exec } from "@actions/exec";
 import { dump } from "js-yaml";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComposeSpec } from "../src/compose.js";
+import * as deployment from "../src/deployment.js";
 import { run } from "../src/main.js";
+import * as teardown from "../src/teardown.js";
 
 const readFile = vi.hoisted(() => vi.fn());
 const writeFile = vi.hoisted(() => vi.fn());
@@ -159,6 +161,53 @@ describe("main", () => {
 
     await expect(run()).resolves.not.toThrow();
     expect(core.setFailed).toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
+  });
+
+  it("should remove the stack instead of deploying it", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "stack-name" ? "my-app" : "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockImplementation(
+      (name) => ({ destroy: true })[name] as boolean,
+    );
+    const destroy = vi.spyOn(teardown, "destroy").mockResolvedValue();
+    const deploy = vi.spyOn(deployment, "deploy");
+
+    await run();
+
+    expect(destroy).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ stack: "my-app", destroy: true }),
+    );
+    expect(deploy).not.toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledWith("stack-name", "my-app");
+    expect(core.setOutput).toHaveBeenCalledWith("status", "success");
+    for (const output of ["compose-spec", "version"]) {
+      expect(core.setOutput).not.toHaveBeenCalledWith(
+        output,
+        expect.anything(),
+      );
+    }
+    expect(mockUploadArtifact).not.toHaveBeenCalled();
+  });
+
+  it("should report a teardown failure", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "stack-name" ? "my-app" : "",
+    );
+    vi.spyOn(core, "getBooleanInput").mockImplementation(
+      (name) => ({ destroy: true })[name] as boolean,
+    );
+    vi.spyOn(teardown, "destroy").mockRejectedValue(
+      new Error('Refusing to remove stack "my-app"'),
+    );
+
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      new Error('Refusing to remove stack "my-app"'),
+    );
     expect(core.setOutput).toHaveBeenCalledExactlyOnceWith("status", "failure");
   });
 

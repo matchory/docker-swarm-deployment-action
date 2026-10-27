@@ -5,6 +5,7 @@ import * as core from "@actions/core";
 import type { ComposeSpec } from "./compose.js";
 import { deploy } from "./deployment.js";
 import { parseSettings, type Settings } from "./settings.js";
+import { destroy } from "./teardown.js";
 import { removeFileQuietly } from "./utils.js";
 import { redactSecretValues } from "./variables.js";
 
@@ -17,11 +18,16 @@ export async function run() {
   // which prints the whole generated bundle line above the stack trace.
   try {
     settings = parseSettings(env);
-    composeSpec = await deploy(settings);
 
-    core.setOutput("compose-spec", composeSpec);
+    if (settings.destroy) {
+      await destroy(settings);
+    } else {
+      composeSpec = await deploy(settings);
+      core.setOutput("compose-spec", composeSpec);
+      core.setOutput("version", settings.version);
+    }
+
     core.setOutput("stack-name", settings.stack);
-    core.setOutput("version", settings.version);
     core.setOutput("status", "success");
   } catch (error) {
     if (error instanceof Error) {
