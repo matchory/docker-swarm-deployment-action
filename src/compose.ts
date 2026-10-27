@@ -496,6 +496,17 @@ async function mergeThenReconcile(
     // `docker compose config` stamps a project name derived from the working
     // directory; drop it to match the tag-free path, where prepareSpec removes
     // the name from every input before merging.
+    // It also names the default network after the project, which would make
+    // every stack deployed from the same repository share one network. Drop
+    // that name, so Swarm names the network after the stack instead.
+    const network = (
+      mergedSpec.networks as Record<string, { name?: string }> | undefined
+    )?.default;
+
+    if (network?.name === `${mergedSpec.name}_default`) {
+      delete network.name;
+    }
+
     delete mergedSpec.name;
 
     // It also drops `version`, which would leave `docker stack config` to

@@ -968,6 +968,42 @@ describe("Compose", () => {
       expect(engine.normalizeStackSpecification).toHaveBeenCalled();
     });
 
+    // Compose names the default network after the project, which is the
+    // working directory, so stacks deployed from one repository would share it
+    it.each([
+      ["drops the network name Compose derives", "app_default", {}],
+      ["keeps a network name the files set", "shared", { name: "shared" }],
+    ])("%s", async (_, name, expected) => {
+      vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
+      vi.spyOn(engine, "mergeComposeFiles").mockResolvedValue("");
+      vi.spyOn(yaml, "load").mockReturnValue({
+        name: "app",
+        networks: { default: { name } },
+        services: { web: { image: "nginx" } },
+      });
+      const reconcileSpy = vi.spyOn(reconcile, "reconcileSwarmCompatibility");
+      vi.spyOn(engine, "normalizeStackSpecification").mockResolvedValue({
+        services: { web: { image: "nginx" } },
+      });
+
+      const specs = [
+        {
+          spec: {
+            services: {
+              web: { ports: new Tagged("!override", "sequence", []) },
+            },
+          },
+          baseDir: ".",
+        },
+      ] as unknown as Parameters<typeof normalizeSpec>[0];
+      await normalizeSpec(specs, settings);
+
+      expect(reconcileSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ networks: { default: expected } }),
+        settings,
+      );
+    });
+
     // `docker stack config` rejects `extends` as a forbidden property
     it("merges with docker compose config when a service uses extends", async () => {
       vi.spyOn(engine, "isComposePluginAvailable").mockResolvedValue(true);
