@@ -112,9 +112,10 @@ export async function runAction(
       env[`INPUT_${name.toUpperCase()}`] = value;
     }
 
-    const { exitCode, log } = await new Promise<{
+    const { exitCode, log, stdout } = await new Promise<{
       exitCode: number;
       log: string;
+      stdout: string;
     }>((done, fail) => {
       const child = spawn(process.execPath, [entry], { cwd: workspace, env });
       // A timed-out test must not leave the action deploying behind it
@@ -124,22 +125,26 @@ export async function runAction(
       child.stdout.setEncoding("utf8");
       child.stderr.setEncoding("utf8");
       let log = "";
+      // Annotations are read from stdout alone: a stderr chunk can land in
+      // the middle of a stdout line in the combined log
+      let stdout = "";
       child.stdout.on("data", (chunk) => {
         log += chunk;
+        stdout += chunk;
       });
       child.stderr.on("data", (chunk) => {
         log += chunk;
       });
       child.on("error", fail);
-      child.on("close", (code) => done({ exitCode: code ?? -1, log }));
+      child.on("close", (code) => done({ exitCode: code ?? -1, log, stdout }));
     });
 
     return {
       exitCode,
       outputs: parseOutputs(await readFile(outputFile, "utf8")),
       log,
-      errors: annotations(log, "error"),
-      warnings: annotations(log, "warning"),
+      errors: annotations(stdout, "error"),
+      warnings: annotations(stdout, "warning"),
     };
   } finally {
     await rm(workspace, { recursive: true, force: true });

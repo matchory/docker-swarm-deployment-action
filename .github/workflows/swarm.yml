@@ -14,6 +14,7 @@ on:
       - action.yml
       - dist/**
       - package-lock.json
+      - package.json
       - script/bundle.mjs
       - src/**
       - tests/swarm/**
@@ -27,6 +28,7 @@ on:
       - action.yml
       - dist/**
       - package-lock.json
+      - package.json
       - script/bundle.mjs
       - src/**
       - tests/swarm/**
@@ -56,7 +58,7 @@ jobs:
       - name: List Scenario Files
         id: list
         run: |
-          scenarios=$(find tests/swarm -name '*.test.ts' -printf '%f\n' \
+          scenarios=$(find tests/swarm -name '*.test.ts' -printf '%P\n' \
             | sed 's/\.test\.ts$//' | jq --raw-input --slurp --compact-output \
             'split("\n") | map(select(. != "")) | sort')
           echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"

@@ -200,6 +200,9 @@ describe("reconcileSwarmCompatibility", () => {
       const s = spec({ api: { image: "nginx", depends_on: dependsOn } });
       await reconcileSwarmCompatibility(s, { strictCompatibility: false });
       expect(s.services.api).not.toHaveProperty("depends_on");
+      // An empty mapping has no conditions to drop, and `docker compose
+      // config` emits one for an emptied list, so it must not fail strict mode
+      expect(core.warning).not.toHaveBeenCalled();
     });
   });
 

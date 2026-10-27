@@ -398,18 +398,22 @@ function translateDependsOn(
     !Array.isArray(dependsOn)
   ) {
     service.depends_on = Object.keys(dependsOn);
-
-    diagnostics.warn(
-      `Service "${name}" uses the long "depends_on" syntax; Docker Swarm has ` +
-        `no startup ordering, so conditions are dropped and only the ` +
-        `dependency list is kept.`,
-    );
   }
 
   // Removing dependencies on profile-skipped services can leave an empty list,
   // which `docker stack config` 28 rejects with "must be a list"
   if (Array.isArray(service.depends_on) && service.depends_on.length === 0) {
     delete service.depends_on;
+
+    return;
+  }
+
+  if (service.depends_on !== dependsOn) {
+    diagnostics.warn(
+      `Service "${name}" uses the long "depends_on" syntax; Docker Swarm has ` +
+        `no startup ordering, so conditions are dropped and only the ` +
+        `dependency list is kept.`,
+    );
   }
 }
 
