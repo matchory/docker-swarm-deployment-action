@@ -684,7 +684,7 @@ services:
       await engine.removeStack("preview-42");
       expect(mockedExec).toHaveBeenCalledWith(
         "docker",
-        ["stack", "rm", "--detach=false", "preview-42"],
+        ["stack", "rm", "--detach=false", "--", "preview-42"],
         expect.any(Object),
       );
     });

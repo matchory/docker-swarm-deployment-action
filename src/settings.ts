@@ -224,7 +224,19 @@ function resolveStackSettings(
 export function parseSettings(env: NodeJS.ProcessEnv) {
   debug("Parsing settings from inputs");
 
-  const stack = inferStackName(getInput("stack-name"), env);
+  const stackName = getInput("stack-name");
+  const stack = inferStackName(stackName, env);
+  const destroy = getBooleanInput("destroy", { required: false }) ?? false;
+
+  // The inferred name is usually the repository's main stack, so a teardown
+  // job that forgot to name its preview stack would remove that instead.
+  if (destroy && !stackName) {
+    throw new Error(
+      `The "destroy" input requires the "stack-name" input, so a teardown ` +
+        `never falls back to the stack named after the repository.`,
+    );
+  }
+
   const version = inferVersion(getInput("version"), env);
   const { variables, secretValues } = inferVariables(
     {
@@ -245,17 +257,6 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       .map((name) => [name, getInput(name)])
       .filter(([, value]) => value),
   );
-  const destroy = getBooleanInput("destroy", { required: false }) ?? false;
-
-  // The inferred name is usually the repository's main stack, so a teardown
-  // job that forgot to name its preview stack would remove that instead.
-  if (destroy && !getInput("stack-name")) {
-    throw new Error(
-      `The "destroy" input requires the "stack-name" input, so a teardown ` +
-        `never falls back to the stack named after the repository.`,
-    );
-  }
-
   const uploadComposeSpec =
     getBooleanInput("upload-compose-spec", { required: false }) ?? true;
 

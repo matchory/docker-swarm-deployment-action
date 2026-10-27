@@ -183,10 +183,12 @@ describe("main", () => {
     expect(core.setFailed).not.toHaveBeenCalled();
     expect(core.setOutput).toHaveBeenCalledWith("stack-name", "my-app");
     expect(core.setOutput).toHaveBeenCalledWith("status", "success");
-    expect(core.setOutput).not.toHaveBeenCalledWith(
-      "compose-spec",
-      expect.anything(),
-    );
+    for (const output of ["compose-spec", "version"]) {
+      expect(core.setOutput).not.toHaveBeenCalledWith(
+        output,
+        expect.anything(),
+      );
+    }
     expect(mockUploadArtifact).not.toHaveBeenCalled();
   });
 

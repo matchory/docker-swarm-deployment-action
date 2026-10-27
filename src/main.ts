@@ -24,10 +24,10 @@ export async function run() {
     } else {
       composeSpec = await deploy(settings);
       core.setOutput("compose-spec", composeSpec);
+      core.setOutput("version", settings.version);
     }
 
     core.setOutput("stack-name", settings.stack);
-    core.setOutput("version", settings.version);
     core.setOutput("status", "success");
   } catch (error) {
     if (error instanceof Error) {

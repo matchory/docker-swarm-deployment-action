@@ -1335,6 +1335,16 @@ SECRET2=simple_secret`;
       );
     });
 
+    it("should check the stack name before parsing variables", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "secrets" ? "TOKEN=abc" : "",
+      );
+      booleanInputs.destroy = true;
+
+      expect(() => parseSettings(env)).toThrow(/requires the "stack-name"/);
+      expect(core.setSecret).not.toHaveBeenCalled();
+    });
+
     it("should destroy the named stack", () => {
       vi.spyOn(core, "getInput").mockImplementation((name) =>
         name === "stack-name" ? "preview-42" : "",

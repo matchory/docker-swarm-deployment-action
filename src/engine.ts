@@ -407,7 +407,8 @@ async function withExactTimestamps<T extends SecretMetadata | ConfigMetadata>(
  */
 export async function removeStack(stack: string) {
   try {
-    await executeDockerCommand(["stack", "rm", "--detach=false", stack]);
+    // "--" keeps a name starting with a dash from being read as a flag
+    await executeDockerCommand(["stack", "rm", "--detach=false", "--", stack]);
   } catch (cause) {
     throw new Error(`Failed to remove stack "${stack}": ${cause}`, { cause });
   }

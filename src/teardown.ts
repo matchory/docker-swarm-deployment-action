@@ -14,27 +14,37 @@ import { stackLabel, versionLabel } from "./variables.js";
  * Only removes a stack this action deployed: one of its services carries the
  * deployment labels, or one of its configs or secrets is managed by the action
  * for this stack. The latter recognizes stacks deployed by earlier versions,
- * which did not label services yet. Without either, a mistyped stack name
- * could remove an unrelated stack.
+ * which did not label services yet. This guards against removing an unrelated
+ * stack, not against naming another stack this action deployed.
  *
  * @param settings Deployment settings
  */
 export async function destroy({ stack }: Pick<Readonly<Settings>, "stack">) {
   const namespace = { "com.docker.stack.namespace": stack };
-  const [services, configs, secrets] = await Promise.all([
-    listServices({ labels: namespace }, true),
+  const [services, labelledServices, configs, secrets] = await Promise.all([
+    listServices({ labels: namespace }),
+    listServices({ labels: [namespace, versionLabel] }),
     listConfigs({ labels: namespace }),
     listSecrets({ labels: namespace }),
   ]);
+
+  if (services.length + configs.length + secrets.length === 0) {
+    core.warning(
+      `Stack "${stack}" has no services, configs or secrets, so there is ` +
+        `nothing to remove. Check the "stack-name" input if the stack should ` +
+        `exist.`,
+    );
+
+    return;
+  }
+
   const owned =
-    services.some((service) => versionLabel in (service.Spec?.Labels ?? {})) ||
+    labelledServices.length > 0 ||
     [...configs, ...secrets].some(
       (variable) => variable.Labels[stackLabel] === stack,
     );
 
-  // Without services, configs or secrets there is nothing to verify, but
-  // removing the stack still cleans up networks a failed removal left behind.
-  if (services.length + configs.length + secrets.length > 0 && !owned) {
+  if (!owned) {
     throw new Error(
       `Refusing to remove stack "${stack}": none of its services, configs or ` +
         `secrets carry the labels this action adds, so it was not deployed ` +

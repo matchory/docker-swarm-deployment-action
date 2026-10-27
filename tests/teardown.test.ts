@@ -1,8 +1,9 @@
+import * as core from "@actions/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ConfigMetadata,
   SecretMetadata,
-  ServiceWithMetadata,
+  ServiceMetadata,
 } from "../src/engine.js";
 import * as engine from "../src/engine.js";
 import { destroy } from "../src/teardown.js";
@@ -11,20 +12,22 @@ vi.mock("@actions/core");
 vi.mock("../src/engine.js");
 
 describe("Teardown", () => {
-  const service = (labels: Record<string, string>) =>
-    ({
-      ID: "svc",
-      Spec: { Name: "preview-42_app", Labels: labels },
-    }) as ServiceWithMetadata;
+  const service = { ID: "svc", Name: "preview-42_app" } as ServiceMetadata;
   const variable = (labels: Record<string, string>) =>
     ({ ID: "var", Name: "app-env", Labels: labels }) as ConfigMetadata &
       SecretMetadata;
+
+  // Answers the unfiltered and the deployment-label service listings
   const withStack = ({
-    services = [] as ServiceWithMetadata[],
+    services = [] as ServiceMetadata[],
+    labelled = [] as ServiceMetadata[],
     configs = [] as ConfigMetadata[],
     secrets = [] as SecretMetadata[],
   }) => {
-    vi.mocked(engine.listServices).mockResolvedValue(services);
+    vi.mocked(engine.listServices).mockImplementation((async ({ labels }) =>
+      Array.isArray(labels)
+        ? labelled
+        : services) as typeof engine.listServices);
     vi.mocked(engine.listConfigs).mockResolvedValue(configs);
     vi.mocked(engine.listSecrets).mockResolvedValue(secrets);
   };
@@ -33,21 +36,22 @@ describe("Teardown", () => {
     vi.resetAllMocks();
   });
 
-  it("should look up the stack's resources by its namespace", async () => {
+  it("should look up the stack's resources with label filters", async () => {
     withStack({});
 
     await destroy({ stack: "preview-42" });
 
-    const filter = { labels: { "com.docker.stack.namespace": "preview-42" } };
-    expect(engine.listServices).toHaveBeenCalledWith(filter, true);
-    expect(engine.listConfigs).toHaveBeenCalledWith(filter);
-    expect(engine.listSecrets).toHaveBeenCalledWith(filter);
+    const namespace = { "com.docker.stack.namespace": "preview-42" };
+    expect(engine.listServices).toHaveBeenCalledWith({ labels: namespace });
+    expect(engine.listServices).toHaveBeenCalledWith({
+      labels: [namespace, "com.matchory.deployment.version"],
+    });
+    expect(engine.listConfigs).toHaveBeenCalledWith({ labels: namespace });
+    expect(engine.listSecrets).toHaveBeenCalledWith({ labels: namespace });
   });
 
   it("should remove a stack whose services carry the deployment labels", async () => {
-    withStack({
-      services: [service({ "com.matchory.deployment.version": "abc1234" })],
-    });
+    withStack({ services: [service], labelled: [service] });
 
     await destroy({ stack: "preview-42" });
 
@@ -56,7 +60,7 @@ describe("Teardown", () => {
 
   it("should remove a stack with configs managed for it", async () => {
     withStack({
-      services: [service({})],
+      services: [service],
       configs: [variable({ "com.matchory.deployment.stack": "preview-42" })],
     });
 
@@ -75,19 +79,21 @@ describe("Teardown", () => {
     expect(engine.removeStack).toHaveBeenCalledExactlyOnceWith("preview-42");
   });
 
-  it("should remove what is left of an empty stack", async () => {
+  it("should warn instead of removing a stack with nothing to verify", async () => {
     withStack({});
 
     await destroy({ stack: "preview-42" });
 
-    expect(engine.removeStack).toHaveBeenCalledExactlyOnceWith("preview-42");
+    expect(engine.removeStack).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Stack "preview-42" has no services, configs or secrets',
+      ),
+    );
   });
 
   it("should refuse to remove a stack it did not deploy", async () => {
-    withStack({
-      services: [service({ "com.example.team": "web" })],
-      configs: [variable({})],
-    });
+    withStack({ services: [service], configs: [variable({})] });
 
     await expect(destroy({ stack: "preview-42" })).rejects.toThrow(
       'Refusing to remove stack "preview-42"',
