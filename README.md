@@ -813,6 +813,9 @@ jobs:
           destroy: true
 ```
 
+The `stack-name` input is required here: the default, the repository name, is usually the name of the main stack, so
+a teardown job that forgot to name its preview stack would otherwise remove that.
+
 This runs `docker stack rm` and waits until the stack's services, networks, configs, and secrets are gone. Volumes are
 kept, so their data survives. No Compose file is read, so the job does not need to check out the repository. A stack
 that does not exist is not an error, so a teardown can safely run more than once.

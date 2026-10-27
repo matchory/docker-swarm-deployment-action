@@ -165,8 +165,9 @@ describe("main", () => {
   });
 
   it("should remove the stack instead of deploying it", async () => {
-    vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
-    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "stack-name" ? "my-app" : "",
+    );
     vi.spyOn(core, "getBooleanInput").mockImplementation(
       (name) => ({ destroy: true })[name] as boolean,
     );
@@ -190,7 +191,9 @@ describe("main", () => {
   });
 
   it("should report a teardown failure", async () => {
-    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(core, "getInput").mockImplementation((name) =>
+      name === "stack-name" ? "my-app" : "",
+    );
     vi.spyOn(core, "getBooleanInput").mockImplementation(
       (name) => ({ destroy: true })[name] as boolean,
     );

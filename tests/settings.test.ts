@@ -1324,4 +1324,27 @@ SECRET2=simple_secret`;
       expect(resolved.monitorTimeout).toBe(42);
     });
   });
+
+  describe("destroy", () => {
+    it("should require an explicit stack name", () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "my-org/my-app");
+      booleanInputs.destroy = true;
+
+      expect(() => parseSettings(env)).toThrow(
+        'The "destroy" input requires the "stack-name" input',
+      );
+    });
+
+    it("should destroy the named stack", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) =>
+        name === "stack-name" ? "preview-42" : "",
+      );
+      booleanInputs.destroy = true;
+
+      const settings = parseSettings(env);
+
+      expect(settings.destroy).toBe(true);
+      expect(settings.stack).toBe("preview-42");
+    });
+  });
 });
