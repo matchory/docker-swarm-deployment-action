@@ -13,7 +13,7 @@ inputs:
   version:
     description: >-
       Version for the deployment. Defaults to the tag name being built, or the
-      commit hash.
+      short commit hash.
   compose-file:
     description: |-
       Path to the Docker Compose file(s) to use for deployment relative to the repository root. Separate multiple files
@@ -67,8 +67,9 @@ inputs:
     default: ""
   env-var-prefix:
     description: >-
-      Prefix filter for environment variables to automatically load as
-      secrets. Defaults to `DEPLOYMENT`. Can also be set in the Compose file.
+      Prefix of the variable names tried when a secret or config has no
+      source, e.g. `DEPLOYMENT_APP_URL` for `app_url`. Defaults to
+      `DEPLOYMENT`. Can also be set in the Compose file.
   manage-variables:
     description: >-
       Whether to automatically manage configs and secrets. If set to `false`,
