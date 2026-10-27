@@ -293,6 +293,28 @@ export function isServiceUpdateComplete(
   const name = service.Spec?.Name ?? service.Name;
   core.debug(`Checking update status of service ${name}`);
 
+  // A job service is done once its tasks have completed: a running task is
+  // still working, and a finished job has no running tasks at all.
+  const job = parseJobProgress(service.Replicas);
+
+  if (job) {
+    if (job.completed >= job.total) {
+      core.info(
+        `Job service "${name}" has completed ` +
+          `(${job.completed}/${job.total} tasks)`,
+      );
+
+      return true;
+    }
+
+    core.info(
+      `Job service "${name}" is still running ` +
+        `(${job.completed}/${job.total} tasks completed)`,
+    );
+
+    return false;
+  }
+
   // Handle missing UpdateStatus
   if (!service.UpdateStatus) {
     if (isServiceRunning(service)) {
@@ -330,6 +352,24 @@ export function isServiceUpdateComplete(
   throw new Error(`Update of service "${name}" failed: ${reason}`, {
     cause: service.UpdateStatus,
   });
+}
+
+/**
+ * Parse the progress of a job service
+ *
+ * Docker reports it in the Replicas field of a job service, after the running
+ * and desired task counts: "0/1 (1/1 completed)". The completions count only
+ * the current run of the job, which every deployment starts anew.
+ *
+ * @param replicas Replicas field of the service
+ * @returns Completed and total tasks, or undefined if not a job service
+ */
+function parseJobProgress(replicas: string | undefined) {
+  const match = replicas?.match(/\((\d+)\/(\d+) completed\)/);
+
+  return match
+    ? { completed: Number(match[1]), total: Number(match[2]) }
+    : undefined;
 }
 
 /**
@@ -405,11 +445,17 @@ async function fetchTasks(serviceId: string): Promise<TaskStatus[] | null> {
  * never recover on its own.
  */
 export function isServiceStuck(tasks: TaskStatus[]): boolean {
-  if (tasks.length === 0) {
+  // Completed tasks are finished work, such as an earlier run of a job
+  // service, so they say nothing about whether the service can still recover.
+  const unfinished = tasks.filter(
+    (t) => !t.CurrentState.startsWith("Complete"),
+  );
+
+  if (unfinished.length === 0) {
     return false;
   }
 
-  return tasks.every(
+  return unfinished.every(
     (t) =>
       t.CurrentState.startsWith("Failed") ||
       t.CurrentState.startsWith("Rejected"),

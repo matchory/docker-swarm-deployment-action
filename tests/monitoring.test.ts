@@ -891,6 +891,88 @@ describe("Monitoring", () => {
     });
   });
 
+  describe("job services", () => {
+    const job = (replicas: string) => ({
+      ID: "svc1",
+      Name: "app_migrate",
+      Spec: { Name: "app_migrate", Labels: {}, TaskTemplate: {} },
+      Replicas: replicas,
+    });
+    const task = (state: string) => ({
+      ID: state,
+      Name: "app_migrate.1",
+      Image: "img",
+      Node: "n1",
+      DesiredState: "Complete",
+      CurrentState: state,
+      Error: "",
+      Ports: "",
+    });
+
+    it("should not count a running job as complete", () => {
+      expect(isServiceUpdateComplete(job("1/1 (0/1 completed)"))).toBe(false);
+    });
+
+    it("should count a finished job as complete", () => {
+      expect(isServiceUpdateComplete(job("0/1 (1/1 completed)"))).toBe(true);
+    });
+
+    it("should wait for every completion of a job", () => {
+      expect(isServiceUpdateComplete(job("1/1 (2/3 completed)"))).toBe(false);
+      expect(isServiceUpdateComplete(job("0/1 (3/3 completed)"))).toBe(true);
+    });
+
+    it("should ignore the update status of a job", () => {
+      expect(
+        isServiceUpdateComplete({
+          ...job("0/1 (1/1 completed)"),
+          UpdateStatus: { State: "updating" },
+        }),
+      ).toBe(true);
+    });
+
+    it("should treat a job whose current run failed as stuck", () => {
+      expect(
+        isServiceStuck([
+          task("Failed 5 seconds ago"),
+          task("Complete 2 minutes ago"),
+        ]),
+      ).toBe(true);
+    });
+
+    it("should not treat a job that is being retried as stuck", () => {
+      expect(
+        isServiceStuck([
+          task("Running 1 second ago"),
+          task("Failed 5 seconds ago"),
+          task("Complete 2 minutes ago"),
+        ]),
+      ).toBe(false);
+    });
+
+    it("should not treat a finished job as stuck", () => {
+      expect(isServiceStuck([task("Complete 2 seconds ago")])).toBe(false);
+    });
+
+    it("should wait for a job to finish during monitoring", async () => {
+      vi.useFakeTimers();
+      const listServices = vi
+        .spyOn(engine, "listServices")
+        .mockResolvedValueOnce([
+          job("1/1 (0/1 completed)"),
+        ] as ServiceWithMetadata[])
+        .mockResolvedValueOnce([
+          job("0/1 (1/1 completed)"),
+        ] as ServiceWithMetadata[]);
+
+      const promise = monitorDeployment({ ...settings, monitorInterval: 1 });
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(listServices).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("isServiceStuck", () => {
     it("should return true when all tasks are rejected", () => {
       expect(
