@@ -26,17 +26,23 @@ export async function deployStack(
       stack,
     ],
     {
-      // The spec is already interpolated, but `stack deploy` has no option to
-      // skip interpolation, so escape every `$` to keep it literal. Docker
-      // never interpolates keys, so mapStrings leaving them alone is correct.
-      stdin: dump(
-        mapStrings(spec, (value) => value.replaceAll("$", () => "$$")),
-      ),
+      stdin: serializeForDeploy(spec),
       env: dockerEnvironment(variables),
     },
   );
 
   core.info(`Deployed stack ${stack}`);
+}
+
+/**
+ * Serialize an interpolated spec for `docker stack deploy`
+ *
+ * `stack deploy` has no option to skip interpolation, so every `$` is escaped
+ * to keep it literal. Docker never interpolates keys, so mapStrings leaving
+ * them alone is correct.
+ */
+export function serializeForDeploy(spec: ComposeSpec) {
+  return dump(mapStrings(spec, (value) => value.replaceAll("$", () => "$$")));
 }
 
 // Extends the process environment rather than replacing it: every other
