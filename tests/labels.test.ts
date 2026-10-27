@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDeploymentLabels,
   inferDeploymentLabels,
+  listValue,
   parseBoolean,
   parseSeconds,
   resolveServiceOptions,
@@ -253,6 +254,26 @@ describe("Labels", () => {
       [null, undefined],
     ])("should parse %j as %j", (value, expected) => {
       expect(parseBoolean(value)).toBe(expected);
+    });
+  });
+
+  describe("listValue", () => {
+    it.each([
+      ["debug, seed", ["debug", "seed"]],
+      ["debug\nseed\n", ["debug", "seed"]],
+      ["*", ["*"]],
+      [
+        ["debug", "seed"],
+        ["debug", "seed"],
+      ],
+      [[], []],
+      [",", undefined],
+      ["", undefined],
+      [["debug", 1], undefined],
+      [true, undefined],
+      [null, undefined],
+    ])("should parse %j as %j", (value, expected) => {
+      expect(listValue.parse(value)).toEqual(expected);
     });
   });
 

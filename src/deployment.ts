@@ -42,6 +42,7 @@ export async function deploy(inputSettings: Readonly<Settings>) {
       ...item,
       spec: interpolateTypedFields(item.spec, settings, onUndefined),
     }));
+
     const composeSpec = await normalizeSpec(
       composeSpecs,
       settings,

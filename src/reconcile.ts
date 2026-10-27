@@ -34,7 +34,8 @@ const stripKeys: Array<{ key: string; reason: string }> = [
   {
     key: "profiles",
     reason:
-      "profiles are not supported by swarm; all services are always deployed",
+      "profiles are not supported by swarm, so all services are deployed; " +
+      'set the "profiles" input to deploy only those of active profiles',
   },
   { key: "memswap_limit", reason: "swarm has no swap-limit control" },
   {
