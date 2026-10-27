@@ -679,6 +679,24 @@ services:
     });
   });
 
+  describe("removeStack", () => {
+    it("should call docker stack rm and wait for the removal", async () => {
+      await engine.removeStack("preview-42");
+      expect(mockedExec).toHaveBeenCalledWith(
+        "docker",
+        ["stack", "rm", "--detach=false", "preview-42"],
+        expect.any(Object),
+      );
+    });
+
+    it("should throw error on exec failure", async () => {
+      mockedExec.mockRejectedValue(new Error("Docker error"));
+      await expect(engine.removeStack("preview-42")).rejects.toThrowError(
+        /Failed to remove stack "preview-42"/,
+      );
+    });
+  });
+
   describe("removeSecret", () => {
     it("should call docker secret rm", async () => {
       await engine.removeSecret("sec1");

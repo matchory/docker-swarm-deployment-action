@@ -113,6 +113,13 @@ inputs:
       Whether to emit warnings for missing or suspect health check
       configurations in compose services. Defaults to `true`. Can also be set
       in the Compose file, and per service with a label.
+  destroy:
+    description: >-
+      Whether to remove the stack instead of deploying it, e.g. to tear down a
+      preview environment. Removes the stack's services, networks, configs and
+      secrets, but keeps its volumes. Only removes a stack this action
+      deployed, and succeeds if the stack does not exist.
+    default: "false"
   upload-compose-spec:
     description: >-
       Whether to upload the final interpolated Compose Specification as a

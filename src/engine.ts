@@ -398,6 +398,22 @@ async function withExactTimestamps<T extends SecretMetadata | ConfigMetadata>(
 }
 
 /**
+ * Remove a stack
+ *
+ * Removes the stack's services, networks, configs and secrets, and waits until
+ * they are gone. Volumes are kept. A stack that does not exist is not an error.
+ *
+ * @param stack Name of the stack to remove
+ */
+export async function removeStack(stack: string) {
+  try {
+    await executeDockerCommand(["stack", "rm", "--detach=false", stack]);
+  } catch (cause) {
+    throw new Error(`Failed to remove stack "${stack}": ${cause}`, { cause });
+  }
+}
+
+/**
  * Remove an unused secret
  *
  * This function removes a secret from the Swarm.

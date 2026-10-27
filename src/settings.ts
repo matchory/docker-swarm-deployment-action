@@ -24,6 +24,10 @@ export interface Settings {
    * Labels written to every service; see `addDeploymentLabels`
    */
   deploymentLabels?: Readonly<Record<string, string>>;
+  /**
+   * Remove the stack instead of deploying it
+   */
+  destroy?: boolean;
   envVarPrefix: string;
   healthCheckWarnings: boolean;
   keyInterpolation: boolean;
@@ -241,12 +245,14 @@ export function parseSettings(env: NodeJS.ProcessEnv) {
       .map((name) => [name, getInput(name)])
       .filter(([, value]) => value),
   );
+  const destroy = getBooleanInput("destroy", { required: false }) ?? false;
   const uploadComposeSpec =
     getBooleanInput("upload-compose-spec", { required: false }) ?? true;
 
   return defineSettings({
     composeFiles: inferComposeFiles(getInput("compose-file"), env),
     deploymentLabels: inferDeploymentLabels(version, env),
+    destroy,
     ...resolveStackSettings(stackInputs, {}),
     secretValues,
     stack,

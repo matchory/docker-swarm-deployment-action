@@ -46,6 +46,7 @@
     - [Stack Settings](#stack-settings)
     - [Service Labels](#service-labels)
     - [Deployment Labels](#deployment-labels)
+  - [Removing a Stack](#removing-a-stack)
   - [Post-Deployment Monitoring](#post-deployment-monitoring)
     - [Monitoring Timeout & Interval](#monitoring-timeout--interval)
   - [Health Check Validation](#health-check-validation)
@@ -195,6 +196,7 @@ Compose file; see [Stack Settings](#stack-settings).
 | `monitor-timeout`\*       | `300`                                 | The maximum time in seconds to wait for the stack to stabilize.                                                                   |
 | `monitor-interval`\*      | `5`                                   | The interval in seconds to check the stack status.                                                                                |
 | `health-check-warnings`\* | `true`                                | Whether to emit [warnings for missing or suspect health checks](#health-check-validation).                                        |
+| `destroy`                 | `false`                               | Whether to [remove the stack](#removing-a-stack) instead of deploying it.                                                         |
 | `upload-compose-spec`     | `true`                                | Whether to upload the final compose spec as a workflow artifact. It may contain interpolated variable values.                     |
 
 ### Outputs
@@ -789,6 +791,35 @@ Labels whose value the runner does not provide are left out. They replace labels
 
 Since they are service labels, not container labels, a new commit does not restart a service: Swarm updates the
 service's metadata in place and only rolls out new tasks for changes to the containers themselves.
+
+### Removing a Stack
+
+Setting the `destroy` input removes the stack instead of deploying it, for example to tear down a preview environment
+when its pull request is closed:
+
+```yaml
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the preview stack
+        uses: matchory/docker-swarm-deployment-action@v1
+        with:
+          stack-name: preview-${{ github.event.number }}
+          destroy: true
+```
+
+This runs `docker stack rm` and waits until the stack's services, networks, configs, and secrets are gone. Volumes are
+kept, so their data survives. No Compose file is read, so the job does not need to check out the repository. A stack
+that does not exist is not an error, so a teardown can safely run more than once.
+
+To guard against a mistyped stack name, the action only removes a stack it deployed: one of its services must carry the
+[deployment labels](#deployment-labels), or one of its configs or secrets must be managed by the action for this stack.
+Otherwise, the action fails without removing anything.
 
 ### Post-Deployment Monitoring
 

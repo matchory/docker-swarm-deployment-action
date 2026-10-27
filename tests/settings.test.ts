@@ -29,6 +29,7 @@ describe("settings", () => {
     expect(settings.stack).toBe("unknown");
     expect(settings.version).toBe("unknown");
     expect(settings.composeFiles).toEqual([]);
+    expect(settings.destroy).toBe(false);
     expect(settings.envVarPrefix).toBe("DEPLOYMENT");
     expect(settings.healthCheckWarnings).toBe(true);
     expect(settings.keyInterpolation).toBe(false);
