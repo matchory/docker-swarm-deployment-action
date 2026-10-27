@@ -44,28 +44,51 @@ packages esbuild actually pulled in.
 **Deployment flow** (orchestrated in `deployment.ts`):
 
 1. `resolveComposeFiles()` -- find compose files
-2. `loadComposeSpecs()` -- parse YAML
-3. `normalizeSpec()` -- validate via `docker stack config`
-4. `interpolateSpec()` -- substitute `${VAR}` references
-5. `deployStack()` -- run `docker stack deploy` with spec on stdin
-6. `monitorDeployment()` -- optional polling of service task states
-7. `pruneVariables()` -- remove unused configs/secrets
+2. `readStackSettings()` + `applyStackSettings()` -- apply the
+   `x-matchory-deployment` block (inputs still win)
+3. `loadComposeSpecs()` -- parse YAML, select profiles, process
+   configs/secrets (`prepareSpec`), inline env files
+4. `normalizeSpec()` -- reconcile for Swarm and merge, then validate
+   via `docker stack config` (merges with `docker compose config`
+   first when `!reset`/`!override` tags or `extends` are present)
+5. `interpolateSpec()` -- substitute `${VAR}` references
+6. `assertOwnShares()`, `resolveServiceOptions()`,
+   `validateHealthChecks()`, `addDeploymentLabels()` -- checks and
+   service labels on the final spec
+7. `deployStack()` -- run `docker stack deploy` with spec on stdin
+8. `monitorDeployment()` -- optional polling of service task states
+9. `pruneVariables()` -- remove unused configs/secrets
+
+With the `destroy` input, `main.ts` calls `destroy()` in
+`teardown.ts` instead, and none of the above runs.
 
 **Key modules**:
 
 - `settings.ts` -- parses GitHub Actions inputs; merges variables
-  from env, `variables`, `secrets`, and `extra-variables` inputs
+  from env, `variables`, `secrets`, and `extra-variables` inputs;
+  resolves stack settings
 - `variables.ts` -- config/secret management: hash-based rotation,
   file/env/content sources, base64/hex transforms, pruning
 - `engine.ts` -- Docker CLI wrapper: stack deploy, compose config,
   service/secret/config listing, task listing
 - `compose.ts` -- compose file resolution, YAML loading,
-  normalization, interpolation engine
+  normalization, spec interpolation
+- `utils.ts` -- `interpolateString()`, the interpolation engine
+- `reconcile.ts` -- Compose-Spec-to-Swarm translation and stripping,
+  `strict-compatibility`
+- `profiles.ts` -- Compose profile selection
+- `env-file.ts` -- `env_file` parsing and inlining (dotenv rules)
+- `override-tags.ts` -- `!reset`/`!override` YAML tag support
+- `labels.ts` -- service labels: per-service settings and
+  deployment labels
+- `healthcheck.ts` -- health check warnings and report details
+- `shares.ts` -- rejects volumes naming another stack's share
+- `teardown.ts` -- the `destroy` input
 - `monitoring.ts` -- polls service tasks until convergence or
   timeout, with structured failure diagnostics and early failure
   detection via `isServiceStuck()`
-- `main.ts` -- entry point: calls `deploy()`, sets action outputs,
-  uploads compose spec artifact
+- `main.ts` -- entry point: calls `deploy()` or `destroy()`, sets
+  action outputs, uploads compose spec artifact
 
 ## Monitoring and failure diagnostics
 
@@ -82,10 +105,11 @@ Docker never triggers a rollback.
 
 ## CI
 
-Five workflows run on push to main: `ci.yml` (tests),
-`linter.yml` (super-linter), `licensed.yml` (license compliance),
-`check-dist.yml` (rebuilds `dist/` and fails if the committed
-bundle is stale), and `swarm.yml` (swarm scenarios, below).
+These workflows run on pull requests and pushes to main: `ci.yml`
+(tests), `linter.yml` (super-linter), `licensed.yml` (license
+compliance), `check-dist.yml` (rebuilds `dist/` and fails if the
+committed bundle is stale), `codeql-analysis.yml`, and `swarm.yml`
+(swarm scenarios, below; only when runtime files change).
 
 `swarm.yml` runs `tests/swarm` against a real single-node swarm,
 one matrix job per file, plus a smoke job that runs the committed

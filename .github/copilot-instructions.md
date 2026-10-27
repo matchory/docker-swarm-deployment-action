@@ -5,78 +5,87 @@
 This is a **GitHub Action** written in **TypeScript** that deploys applications
 to Docker Swarm clusters. The action automatically handles Docker Compose
 specifications, manages secrets and configs, monitors deployments, and provides
-extensive customization options. The project is medium-sized (~2,400 lines of
-TypeScript code) with comprehensive test coverage (98%+) and follows GitHub
-Action best practices.
+extensive customization options. The project is medium-sized (~6,000 lines of
+TypeScript source) with high test coverage and follows GitHub Action best
+practices.
 
-**Key Features**: Automatic Compose file detection, secret/config rotation,
-post-deployment monitoring, Docker context support, variable interpolation, and
-extensive error handling.
+`CLAUDE.md` in the repository root describes the architecture, CI, and known
+pitfalls in more detail. Read it before larger changes.
 
-**Target Runtime**: Node.js 20+  
-**Main Languages**: TypeScript, YAML, Bash  
-**Package Manager**: npm (v10.8.2+)  
-**Key Dependencies**: @actions/core, @actions/exec, js-yaml  
-**Build Tools**: esbuild, vitest, biome
+**Key Features**: Automatic Compose file detection, Compose-Spec-to-Swarm
+reconciliation, secret/config rotation, Compose profiles, settings in the
+Compose file, post-deployment monitoring with failure diagnostics, and stack
+removal.
+
+**Target Runtime**: Node.js 24 (`runs.using: node24`, `.node-version`)  
+**Main Languages**: TypeScript, YAML  
+**Package Manager**: npm  
+**Key Dependencies**: @actions/core, @actions/exec, @actions/artifact, js-yaml  
+**Build Tools**: esbuild, vitest, biome, TypeScript 7 (typechecking only)
 
 ## Build and Validation Commands
 
-**Environment is pre-initialized**: Dependencies are already installed and the
-project is built via the `.github/workflows/copilot-setup-steps.yml` workflow.
+**Environment is pre-initialized**: Dependencies are already installed via the
+`.github/workflows/copilot-setup-steps.yml` workflow.
 
-### Available Commands (No Setup Required)
+### Bundling
 
 ```bash
-npm run bundle   # esbuild bundle for Action distribution → creates /dist directory
-npm run package  # Alias for bundle
+npm run package  # esbuild bundle (script/bundle.mjs) → dist/
 ```
 
-**Critical**: The `/dist` directory contains the final bundled Action code that
-GitHub executes. Always run `npm run package` after code changes.
+**Critical**: The `dist/` directory contains the bundled Action code that
+GitHub executes, and it is committed. Always run `npm run package` after code
+changes.
 
 ### Testing and Quality Checks
 
 ```bash
-npm run test           # Run vitest test suite (takes ~2 seconds, expect 98%+ coverage)
-npm run lint           # Biome checking (must pass)
+npm run test           # Vitest unit, integration, and property tests, with coverage
+npm run test:swarm     # Scenarios against a real swarm (needs Docker and dist/)
+npm run typecheck      # tsc --noEmit
+npm run lint           # Biome lint (must pass)
 npm run format:check   # Biome formatting check
 npm run format:write   # Fix formatting issues automatically
 ```
 
-**Common Issue**: `format:check` may fail if README.md has formatting issues.
-Run `format:write` to fix.
-
 ### Complete Pipeline
 
 ```bash
-npm run all  # Runs: format:write → lint → test → coverage → package
+npm run all  # format:write → lint → typecheck → test → coverage → package
 ```
 
-**Note**: The `coverage` step may fail due to network restrictions
-(img.shields.io unavailable), but this doesn't affect functionality.
+**Note**: The `coverage` step (coverage badge) may fail due to network
+restrictions, but this doesn't affect functionality.
 
 ### Development Commands
 
 ```bash
-npm run package:watch  # Watch mode for bundle rebuilding during development
-npm run local-action   # Test action locally with .env file
+npm run local-action   # Run the action locally with a .env file (see .env.example)
 ```
 
 ## Project Architecture and Layout
 
-### Core Source Files (`/src/`)
+### Core Source Files (`src/`)
 
-- **`main.ts`**: Entry point and orchestration logic - modify for new top-level
-  features
-- **`deployment.ts`**: Core deployment orchestration and Docker commands
-- **`engine.ts`**: Docker engine interaction and command execution
-- **`compose.ts`**: Docker Compose file parsing, validation, and manipulation
-- **`variables.ts`**: Secret/config management, rotation, and pruning logic
-- **`monitoring.ts`**: Post-deployment health checking and service monitoring
-- **`settings.ts`**: Input parsing and configuration management
-- **`utils.ts`**: Shared utilities (interpolation, file operations, etc.)
-- **`types.d.ts`**: TypeScript type definitions
-- **`index.ts`**: Simple entry point that calls main.ts
+- **`index.ts`**: Entry point that calls `run()` in `main.ts`
+- **`main.ts`**: Calls `deploy()` or `destroy()`, sets outputs, uploads the
+  compose spec artifact
+- **`deployment.ts`**: Orchestrates the deployment steps
+- **`settings.ts`**: Input parsing, variable merging, stack settings
+- **`compose.ts`**: Compose file detection, loading, merging, normalization,
+  and interpolation of the spec
+- **`reconcile.ts`**: Translates or strips Compose features Swarm lacks
+- **`profiles.ts`**, **`env-file.ts`**, **`override-tags.ts`**: Compose
+  profiles, `env_file` inlining, `!reset`/`!override` tags
+- **`variables.ts`**: Secret/config management, rotation, and pruning
+- **`labels.ts`**: Per-service settings labels and deployment labels
+- **`healthcheck.ts`**: Health check warnings and report details
+- **`shares.ts`**: Rejects volumes naming another stack's shared storage
+- **`teardown.ts`**: Stack removal for the `destroy` input
+- **`monitoring.ts`**: Post-deployment monitoring and failure reports
+- **`engine.ts`**: Docker CLI wrapper
+- **`utils.ts`**: Shared utilities, including the interpolation engine
 
 ### Configuration Files (Root)
 
@@ -86,70 +95,77 @@ npm run local-action   # Test action locally with .env file
   TypeScript configuration
 - **`biome.json`**: Biome code formatting and linting configuration
 - **`script/bundle.mjs`**: esbuild bundler that writes `dist/`
-- **`vitest.config.ts`**: Test runner configuration with coverage settings
-- **`.node-version`**: Specifies Node.js 23.10.0 requirement
+- **`vitest.config.ts`**, **`vitest.swarm.config.ts`**: Test runner
+  configuration for the unit tests and the swarm scenarios
+- **`.node-version`**: Node.js version used in CI
 
-### Testing (`/tests/`)
+### Testing (`tests/`)
 
-All source files have corresponding `.test.ts` files with comprehensive
-coverage:
-
-- Tests use **vitest** framework with extensive mocking
-- Coverage reports expect 98%+ coverage across all files
-- Test files mirror the structure of `/src/` directory
+- Tests use **vitest** with extensive mocking of the Docker CLI
+- Most source files have a corresponding `.test.ts` file;
+  `*.integration.test.ts` files cover several modules together
+- `tests/swarm/` runs the bundled action against a real single-node swarm
+- `tests/properties/` compares generated Compose files against Docker's own
+  processing; these need Docker, but no swarm
 
 ### CI/CD Workflows (`.github/workflows/`)
 
-- **`ci.yml`**: Main CI pipeline (test, lint, format check) - runs on PR/push to
-  main
-- **`linter.yml`**: Super-linter validation with specific exclusions for
-  dist/\*\*, JSON, TypeScript ES
+- **`ci.yml`**: Tests
+- **`linter.yml`**: Super-linter, excluding `dist/`, `docs/superpowers/`, and
+  `.licenses/`
+- **`check-dist.yml`**: Fails if the committed `dist/` is out of date
+- **`swarm.yml`**: Swarm scenarios, when runtime files change
+- **`properties.yml`**: Property tests with many random cases, run by hand
 - **`codeql-analysis.yml`**: GitHub security analysis
 - **`licensed.yml`**: License compliance checking with `.licensed.yml` config
+- **`regenerate-artifacts.yml`**: Regenerates `dist/` and `.licenses/` after
+  dependency changes on main
+- **`release.yml`**: Updates the rolling major/minor tags for a release tag
 
 ### Build Outputs
 
-- **`/out/`**: TypeScript compilation output (intermediate)
-- **`/dist/`**: Final bundled action code (committed to repository, used by GitHub)
-- **`/coverage/`**: Test coverage reports
-- **`/badges/`**: Coverage badges (SVG files)
+- **`dist/`**: Bundled action code (committed to repository, used by GitHub)
+- **`coverage/`**: Test coverage reports
+- **`badges/`**: Coverage badge (SVG)
 
 ## Critical Development Notes
 
 ### GitHub Action Distribution
 
-- The `/dist/` directory **MUST** be committed after code changes
-- GitHub Actions run from `dist/index.cjs` (not source code)
-- Use `npm run package` to update `/dist/` after modifications
+- The `dist/` directory **MUST** be committed after code changes
+- GitHub Actions run `dist/index.js`, which loads the bundle in `dist/main.js`
+- Use `npm run package` to update `dist/` after modifications
 
 ### Environment Variables and Secrets
 
-- Action reads configuration from `process.env` (GitHub Action inputs)
-- Supports complex variable interpolation with compose-spec syntax
+- Action reads its inputs from `INPUT_*` environment variables via @actions/core
+- Every process environment variable also becomes a deployment variable
+- Supports Compose-spec variable interpolation
 - Test files extensively mock environment variables
 
 ### Docker Dependencies
 
 - Action requires Docker daemon access in runtime environment
 - Uses `docker` CLI commands via @actions/exec
-- Supports SSH, TCP, and Unix socket connections via DOCKER_HOST
+- Connects wherever the Docker CLI does: `DOCKER_HOST`, `DOCKER_CONTEXT`, or
+  the current context
 
 ### Error Handling Patterns
 
-- Extensive error handling throughout codebase
 - Uses @actions/core for GitHub Actions logging and error reporting
-- Monitor logs for deployment failures in post-deployment monitoring
+- Fail through `core.setFailed` rather than letting an exception escape
+- Monitoring writes failure reports to the log and the job summary
 
 ### Common Development Issues
 
 1. **Format check failures**: Run `npm run format:write` before committing
 2. **Missing dist updates**: Always run `npm run package` after code changes
-3. **Test environment**: Tests mock Docker commands - no real Docker required
-   for testing
-4. **Network dependencies**: Some scripts (coverage badges) may fail in
-   restricted environments
-5. **Pre-initialized environment**: Dependencies and build are already prepared
-   via copilot-setup-steps.yml workflow
+3. **Test environment**: Unit tests mock Docker commands; the property tests
+   need Docker, and only `npm run test:swarm` needs a real swarm
+4. **Network dependencies**: The coverage badge script may fail in restricted
+   environments
+5. **Out-of-sync lockfile**: After changing dependencies, run `npm install`;
+   `npm ci` and `npm run package` fail otherwise
 
 ### Key Dependencies to Avoid Updating Carelessly
 
@@ -159,12 +175,13 @@ coverage:
 
 ### Files to Modify Based on Task Type
 
-- **New Action Inputs**: `action.yml` + `src/settings.ts`
+- **New Action Inputs**: `action.yml` + `src/settings.ts` + `README.md`
 - **Docker Operations**: `src/engine.ts` + `src/deployment.ts`
-- **Compose Handling**: `src/compose.ts` + `src/variables.ts`
+- **Compose Handling**: `src/compose.ts`, `src/reconcile.ts`,
+  `src/variables.ts`
 - **Monitoring Logic**: `src/monitoring.ts`
 - **Bugfixes**: Corresponding source file + add/update tests
-- **Documentation**: `README.md` (autoformatted by biome)
+- **Documentation**: `README.md`
 
 **Trust these instructions** - they are based on comprehensive repository
 analysis and successful command execution. Only explore further if the provided
