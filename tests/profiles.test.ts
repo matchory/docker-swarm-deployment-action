@@ -231,6 +231,22 @@ describe("selectProfiles", () => {
       },
     );
 
+    // Compose resolves the `extends` of the replaced definition before it
+    // applies the replacement, so a skipped base would not be found
+    it("should drop extends from a definition a later file replaces", () => {
+      const specs = files(
+        {
+          base: { image: "busybox", profiles: ["template"] },
+          web: { image: "busybox", extends: "base" },
+        },
+        { web: override({ image: "busybox" }) },
+      );
+
+      select(specs, ["prod"]);
+
+      expect(services(specs)[0]).toEqual({ web: { image: "busybox" } });
+    });
+
     it("should add a later file's profiles to the inherited ones", () => {
       const specs = files(
         {

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ComposeSpec } from "./compose.js";
 import { Tagged } from "./override-tags.js";
+import { extendedService } from "./profiles.js";
 import type { Settings } from "./settings.js";
 import { interpolateString, warnAboutUndefinedVariables } from "./utils.js";
 
@@ -29,6 +30,10 @@ export async function inlineEnvFiles(
   }: Pick<Readonly<Settings>, "variables" | "keyInterpolation">,
   onUndefined = warnAboutUndefinedVariables(),
 ) {
+  for (const { spec } of prepared) {
+    inheritFromBases(spec);
+  }
+
   const names = new Set(
     prepared.flatMap(({ spec }) => fieldsOf(spec.services)?.keys() ?? []),
   );
@@ -170,6 +175,71 @@ export async function inlineEnvFiles(
       .map(([key, value]) => [key, value.replaceAll("$", () => "$$")]);
 
     addEnvironment(owner, inlined as Array<[string, string]>);
+  }
+}
+
+// Copy the env files and environment of each extended service into the
+// services extending it. Compose resolves `extends` within each file, against
+// the base as that file defines it, before it merges the files; the inlining
+// replays the merge per service name, so it would miss what was inherited.
+// Compose still merges the base into the service later, but by then the
+// service holds every inherited key itself, and its own values win.
+function inheritFromBases(spec: ComposeSpec) {
+  const services = fieldsOf(spec.services);
+
+  if (!services) {
+    return;
+  }
+
+  const done = new Set<string>();
+  const inherit = (name: string, seen: ReadonlySet<string>) => {
+    const service = fieldsOf(services.get(name));
+    const base = extendedService(service?.get("extends"));
+
+    if (done.has(name) || !service || !base || seen.has(base)) {
+      return;
+    }
+
+    done.add(name);
+    inherit(base, new Set([...seen, base]));
+
+    const from = isReset(services.get(base))
+      ? undefined
+      : fieldsOf(services.get(base));
+    const envFile = service.get("env_file");
+    const baseEnvFile = from?.get("env_file");
+    const environment = service.get("environment");
+    const baseEnvironment = from?.get("environment");
+
+    // A tagged field replaces, rather than adds to, what it would inherit
+    if (
+      baseEnvFile !== undefined &&
+      !isReset(baseEnvFile) &&
+      !(envFile instanceof Tagged)
+    ) {
+      service.set("env_file", [
+        ...[unwrap(baseEnvFile) ?? []].flat(),
+        ...[envFile ?? []].flat(),
+      ]);
+    }
+
+    if (
+      baseEnvironment !== undefined &&
+      !isReset(baseEnvironment) &&
+      !(environment instanceof Tagged)
+    ) {
+      service.set(
+        "environment",
+        Object.fromEntries([
+          ...environmentEntries(unwrap(baseEnvironment)),
+          ...environmentEntries(environment),
+        ]),
+      );
+    }
+  };
+
+  for (const name of services.keys()) {
+    inherit(name, new Set([name]));
   }
 }
 

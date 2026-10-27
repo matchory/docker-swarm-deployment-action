@@ -89,7 +89,7 @@ export function selectProfiles(
     core.info(`Skipping service "${name}": ${reason(name)}`);
   }
 
-  for (const { spec } of specs) {
+  for (const [index, { spec }] of specs.entries()) {
     if (!spec?.services) {
       continue;
     }
@@ -101,6 +101,14 @@ export function selectProfiles(
     for (const [name, service] of Object.entries(spec.services)) {
       removeField(service, "profiles");
 
+      // The merge discards a definition a later file replaces, but Compose
+      // still resolves its `extends` first, which fails for a skipped base
+      const base = extendedService(field(service, "extends"));
+
+      if (base && inactive.has(base) && replacedAfter(specs, index, name)) {
+        removeField(service, "extends");
+      }
+
       for (const dependency of removeDependencies(service, inactive)) {
         core.warning(
           `Service "${name}" depends on service "${dependency}", which is ` +
@@ -110,6 +118,17 @@ export function selectProfiles(
       }
     }
   }
+}
+
+// Whether a file after the one at `index` replaces the service as a whole
+function replacedAfter(
+  specs: ReadonlyArray<{ spec: ComposeSpec | undefined }>,
+  index: number,
+  name: string,
+) {
+  return specs
+    .slice(index + 1)
+    .some(({ spec }) => spec?.services?.[name] instanceof Tagged);
 }
 
 // The profiles a file gives each of its services, including those inherited
@@ -178,7 +197,7 @@ function toList(value: unknown): string[] {
 
 // `extends: base` or `extends: {service: base}`; a base in another file is
 // resolved by Docker and cannot be checked here
-function extendedService(value: unknown): string | undefined {
+export function extendedService(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
   }

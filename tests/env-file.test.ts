@@ -407,6 +407,54 @@ describe("inlineEnvFiles", () => {
     ).rejects.toThrowError('Service "app": env_file format "raw"');
   });
 
+  // Compose resolves `extends` within each file, against the base as that file
+  // defines it, before it merges the files
+  describe("with extends", () => {
+    const override = (entries: Record<string, unknown>) =>
+      new Tagged("!override", "mapping", new Map(Object.entries(entries)));
+
+    it.each([
+      ["replaces", override({ image: "nginx" })],
+      ["changes", { image: "nginx" }],
+    ])(
+      "inherits the base's env files when a later file %s the base",
+      async (_, later) => {
+        file("base.env", "FROM_FILE=1");
+
+        const [first] = await inline([
+          {
+            base: { image: "nginx", env_file: "base.env" },
+            web: { extends: "base" },
+          },
+          { base: later },
+        ]);
+
+        expect(first.web).toEqual({
+          extends: "base",
+          environment: { FROM_FILE: "1" },
+        });
+      },
+    );
+
+    it("lets the inherited environment win over a later env file", async () => {
+      file("web.env", "E=env-file");
+
+      const [first, second] = await inline([
+        {
+          base: { image: "nginx", environment: { E: "inherited" } },
+          web: { extends: "base" },
+        },
+        { web: { env_file: "web.env" } },
+      ]);
+
+      expect(first.web).toEqual({
+        extends: "base",
+        environment: { E: "inherited" },
+      });
+      expect(second.web).toEqual({});
+    });
+  });
+
   it("leaves services without env files untouched", async () => {
     const services = { app: { image: "nginx", environment: ["A=$B"] } };
 
