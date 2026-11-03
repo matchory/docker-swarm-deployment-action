@@ -30,177 +30,171 @@ const refusals = [
 // Compose accepts a project without services; a stack needs one
 const noServices = /(has no|have any) services to deploy/;
 
-suite(
-  "Compose processing against Docker",
-  { timeout: budget.numRuns * 10_000 },
-  () => {
-    it("deploys the services Compose selects", async () => {
-      await fc.assert(
-        fc.asyncProperty(inputs, async (input) => {
-          const action = await runPipeline(input);
-          const compose = await composeConfig(input);
+suite("Compose processing against Docker", {
+  timeout: budget.numRuns * 10_000,
+}, () => {
+  it("deploys the services Compose selects", async () => {
+    await fc.assert(
+      fc.asyncProperty(inputs, async (input) => {
+        const action = await runPipeline(input);
+        const compose = await composeConfig(input);
 
-          if (action.ok && compose.ok) {
-            expect(
-              Object.keys(action.value.normalized.services).sort(),
-            ).toEqual(Object.keys(compose.value.services ?? {}).sort());
-          } else if (compose.ok && !action.ok) {
-            const empty =
-              Object.keys(compose.value.services ?? {}).length === 0;
-            expect(
-              refusals.some((refusal) => refusal.test(action.error)) ||
-                (empty && noServices.test(action.error)),
-              action.error,
-            ).toBe(true);
-          } else if (action.ok && !compose.ok) {
-            // Compose rejects a dependency on a skipped service; the action
-            // removes it with a warning, as Swarm ignores dependencies anyway
-            expect(compose.error).toMatch(/depends on undefined service/);
-            expect(action.warnings).toContainEqual(
-              expect.stringMatching(
-                /depends on service "\w+", which is not deployed/,
-              ),
-            );
+        if (action.ok && compose.ok) {
+          expect(Object.keys(action.value.normalized.services).sort()).toEqual(
+            Object.keys(compose.value.services ?? {}).sort(),
+          );
+        } else if (compose.ok && !action.ok) {
+          const empty = Object.keys(compose.value.services ?? {}).length === 0;
+          expect(
+            refusals.some((refusal) => refusal.test(action.error)) ||
+              (empty && noServices.test(action.error)),
+            action.error,
+          ).toBe(true);
+        } else if (action.ok && !compose.ok) {
+          // Compose rejects a dependency on a skipped service; the action
+          // removes it with a warning, as Swarm ignores dependencies anyway
+          expect(compose.error).toMatch(/depends on undefined service/);
+          expect(action.warnings).toContainEqual(
+            expect.stringMatching(
+              /depends on service "\w+", which is not deployed/,
+            ),
+          );
+        }
+      }),
+      budget,
+    );
+  });
+
+  it("merges files as Compose does", async () => {
+    await fc.assert(
+      fc.asyncProperty(inputs, async (input) => {
+        const action = await runPipeline(input);
+        const compose = await composeConfig(input);
+
+        // Differences in the selected services are the profile property's
+        if (!action.ok || !compose.ok) {
+          return;
+        }
+
+        const merged = projection(action.value.final);
+        const expected = projection(compose.value);
+
+        if (sameKeys(merged, expected)) {
+          expect(merged).toEqual(expected);
+        }
+      }),
+      budget,
+    );
+  });
+
+  it("produces specs Docker accepts", async () => {
+    await fc.assert(
+      fc.asyncProperty(inputs, async (input) => {
+        const action = await runPipeline(input);
+
+        if (action.ok) {
+          const docker = await stackConfig(action.value.final, input.variables);
+          expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
+        }
+      }),
+      budget,
+    );
+  });
+
+  it("deploys variable values unchanged", async () => {
+    await fc.assert(
+      fc.asyncProperty(interpolation, async ({ value, keyInterpolation }) => {
+        const action = await runPipeline({
+          files: [
+            {
+              services: {
+                app: {
+                  image,
+                  environment: { VALUE: "${VALUE}" },
+                  deploy: {
+                    labels: { value: "${VALUE}", "key.${SUFFIX}": "key" },
+                  },
+                },
+              },
+            } as ComposeSpec,
+          ],
+          keyInterpolation,
+          variables: { VALUE: value, SUFFIX: "suffix" },
+        });
+        expect(action.ok, action.ok ? "" : action.error).toBe(true);
+
+        // `docker stack deploy` interpolates the spec it is given once more
+        const docker = await stackConfig(
+          (action as { value: { final: ComposeSpec } }).value.final,
+          { VALUE: value, SUFFIX: "suffix" },
+        );
+        expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
+
+        const app = (docker as { value: ComposeSpec }).value.services
+          .app as Service;
+        expect(asMap(app.environment).VALUE).toBe(value);
+        expect(app.deploy?.labels).toMatchObject({ value });
+        expect(app.deploy?.labels).toHaveProperty(
+          keyInterpolation ? "key.suffix" : "key.${SUFFIX}",
+        );
+      }),
+      budget,
+    );
+  });
+
+  it("puts deployment labels on services only", async () => {
+    await fc.assert(
+      fc.asyncProperty(inputs, async (input) => {
+        const action = await runPipeline(input);
+
+        if (!action.ok) {
+          return;
+        }
+
+        for (const service of Object.values(
+          action.value.final.services,
+        ) as Service[]) {
+          expect(service.deploy?.labels).toMatchObject(deploymentLabels);
+
+          for (const label of Object.keys(asMap(service.labels))) {
+            expect(label).not.toMatch(/^com\.matchory\.deployment\./);
           }
-        }),
-        budget,
-      );
-    });
+        }
+      }),
+      budget,
+    );
+  });
 
-    it("merges files as Compose does", async () => {
-      await fc.assert(
-        fc.asyncProperty(inputs, async (input) => {
-          const action = await runPipeline(input);
-          const compose = await composeConfig(input);
-
-          // Differences in the selected services are the profile property's
-          if (!action.ok || !compose.ok) {
-            return;
-          }
-
-          const merged = projection(action.value.final);
-          const expected = projection(compose.value);
-
-          if (sameKeys(merged, expected)) {
-            expect(merged).toEqual(expected);
-          }
-        }),
-        budget,
-      );
-    });
-
-    it("produces specs Docker accepts", async () => {
-      await fc.assert(
-        fc.asyncProperty(inputs, async (input) => {
-          const action = await runPipeline(input);
-
-          if (action.ok) {
-            const docker = await stackConfig(
-              action.value.final,
-              input.variables,
-            );
-            expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
-          }
-        }),
-        budget,
-      );
-    });
-
-    it("deploys variable values unchanged", async () => {
-      await fc.assert(
-        fc.asyncProperty(interpolation, async ({ value, keyInterpolation }) => {
+  it("accepts only service labels Docker accepts", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record(
+          {
+            [monitorLabel]: labelValue,
+            [monitorTimeoutLabel]: labelValue,
+            [healthCheckWarningsLabel]: labelValue,
+          },
+          { requiredKeys: [] },
+        ),
+        async (labels) => {
           const action = await runPipeline({
             files: [
               {
-                services: {
-                  app: {
-                    image,
-                    environment: { VALUE: "${VALUE}" },
-                    deploy: {
-                      labels: { value: "${VALUE}", "key.${SUFFIX}": "key" },
-                    },
-                  },
-                },
+                services: { app: { image, deploy: { labels } } },
               } as ComposeSpec,
             ],
-            keyInterpolation,
-            variables: { VALUE: value, SUFFIX: "suffix" },
           });
-          expect(action.ok, action.ok ? "" : action.error).toBe(true);
 
-          // `docker stack deploy` interpolates the spec it is given once more
-          const docker = await stackConfig(
-            (action as { value: { final: ComposeSpec } }).value.final,
-            { VALUE: value, SUFFIX: "suffix" },
-          );
-          expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
-
-          const app = (docker as { value: ComposeSpec }).value.services
-            .app as Service;
-          expect(asMap(app.environment).VALUE).toBe(value);
-          expect(app.deploy?.labels).toMatchObject({ value });
-          expect(app.deploy?.labels).toHaveProperty(
-            keyInterpolation ? "key.suffix" : "key.${SUFFIX}",
-          );
-        }),
-        budget,
-      );
-    });
-
-    it("puts deployment labels on services only", async () => {
-      await fc.assert(
-        fc.asyncProperty(inputs, async (input) => {
-          const action = await runPipeline(input);
-
-          if (!action.ok) {
-            return;
+          if (action.ok) {
+            const docker = await stackConfig(action.value.final);
+            expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
           }
-
-          for (const service of Object.values(
-            action.value.final.services,
-          ) as Service[]) {
-            expect(service.deploy?.labels).toMatchObject(deploymentLabels);
-
-            for (const label of Object.keys(asMap(service.labels))) {
-              expect(label).not.toMatch(/^com\.matchory\.deployment\./);
-            }
-          }
-        }),
-        budget,
-      );
-    });
-
-    it("accepts only service labels Docker accepts", async () => {
-      await fc.assert(
-        fc.asyncProperty(
-          fc.record(
-            {
-              [monitorLabel]: labelValue,
-              [monitorTimeoutLabel]: labelValue,
-              [healthCheckWarningsLabel]: labelValue,
-            },
-            { requiredKeys: [] },
-          ),
-          async (labels) => {
-            const action = await runPipeline({
-              files: [
-                {
-                  services: { app: { image, deploy: { labels } } },
-                } as ComposeSpec,
-              ],
-            });
-
-            if (action.ok) {
-              const docker = await stackConfig(action.value.final);
-              expect(docker.ok, docker.ok ? "" : docker.error).toBe(true);
-            }
-          },
-        ),
-        budget,
-      );
-    });
-  },
-);
+        },
+      ),
+      budget,
+    );
+  });
+});
 
 interface Service {
   image?: string;
