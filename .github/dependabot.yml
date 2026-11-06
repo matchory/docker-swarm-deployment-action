@@ -19,9 +19,6 @@ updates:
       timezone: Europe/Berlin
     cooldown:
       default-days: 3
-      semver-major-days: 3
-      semver-minor-days: 3
-      semver-patch-days: 3
     groups:
       minor-and-patch:
         applies-to: version-updates
@@ -40,9 +37,6 @@ updates:
       timezone: Europe/Berlin
     cooldown:
       default-days: 3
-      semver-major-days: 3
-      semver-minor-days: 3
-      semver-patch-days: 3
     groups:
       # The @vitest/* packages pin vitest as an exact peer dependency, so
       # bumping either alone breaks `npm ci`. Listed first because Dependabot
