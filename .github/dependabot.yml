@@ -1,37 +1,64 @@
+# Follows the matchory supply chain baseline:
+# https://github.com/matchory/.github/blob/main/supply-chain/STANDARD.md
+#
+#   - cooldown: a release must be 3 days old before Dependabot proposes it
+#     (does not delay security updates)
+#   - minor + patch updates arrive as ONE grouped PR per ecosystem
+#   - major updates are never grouped: one PR per dependency, reviewed on its own
+#   - security updates get their own group per ecosystem
 version: 2
+
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 3
+      semver-major-days: 3
+      semver-minor-days: 3
+      semver-patch-days: 3
     groups:
-      actions-minor:
-        update-types:
-          - minor
-          - patch
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    labels: [dependencies, github-actions]
 
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    ignore:
-      - dependency-name: "@types/node"
-        update-types:
-          - "version-update:semver-major"
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 3
+      semver-major-days: 3
+      semver-minor-days: 3
+      semver-patch-days: 3
     groups:
       # The @vitest/* packages pin vitest as an exact peer dependency, so
       # bumping either alone breaks `npm ci`. Listed first because Dependabot
-      # assigns a dependency to the first group it matches.
+      # assigns a dependency to the first group it matches, and without an
+      # update-types filter so majors move together too.
       vitest:
         patterns:
           - vitest
           - "@vitest/*"
-      npm-development:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
-      npm-production:
-        dependency-type: production
-        update-types:
-          - patch
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    versioning-strategy: increase-if-necessary
+    labels: [dependencies, javascript]
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
